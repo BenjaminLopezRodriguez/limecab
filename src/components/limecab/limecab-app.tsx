@@ -8,7 +8,19 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Car, Users, Sparkles, Star, RotateCcw } from "lucide-react";
+import {
+  Car,
+  Check,
+  ChevronRight,
+  CreditCard,
+  MessageCircle,
+  Phone,
+  RotateCcw,
+  Sparkles,
+  Star,
+  Tag,
+  Users,
+} from "lucide-react";
 
 import {
   AdaptiveSurface,
@@ -41,13 +53,21 @@ import {
   type LimeCabAction,
   type LimeCabSurfaceId,
 } from "@/components/limecab/surfaces";
-import { vehicleLabel, type RideProduct, type Trip } from "@/lib/limecab/domain";
 import {
+  clockTime,
+  vehicleLabel,
+  TIP_PRESETS,
+  type RideProduct,
+  type Trip,
+} from "@/lib/limecab/domain";
+import {
+  AVAILABLE_PROMO,
   CURRENT_LOCATION,
   DRIVER_START,
-  NEARBY_DRIVERS,
-  RIDE_PRODUCTS,
   LAST_TRIP,
+  NEARBY_DRIVERS,
+  PAYMENT_METHODS,
+  RIDE_PRODUCTS,
   SAVED_PLACES,
   geocodeAdapter,
   lerpPoint,
@@ -231,7 +251,9 @@ function LimeCabFlow() {
     const list: MapPoint[] = [pickupPoint];
     if (destinationPoint && state !== "home") list.push(destinationPoint);
     if (driverPoint) list.push(driverPoint);
-    if (state === "matching") list.push(...NEARBY_DRIVERS);
+    // Idle cars on the home canvas: the rider's first question is whether
+    // LimeCab is even available here, and this answers it before any tap.
+    if (state === "home" || state === "matching") list.push(...NEARBY_DRIVERS);
     return list;
   }, [destinationPoint, driverPoint, pickupPoint, state]);
 
@@ -411,6 +433,9 @@ function LimeCabSurfaces({
   const [detail, setDetail] = useState<DetailKind | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [rating, setRating] = useState<number | null>(null);
+  const [paymentId, setPaymentId] = useState(PAYMENT_METHODS[0]!.id);
+  const [promoApplied, setPromoApplied] = useState(false);
+  const [tipCents, setTipCents] = useState<number | null>(null);
   const [quoteReady, setQuoteReady] = useState(false);
 
   // Mid-transition the surface shows the scene the choreography is on, not the
@@ -437,8 +462,40 @@ function LimeCabSurfaces({
 
   const rideOptions = useMemo<ServiceDefinition[]>(() => {
     if (!destination) return [];
-    return RIDE_PRODUCTS.map((entry) => {
-      const { fare } = quoteFor(entry, pickup, destination);
+    const priced = RIDE_PRODUCTS.map((entry) => ({
+      entry,
+      fare: quoteFor(entry, pickup, destination).fare,
+    }));
+
+    // The two comparisons riders actually make. Marking them is the whole
+    // reason the tiers sit in one list instead of behind a picker.
+    const sellable = priced.filter(({ entry }) => entry.status === "available");
+    const cheapest = sellable.reduce<string | null>(
+      (best, item) =>
+        best === null ||
+        item.fare.totalCents <
+          (sellable.find((x) => x.entry.id === best)?.fare.totalCents ?? 0)
+          ? item.entry.id
+          : best,
+      null,
+    );
+    const fastest = sellable.reduce<string | null>(
+      (best, item) =>
+        best === null ||
+        item.entry.etaMinutes <
+          (sellable.find((x) => x.entry.id === best)?.entry.etaMinutes ?? 0)
+          ? item.entry.id
+          : best,
+      null,
+    );
+
+    return priced.map(({ entry, fare }) => {
+      const badge =
+        entry.id === fastest
+          ? "Fastest"
+          : entry.id === cheapest
+            ? "Cheapest"
+            : null;
       return {
         id: entry.id,
         title: entry.name,
@@ -447,11 +504,20 @@ function LimeCabSurfaces({
         status: entry.status,
         meta: {
           value: formatMoney(fare.totalCents),
-          note: `${entry.etaMinutes} min away · ${entry.seats} seats`,
+          // Dropoff as a clock time: "18 min" answers the wrong question when
+          // what the rider is really checking is whether they make the 3:30.
+          note: `${badge ? `${badge} · ` : ""}${clockTime(
+            entry.etaMinutes + (estimate?.minutes ?? 0),
+          )} dropoff · ${entry.seats} seats`,
         },
       };
     });
-  }, [destination, pickup]);
+  }, [destination, estimate?.minutes, pickup]);
+
+  const payment =
+    PAYMENT_METHODS.find((entry) => entry.id === paymentId) ??
+    PAYMENT_METHODS[0]!;
+  const discountCents = promoApplied ? AVAILABLE_PROMO.amountCents : 0;
 
   const quote = useMemo(() => {
     if (!product || !destination) return null;
@@ -477,6 +543,12 @@ function LimeCabSurfaces({
       },
     };
   }, [destination, pickup, product]);
+
+  /** What the rider is actually charged, after any credit. */
+  const payableCents = Math.max(
+    0,
+    (quote?.fare.totalCents ?? 0) - discountCents,
+  );
 
   const chooseLocation = (result: Location) => {
     if (searchTarget === "pickup") {
@@ -565,6 +637,8 @@ function LimeCabSurfaces({
     setProductId(null);
     setDestination(null);
     setRating(null);
+    setTipCents(null);
+    setPromoApplied(false);
     setPickup(CURRENT_LOCATION);
     setState("home");
   };
@@ -692,9 +766,9 @@ function LimeCabSurfaces({
                 <QuotePanel
                   title={product.name}
                   address={destination.address}
-                  quote={{ totalCents: quote.fare.totalCents, lines: [] }}
+                  quote={{ totalCents: payableCents, lines: [] }}
                   confirmLabel={`Request ${product.name} · ${formatMoney(
-                    quote.fare.totalCents,
+                    payableCents,
                   )}`}
                   busy={surface.progress.locked}
                   error={surface.progress.error}
@@ -704,9 +778,29 @@ function LimeCabSurfaces({
                         pickup={pickupLine}
                         destination={destinationLine}
                         arrival={`~${product.etaMinutes} min`}
-                        trip={`~${quote.minutes} min`}
+                        trip={`${clockTime(
+                          product.etaMinutes + quote.minutes,
+                        )} dropoff`}
                         onEditPickup={() => openSearch("pickup")}
                       />
+                      <div className="divide-border ring-border divide-y rounded-2xl ring-1">
+                        <SettingRow
+                          icon={<CreditCard strokeWidth={1.7} />}
+                          label={payment.label}
+                          value={payment.detail}
+                          onPress={() => openDetail("payment")}
+                        />
+                        <SettingRow
+                          icon={<Tag strokeWidth={1.7} />}
+                          label="Promo"
+                          value={
+                            promoApplied
+                              ? `−${formatMoney(AVAILABLE_PROMO.amountCents)} applied`
+                              : "Add a code"
+                          }
+                          onPress={() => openDetail("promo")}
+                        />
+                      </div>
                       <DetailButton onPress={() => openDetail("fare")}>
                         Fare details
                       </DetailButton>
@@ -733,6 +827,12 @@ function LimeCabSurfaces({
                 }
                 actions={
                   <div className="flex flex-col gap-3">
+                    {status.state === "arriving" && trip ? (
+                      <PickupPin
+                        pin={trip.pickupPin}
+                        meetAt={pickup.meetingPoint ?? pickupLine}
+                      />
+                    ) : null}
                     {showDriver && trip ? (
                       <ProviderCard
                         provider={{
@@ -741,6 +841,22 @@ function LimeCabSurfaces({
                           detail: vehicleLabel(trip.driver.vehicle),
                           rating: trip.driver.rating,
                         }}
+                        actions={
+                          <div className="flex gap-2">
+                            <IconAction
+                              label={`Message ${trip.driver.name}`}
+                              onPress={() => openDetail("contact")}
+                            >
+                              <MessageCircle strokeWidth={1.7} />
+                            </IconAction>
+                            <IconAction
+                              label={`Call ${trip.driver.name}`}
+                              onPress={() => openDetail("contact")}
+                            >
+                              <Phone strokeWidth={1.7} />
+                            </IconAction>
+                          </div>
+                        }
                         eta={
                           status.state === "provider_en_route"
                             ? `${Math.max(
@@ -755,11 +871,11 @@ function LimeCabSurfaces({
                     ) : null}
                     {showDriver && trip ? (
                       <div className="grid grid-cols-2 gap-2">
-                        <DetailButton onPress={() => openDetail("driver")}>
-                          Driver details
-                        </DetailButton>
                         <DetailButton onPress={() => openDetail("trip")}>
                           Trip details
+                        </DetailButton>
+                        <DetailButton onPress={() => openDetail("safety")}>
+                          Safety
                         </DetailButton>
                       </div>
                     ) : null}
@@ -789,7 +905,7 @@ function LimeCabSurfaces({
               <CompletionPanel
                 headline="You've arrived"
                 summary={`${destinationLine || "Destination"} · thanks for riding with LimeCab.`}
-                totalCents={trip?.fare.totalCents}
+                totalCents={(trip?.fare.totalCents ?? 0) + (tipCents ?? 0)}
                 totalLabel="Trip total"
                 detail={
                   <div className="flex flex-col gap-4">
@@ -801,6 +917,7 @@ function LimeCabSurfaces({
                       value={rating}
                       onRate={setRating}
                     />
+                    <TipPanel value={tipCents} onTip={setTipCents} />
                   </div>
                 }
                 actions={
@@ -870,36 +987,23 @@ function LimeCabSurfaces({
           />
         ) : null}
 
-        {detail === "driver" && trip ? (
-          <div className="flex flex-col gap-4">
-            <ProviderCard
-              provider={{
-                id: trip.driver.id,
-                name: trip.driver.name,
-                detail: vehicleLabel(trip.driver.vehicle),
-                rating: trip.driver.rating,
-              }}
-            />
-            <DetailLines
-              lines={[
-                { label: "Vehicle", value: `${trip.driver.vehicle.color} ${trip.driver.vehicle.make} ${trip.driver.vehicle.model}` },
-                { label: "Plate", value: trip.driver.vehicle.plate },
-                { label: "Rating", value: `${trip.driver.rating.toFixed(2)} ★` },
-                { label: "Meet at", value: pickup.meetingPoint ?? pickupLine },
-              ]}
-            />
-          </div>
-        ) : null}
-
         {detail === "trip" && trip ? (
           <DetailLines
             lines={[
               { label: "Ride", value: product?.name ?? "Lime" },
+              { label: "Driver", value: trip.driver.name },
+              { label: "Vehicle", value: vehicleLabel(trip.driver.vehicle) },
               { label: "Pickup", value: pickupLine },
+              { label: "Meet at", value: pickup.meetingPoint ?? pickupLine },
               { label: "Destination", value: destinationLine },
               { label: "Distance", value: `${trip.distanceMiles} mi` },
               { label: "Trip time", value: `~${trip.tripMinutes} min` },
-              { label: "Estimated total", value: formatMoney(trip.fare.totalCents), strong: true },
+              { label: "Payment", value: payment.detail },
+              {
+                label: "Estimated total",
+                value: formatMoney(trip.fare.totalCents - discountCents),
+                strong: true,
+              },
             ]}
           />
         ) : null}
@@ -911,10 +1015,101 @@ function LimeCabSurfaces({
               { label: `Distance · ${trip.distanceMiles} mi`, value: formatMoney(trip.fare.distanceCents) },
               { label: `Time · ${trip.tripMinutes} min`, value: formatMoney(trip.fare.timeCents) },
               { label: "Booking fee", value: formatMoney(trip.fare.bookingCents) },
-              { label: "Trip total", value: formatMoney(trip.fare.totalCents), strong: true },
+              ...(discountCents
+                ? [{ label: AVAILABLE_PROMO.label, value: `−${formatMoney(discountCents)}` }]
+                : []),
+              ...(tipCents
+                ? [{ label: `Tip for ${trip.driver.name}`, value: formatMoney(tipCents) }]
+                : []),
+              {
+                label: "Trip total",
+                value: formatMoney(trip.fare.totalCents - discountCents + (tipCents ?? 0)),
+                strong: true,
+              },
             ]}
             footnote={`Trip ${trip.id} · ${product?.name ?? "Lime"} with ${trip.driver.name}.`}
           />
+        ) : null}
+
+        {detail === "payment" ? (
+          <ul className="divide-border ring-border divide-y rounded-2xl ring-1">
+            {PAYMENT_METHODS.map((method) => (
+              <li key={method.id}>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={method.id === paymentId}
+                  onClick={() => {
+                    setPaymentId(method.id);
+                    closeInterrupt(() => setDetail(null));
+                  }}
+                  className="focus-visible:ring-ring active:bg-accent flex min-h-14 w-full items-center gap-3 px-4 text-left first:rounded-t-2xl last:rounded-b-2xl focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
+                >
+                  <CreditCard
+                    className="text-muted-foreground size-4 shrink-0"
+                    strokeWidth={1.7}
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15px] font-medium tracking-tight">
+                      {method.label}
+                    </span>
+                    <span className="text-muted-foreground block truncate text-sm">
+                      {method.detail}
+                    </span>
+                  </span>
+                  {method.id === paymentId ? (
+                    <Check
+                      className="text-primary size-5 shrink-0"
+                      strokeWidth={2}
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        {detail === "promo" ? (
+          <div className="flex flex-col gap-3">
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              {promoApplied
+                ? `${AVAILABLE_PROMO.label} is applied to this ride.`
+                : `Code ${AVAILABLE_PROMO.code} is available on your account.`}
+            </p>
+            <PrimaryAction
+              onClick={() => {
+                setPromoApplied(!promoApplied);
+                closeInterrupt(() => setDetail(null));
+              }}
+            >
+              {promoApplied
+                ? "Remove credit"
+                : `Apply ${formatMoney(AVAILABLE_PROMO.amountCents)} credit`}
+            </PrimaryAction>
+          </div>
+        ) : null}
+
+        {detail === "contact" && trip ? (
+          <p className="text-muted-foreground text-sm leading-relaxed">
+            Calling and messaging {trip.driver.name} needs a dispatch connection,
+            which this build doesn&apos;t have. Nothing was sent.
+          </p>
+        ) : null}
+
+        {detail === "safety" ? (
+          <div className="flex flex-col gap-3">
+            <DetailLines
+              lines={[
+                { label: "Trip", value: trip?.id ?? "—" },
+                { label: "Driver", value: trip?.driver.name ?? "—" },
+                { label: "Vehicle", value: trip ? trip.driver.vehicle.plate : "—" },
+              ]}
+              footnote="Sharing and emergency calling need a live trip service. Nothing here contacts anyone yet."
+            />
+            <DetailButton onPress={() => undefined}>Share trip status</DetailButton>
+          </div>
         ) : null}
 
         <Button
@@ -987,13 +1182,23 @@ function LimeCabSurfaces({
  * everything the rider might *also* want — the fare breakdown, the plate, the
  * receipt — sits one deliberate tap away instead of crowding the answer.
  */
-type DetailKind = "fare" | "driver" | "trip" | "receipt";
+type DetailKind =
+  | "fare"
+  | "trip"
+  | "receipt"
+  | "payment"
+  | "promo"
+  | "contact"
+  | "safety";
 
 const DETAIL_TITLE: Record<DetailKind, string> = {
   fare: "Fare details",
-  driver: "Driver details",
   trip: "Trip details",
   receipt: "Receipt",
+  payment: "Payment method",
+  promo: "Promo code",
+  contact: "Contact your driver",
+  safety: "Safety",
 };
 
 const CANCEL_REASONS = [
@@ -1003,6 +1208,121 @@ const CANCEL_REASONS = [
   "Plans changed",
   "Price was too high",
 ] as const;
+
+/** A settings-style row: what it is now, and that it can be changed. */
+function SettingRow({
+  icon,
+  label,
+  value,
+  onPress,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  onPress: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onPress}
+      aria-label={`${label}: ${value}. Change`}
+      className="focus-visible:ring-ring active:bg-accent flex min-h-14 w-full items-center gap-3 px-4 text-left first:rounded-t-2xl last:rounded-b-2xl focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
+    >
+      <span
+        aria-hidden="true"
+        className="text-muted-foreground shrink-0 [&_svg]:size-4"
+      >
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[15px]">{value}</span>
+      <ChevronRight
+        className="text-muted-foreground size-4 shrink-0"
+        strokeWidth={1.7}
+        aria-hidden="true"
+      />
+    </button>
+  );
+}
+
+/** A round icon-only affordance. Label is spoken, never drawn. */
+function IconAction({
+  label,
+  onPress,
+  children,
+}: {
+  label: string;
+  onPress: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onPress}
+      aria-label={label}
+      className="ring-border focus-visible:ring-ring active:bg-accent inline-flex size-10 shrink-0 items-center justify-center rounded-full ring-1 focus-visible:ring-2 focus-visible:outline-none [&_svg]:size-4"
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * The code the rider reads out at the curb.
+ *
+ * It is the largest thing on the screen for the few seconds it matters,
+ * because the rider is looking at a phone at arm's length beside a road.
+ */
+function PickupPin({ pin, meetAt }: { pin: string; meetAt: string }) {
+  return (
+    <div className="bg-accent text-accent-foreground rounded-2xl px-4 py-3">
+      <p className="text-[11px] tracking-[0.12em] uppercase opacity-70">
+        Give your driver this code
+      </p>
+      <p className="mt-1 text-[28px] leading-none font-semibold tabular-nums">
+        {pin.split("").join(" ")}
+      </p>
+      <p className="mt-2 text-sm opacity-80">Meet at {meetAt}</p>
+    </div>
+  );
+}
+
+/** Flat tip amounts. Percentages make the rider do arithmetic to be kind. */
+function TipPanel({
+  value,
+  onTip,
+}: {
+  value: number | null;
+  onTip: (next: number | null) => void;
+}) {
+  return (
+    <div className="bg-muted/60 rounded-2xl p-4">
+      <p className="text-[15px] font-medium tracking-tight">
+        {value ? "Tip added" : "Add a tip?"}
+      </p>
+      <div className="mt-3 flex gap-2">
+        {TIP_PRESETS.map((amount) => {
+          const selected = value === amount;
+          return (
+            <button
+              key={amount}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => onTip(selected ? null : amount)}
+              className={cn(
+                "ring-border focus-visible:ring-ring h-11 flex-1 rounded-xl text-[15px] font-medium tabular-nums ring-1 focus-visible:ring-2 focus-visible:outline-none",
+                selected
+                  ? "bg-primary text-primary-foreground ring-primary"
+                  : "bg-card active:bg-accent",
+              )}
+            >
+              {formatMoney(amount)}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 /** The affordance that discloses a detail surface. Never the primary action. */
 function DetailButton({

@@ -17,7 +17,9 @@ import {
   estimateFare,
   tripMinutes,
   type Driver,
+  type PaymentMethod,
   type Pickup,
+  type Promo,
   type RideProduct,
   type Trip,
 } from "@/lib/limecab/domain";
@@ -169,6 +171,18 @@ export const geocodeAdapter: GeocodeAdapter = {
   },
 };
 
+export const PAYMENT_METHODS: PaymentMethod[] = [
+  { id: "visa", label: "Personal", detail: "Visa ···· 4412", kind: "card" },
+  { id: "amex", label: "Work", detail: "Amex ···· 1008", kind: "card" },
+  { id: "wallet", label: "LimeCab Cash", detail: "$12.00 balance", kind: "wallet" },
+];
+
+export const AVAILABLE_PROMO: Promo = {
+  code: "FIRST5",
+  label: "First ride credit",
+  amountCents: 500,
+};
+
 export const DRIVER_POOL: Driver[] = [
   {
     id: "maya",
@@ -270,6 +284,7 @@ export async function matchDriver(input: {
     distanceMiles: Number(miles.toFixed(1)),
     tripMinutes: minutes,
     arrivalMinutes: input.product.etaMinutes,
+    pickupPin: String(1000 + Math.floor(Math.random() * 9000)),
   };
 }
 

@@ -61,6 +61,20 @@ export type Fare = {
   totalCents: number;
 };
 
+/** How the ride is paid for. Display only — no processor is wired up. */
+export type PaymentMethod = {
+  id: string;
+  label: string;
+  detail: string;
+  kind: "card" | "cash" | "wallet";
+};
+
+export type Promo = {
+  code: string;
+  label: string;
+  amountCents: number;
+};
+
 export type Trip = {
   id: string;
   request: RideRequest;
@@ -71,7 +85,21 @@ export type Trip = {
   tripMinutes: number;
   /** Estimated minutes until the driver reaches the pickup. */
   arrivalMinutes: number;
+  /**
+   * Spoken to the driver at the curb. The convention exists because matching
+   * the car is the one part of a ride the app cannot verify for you.
+   */
+  pickupPin: string;
 };
+
+/** Wall-clock time a rider can compare against their calendar. */
+export function clockTime(minutesFromNow: number, now = new Date()): string {
+  const at = new Date(now.getTime() + minutesFromNow * 60_000);
+  return at.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+/** Tip presets, in cents. Flat amounts beat percentages on short city rides. */
+export const TIP_PRESETS = [200, 300, 500] as const;
 
 export function vehicleLabel(vehicle: Vehicle): string {
   return `${vehicle.color} ${vehicle.make} ${vehicle.model} · ${vehicle.plate}`;
