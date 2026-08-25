@@ -128,6 +128,83 @@ export const SAVED_PLACES: Place[] = [
 /** The rider's most recent completed trip. Mocked; a trips table replaces it. */
 export const LAST_TRIP: Place = SAVED_PLACES.find((p) => p.id === "pasadena")!;
 
+/** The signed-in rider. Invented — there is no auth in this build. */
+export const RIDER = {
+  name: "Ava",
+  fullName: "Ava Moreno",
+  since: "Member since 2024",
+  rating: 4.91,
+  ridesTaken: 128,
+};
+
+/** Completed trips, newest first. A trips table replaces this. */
+export const TRIP_HISTORY = [
+  {
+    id: "t_9812",
+    productName: "Lime",
+    destination: "E Colorado Blvd, Pasadena",
+    when: "Yesterday · 6:42 PM",
+    totalCents: 3259,
+    driverName: "Maya",
+  },
+  {
+    id: "t_9744",
+    productName: "Lime Comfort",
+    destination: "LAX Terminal 4, Los Angeles",
+    when: "Sat · 5:10 AM",
+    totalCents: 6180,
+    driverName: "Devon",
+  },
+  {
+    id: "t_9701",
+    productName: "Lime",
+    destination: "Traction Ave, Arts District",
+    when: "Thu · 9:03 AM",
+    totalCents: 1424,
+    driverName: "Priya",
+  },
+  {
+    id: "t_9666",
+    productName: "Lime XL",
+    destination: "Dodger Stadium, Los Angeles",
+    when: "Tue · 6:15 PM",
+    totalCents: 4790,
+    driverName: "Marcus",
+  },
+];
+
+/**
+ * What LimeCab offers beyond a car right now. The unavailable ones are listed
+ * rather than hidden, because "not here yet" is an answer and a blank tab is
+ * not.
+ */
+export const LIMECAB_SERVICES = [
+  {
+    id: "ride",
+    title: "Ride",
+    description: "A car to your door",
+    status: "available" as const,
+  },
+  {
+    id: "reserve",
+    title: "Reserve",
+    description: "Book ahead",
+    status: "coming_soon" as const,
+  },
+  {
+    id: "courier",
+    title: "Courier",
+    description: "Send a package",
+    status: "coming_soon" as const,
+  },
+  {
+    id: "assist",
+    title: "Assist",
+    description: "Extra help getting in",
+    status: "coming_soon" as const,
+  },
+];
+
 export const geocodeAdapter: GeocodeAdapter = {
   ...createStaticGeocodeAdapter([
     ...SAVED_PLACES.map((place) => ({

@@ -127,15 +127,24 @@ const NEXT_EVENT: Partial<Record<ServiceAppState, ServiceAppEvent>> = {
 /** The tail of the en-route phase, where the question becomes "which car?". */
 const ARRIVED_AT = 0.82;
 
-export function LimeCabApp() {
+export function LimeCabApp({
+  onSceneChange,
+}: {
+  /** The shell hides its chrome once the rider is inside a task. */
+  onSceneChange?: (state: ServiceAppState) => void;
+}) {
   return (
     <SurfaceManagerProvider manager={limeCabSurfaces}>
-      <LimeCabFlow />
+      <LimeCabFlow onSceneChange={onSceneChange} />
     </SurfaceManagerProvider>
   );
 }
 
-function LimeCabFlow() {
+function LimeCabFlow({
+  onSceneChange,
+}: {
+  onSceneChange?: (state: ServiceAppState) => void;
+}) {
   const surfaces = useSurfaceManager<LimeCabSurfaceId, LimeCabAction>();
 
   const [state, setState] = useState<ServiceAppState>("home");
@@ -157,6 +166,10 @@ function LimeCabFlow() {
   useEffect(() => {
     surfaces.apply("progress", LIMECAB_SCENE_SURFACES[state]);
   }, [state, surfaces]);
+
+  useEffect(() => {
+    onSceneChange?.(state);
+  }, [onSceneChange, state]);
 
   // One clock drives every estimate and the car's position.
   useEffect(() => {
