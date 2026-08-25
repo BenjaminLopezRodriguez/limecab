@@ -1,0 +1,43 @@
+- generic [ref=f26e1]:
+  - main [ref=f26e2]:
+    - generic [ref=f26e3]: LimeCab
+    - generic [ref=f26e6]:
+      - generic [ref=f26e10]:
+        - paragraph [ref=f26e24]: E Colorado Blvd, Pasadena
+        - generic [ref=f26e275]: 1 MIN
+      - generic:
+        - generic:
+          - generic [ref=f26e27]: Where is the provider? Wait.
+          - dialog [ref=f26e312]:
+            - generic [ref=f26e94]:
+              - heading "Your ride" [level=2] [ref=f26e313]
+              - paragraph [ref=f26e96]: Drag to resize.
+              - generic [ref=f26e246]:
+                - paragraph [ref=f26e247]: Maya is on the way
+                - paragraph [ref=f26e249]: Follow the route on the map
+                - paragraph [ref=f26e278]:
+                  - generic [ref=f26e279]: Arriving in
+                  - text: 1 min
+                - paragraph [ref=f26e250]: Lime · E Colorado Blvd
+                - list [ref=f26e251]:
+                  - listitem [ref=f26e252]:
+                    - generic [ref=f26e254]: Matching
+                  - listitem [ref=f26e255]:
+                    - generic [ref=f26e257]: En route
+                  - listitem [ref=f26e258]:
+                    - generic [ref=f26e260]: In progress
+                  - listitem [ref=f26e261]:
+                    - generic [ref=f26e263]: Done
+                - generic [ref=f26e265]:
+                  - generic [ref=f26e280]:
+                    - generic [ref=f26e285]:
+                      - paragraph [ref=f26e286]: Maya
+                      - paragraph [ref=f26e287]: Slate Toyota Prius · 8XKR112
+                      - paragraph [ref=f26e288]: 1 min away
+                    - generic "Rated 4.9 out of 5" [ref=f26e314]: "4.9"
+                  - generic [ref=f26e292]:
+                    - button "Driver details" [ref=f26e315]
+                    - button "Trip details" [ref=f26e316]
+                  - button "Cancel ride" [active] [ref=f26e317]
+  - button "Open Next.js Dev Tools" [ref=f26e164] [cursor=pointer]
+  - alert [ref=f26e168]

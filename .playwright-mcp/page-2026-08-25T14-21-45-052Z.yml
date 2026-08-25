@@ -1,0 +1,42 @@
+- generic [ref=f26e1]:
+  - main [ref=f26e2]:
+    - generic [ref=f26e3]: LimeCab
+    - generic [ref=f26e6]:
+      - paragraph [ref=f26e24]: E Colorado Blvd, Pasadena
+      - generic:
+        - generic:
+          - generic [ref=f26e27]: Do you want to request this? Request.
+          - dialog [ref=f26e234]:
+            - generic [ref=f26e94]:
+              - heading "Your ride" [level=2] [ref=f26e235]
+              - paragraph [ref=f26e96]: Drag to resize.
+              - generic [ref=f26e98]:
+                - button "Back" [ref=f26e236]
+                - generic [ref=f26e169]:
+                  - heading "Lime" [level=2] [ref=f26e237]
+                  - paragraph [ref=f26e171]: E Colorado Blvd
+                  - paragraph [ref=f26e172]: Pasadena
+                  - generic [ref=f26e173]:
+                    - separator [ref=f26e174]
+                    - generic [ref=f26e175]:
+                      - term [ref=f26e176]: Estimated total
+                      - definition [ref=f26e177]: $32.59
+                  - generic [ref=f26e179]:
+                    - generic [ref=f26e180]:
+                      - 'button "Pickup: S Grand Ave & W 5th St. Change" [ref=f26e238]':
+                        - generic [ref=f26e183]: S Grand Ave & W 5th St
+                      - generic [ref=f26e185]:
+                        - generic [ref=f26e186]: "Destination:"
+                        - generic [ref=f26e188]: E Colorado Blvd
+                      - generic [ref=f26e189]:
+                        - generic [ref=f26e190]:
+                          - term [ref=f26e191]: Driver arrival
+                          - definition [ref=f26e192]: ~4 min
+                        - generic [ref=f26e193]:
+                          - term [ref=f26e194]: Trip
+                          - definition [ref=f26e195]: ~37 min
+                    - button "Fare details" [active] [ref=f26e239]
+                  - button "Request Lime · $32.59" [ref=f26e240]
+                  - paragraph [ref=f26e198]: Fares are estimates. Nothing is charged in this demo.
+  - button "Open Next.js Dev Tools" [ref=f26e164] [cursor=pointer]
+  - alert [ref=f26e168]

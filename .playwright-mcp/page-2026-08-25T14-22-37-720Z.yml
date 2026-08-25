@@ -1,0 +1,57 @@
+- generic [ref=f26e1]:
+  - main [ref=f26e2]:
+    - generic [ref=f26e3]: LimeCab
+    - generic [ref=f26e6]:
+      - paragraph [ref=f26e24]: E Colorado Blvd, Pasadena
+      - generic:
+        - generic:
+          - generic [ref=f26e27]: What happened? Review the result.
+          - dialog [ref=f26e352]:
+            - generic [ref=f26e94]:
+              - heading [level=2] [ref=f26e353]: Your ride
+              - paragraph [ref=f26e96]: Drag to resize.
+              - generic [ref=f26e321]:
+                - heading [level=2] [ref=f26e354]: You've arrived
+                - paragraph [ref=f26e323]: E Colorado Blvd · thanks for riding with LimeCab.
+                - generic [ref=f26e325]:
+                  - paragraph [ref=f26e326]: 37 min · 11.8 mi
+                  - generic [ref=f26e327]:
+                    - paragraph [ref=f26e328]: How was your ride with Maya?
+                    - radiogroup [ref=f26e355]:
+                      - radio [ref=f26e356]
+                      - radio [ref=f26e357]
+                      - radio [ref=f26e358]
+                      - radio [ref=f26e359]
+                      - radio [ref=f26e360]
+                - separator [ref=f26e345]
+                - generic [ref=f26e346]:
+                  - paragraph [ref=f26e347]: Trip total
+                  - paragraph [ref=f26e348]: $32.59
+                - generic [ref=f26e349]:
+                  - button [ref=f26e361]: Done
+                  - button [ref=f26e362]: View receipt
+  - button "Open Next.js Dev Tools" [ref=f26e164] [cursor=pointer]
+  - alert [ref=f26e168]
+  - dialog [active] [ref=f26e366]:
+    - generic [ref=f26e368]:
+      - heading "Receipt" [level=2] [ref=f26e369]
+      - generic [ref=f26e370]:
+        - generic [ref=f26e371]:
+          - generic [ref=f26e372]:
+            - generic [ref=f26e373]:
+              - term [ref=f26e374]: Base fare
+              - definition [ref=f26e375]: $1.80
+            - generic [ref=f26e376]:
+              - term [ref=f26e377]: Distance · 11.8 mi
+              - definition [ref=f26e378]: $19.42
+            - generic [ref=f26e379]:
+              - term [ref=f26e380]: Time · 37 min
+              - definition [ref=f26e381]: $8.88
+            - generic [ref=f26e382]:
+              - term [ref=f26e383]: Booking fee
+              - definition [ref=f26e384]: $2.49
+            - generic [ref=f26e385]:
+              - term [ref=f26e386]: Trip total
+              - definition [ref=f26e387]: $32.59
+          - paragraph [ref=f26e388]: Trip trip_mt8r757m · Lime with Maya.
+        - button "Close" [ref=f26e389]

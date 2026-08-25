@@ -1,0 +1,468 @@
+"use client";
+
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+
+import { SpatialEtaMarker } from "@/components/service-app/spatial-eta-marker";
+import {
+  fitMetersPerUnit,
+  projectPoint,
+  zoomForMode,
+  type MapAdapter,
+  type MapMode,
+  type MapPoint,
+  type MapPointKind,
+  type MapViewProps,
+} from "@/lib/service-app/map-adapter";
+import { cn } from "@/lib/utils";
+
+/**
+ * ServiceMap — the spatial canvas.
+ *
+ * It knows nothing about any vendor and nothing about any product. It takes a
+ * `MapMode`, some points, and an adapter. `ServiceAppShell` owns whether the
+ * map is a bounded region (home) or the full canvas (task) — the map itself
+ * only changes what it shows.
+ */
+
+const MapAdapterContext = createContext<MapAdapter | null>(null);
+
+export function MapAdapterProvider({
+  adapter,
+  children,
+}: {
+  adapter: MapAdapter;
+  children: ReactNode;
+}) {
+  return (
+    <MapAdapterContext.Provider value={adapter}>
+      {children}
+    </MapAdapterContext.Provider>
+  );
+}
+
+export function ServiceMap({
+  adapter,
+  className,
+  ...props
+}: MapViewProps & { adapter?: MapAdapter }) {
+  const contextAdapter = useContext(MapAdapterContext);
+  const active = adapter ?? contextAdapter ?? placeholderMapAdapter;
+  return (
+    <>
+      {active.render({
+        ...props,
+        zoom: props.zoom ?? zoomForMode(props.mode),
+        className: cn("size-full", className),
+      })}
+    </>
+  );
+}
+
+const POINT_STYLE: Record<
+  NonNullable<MapPoint["kind"]>,
+  { fill: string; halo: boolean }
+> = {
+  origin: { fill: "currentColor", halo: true },
+  destination: { fill: "currentColor", halo: true },
+  provider: { fill: "currentColor", halo: true },
+  selection: { fill: "currentColor", halo: true },
+  marker: { fill: "currentColor", halo: false },
+};
+
+/**
+ * How each mode treats its geometry. The placeholder is not decoration — the
+ * mode is the whole point of the seam, so each one has to *look* like the
+ * question it is asking.
+ */
+type ModeTreatment = {
+  /** "none" | "muted" (settled summary) | "primary" (the subject) */
+  route: "none" | "muted" | "primary";
+  /** Points that get raised weight. */
+  emphasis: MapPointKind[];
+  /** Every other point is pushed back. */
+  dimOthers: boolean;
+  /** Soft wide-area disc — the ambient "we are looking" canvas. */
+  coverage: boolean;
+  /** Centre crosshair — the user is picking a point. */
+  crosshair: boolean;
+  /** Caps on the first and last route vertex. */
+  routeCaps: boolean;
+};
+
+const MODE_TREATMENT: Record<MapMode, ModeTreatment> = {
+  home: {
+    route: "none",
+    emphasis: [],
+    dimOthers: false,
+    coverage: false,
+    crosshair: false,
+    routeCaps: false,
+  },
+  select_location: {
+    route: "none",
+    emphasis: ["selection"],
+    dimOthers: true,
+    coverage: false,
+    crosshair: true,
+    routeCaps: false,
+  },
+  route_preview: {
+    route: "primary",
+    emphasis: [],
+    dimOthers: true,
+    coverage: false,
+    crosshair: false,
+    routeCaps: true,
+  },
+  provider_arrival: {
+    route: "muted",
+    emphasis: ["provider"],
+    dimOthers: false,
+    coverage: false,
+    crosshair: false,
+    routeCaps: false,
+  },
+  active_route: {
+    route: "primary",
+    emphasis: ["provider"],
+    dimOthers: false,
+    coverage: false,
+    crosshair: false,
+    routeCaps: false,
+  },
+  coverage: {
+    route: "none",
+    emphasis: [],
+    dimOthers: true,
+    coverage: true,
+    crosshair: false,
+    routeCaps: false,
+  },
+  results: {
+    route: "muted",
+    emphasis: ["origin", "destination"],
+    dimOthers: true,
+    coverage: false,
+    crosshair: false,
+    routeCaps: true,
+  },
+};
+
+const FALLBACK_TREATMENT: ModeTreatment = {
+  route: "primary",
+  emphasis: [],
+  dimOthers: false,
+  coverage: false,
+  crosshair: false,
+  routeCaps: false,
+};
+
+const MARKER_STATUS = {
+  provider_arrival: "arriving",
+  active_route: "en_route",
+  results: "arrived",
+} as const;
+
+/** Midpoint, so two points of interest can both stay in frame. */
+function midpoint(a: MapPoint, b: MapPoint): MapPoint {
+  return {
+    latitude: (a.latitude + b.latitude) / 2,
+    longitude: (a.longitude + b.longitude) / 2,
+  };
+}
+
+/**
+ * Vendor-free canvas. Draws a synthetic street texture plus the points and
+ * route it is given, positioned relative to `center`, with a treatment per
+ * `MapMode`. Every scene, layout, and transition works against this before a
+ * map provider exists.
+ */
+export const placeholderMapAdapter: MapAdapter = {
+  render(props) {
+    return <PlaceholderCanvas {...props} />;
+  },
+};
+
+/**
+ * The canvas draws a square viewBox with `slice`, so a container that is not
+ * square crops one axis. `visibleHalfExtent` is how many viewBox units are
+ * actually on screen either side of centre — without it, "fit the route in
+ * frame" fits it into a frame the user cannot see.
+ */
+function useVisibleHalfExtent(ref: { current: HTMLElement | null }) {
+  const [half, setHalf] = useState(56);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      const box = entry?.contentRect;
+      if (!box || box.width === 0 || box.height === 0) return;
+      const shortest = Math.min(box.width, box.height);
+      const longest = Math.max(box.width, box.height);
+      // 100 units is half the viewBox; the cropped axis keeps this fraction.
+      // 14 units of padding keep the fitted points off the very edge.
+      setHalf(Math.max(24, (100 * shortest) / longest - 14));
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [ref]);
+
+  return half;
+}
+
+function PlaceholderCanvas({
+  mode,
+  center,
+  points = [],
+  route = [],
+  callout,
+  label,
+  className,
+}: MapViewProps) {
+  const frameRef = useRef<HTMLDivElement>(null);
+  const halfExtent = useVisibleHalfExtent(frameRef);
+
+  {
+    const treatment = MODE_TREATMENT[mode] ?? FALLBACK_TREATMENT;
+
+    const providerPoint = points.find((point) => point.kind === "provider");
+    const originPoint = points.find((point) => point.kind === "origin");
+
+    // `provider_arrival` frames provider + origin together rather than
+    // centring blindly, so the user can see the gap that is closing.
+    const destinationPoint = points.find(
+      (point) => point.kind === "destination",
+    );
+
+    // The frame is chosen per question: while a provider approaches, the pair
+    // that matters is provider + pickup; while a route is previewed or driven,
+    // it is the two ends of the trip. Centring on one end alone pins the other
+    // to the edge and calls it a preview.
+    const frame =
+      mode === "provider_arrival" && providerPoint && originPoint
+        ? midpoint(providerPoint, originPoint)
+        : (mode === "route_preview" ||
+              mode === "active_route" ||
+              mode === "results") &&
+            originPoint &&
+            destinationPoint
+          ? midpoint(originPoint, destinationPoint)
+          : (center ?? null);
+
+    // One scale for points and route, fitted to whatever is on screen — a
+    // preview that crops the destination is not a preview.
+    const framed = frame
+      ? [...points, ...(treatment.route !== "none" ? route : [])]
+      : [];
+    const metersPerUnit = frame
+      ? fitMetersPerUnit(frame, framed, { margin: halfExtent })
+      : 6;
+
+    const projected = frame
+      ? points.map((point) => ({
+          point,
+          at: projectPoint(frame, point, metersPerUnit),
+        }))
+      : [];
+    const path =
+      frame && treatment.route !== "none"
+        ? route.map((point) => projectPoint(frame, point, metersPerUnit))
+        : [];
+
+    const providerAt = projected.find(
+      (entry) => entry.point.kind === "provider",
+    )?.at;
+    const routeStart = path[0];
+    const routeEnd = path[path.length - 1];
+
+    const markerStatus =
+      mode === "provider_arrival" || mode === "active_route" || mode === "results"
+        ? MARKER_STATUS[mode]
+        : "waiting";
+
+    const calloutOverProvider =
+      (mode === "provider_arrival" || mode === "active_route") &&
+      providerAt !== undefined;
+
+    return (
+      <div
+        ref={frameRef}
+        className={cn(
+          "bg-muted text-foreground relative overflow-hidden",
+          className,
+        )}
+      >
+        <svg
+          viewBox="0 0 200 200"
+          className="h-full w-full"
+          preserveAspectRatio="xMidYMid slice"
+          aria-hidden="true"
+        >
+          <defs>
+            <radialGradient id="service-map-coverage">
+              <stop offset="0%" stopColor="currentColor" stopOpacity="0.18" />
+              <stop offset="60%" stopColor="currentColor" stopOpacity="0.08" />
+              <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
+            </radialGradient>
+          </defs>
+
+          <g stroke="currentColor" strokeOpacity="0.07" strokeWidth="0.6" fill="none">
+            {[20, 60, 100, 140, 180].map((x) => (
+              <line key={`v${x}`} x1={x} y1="0" x2={x} y2="200" />
+            ))}
+            {[24, 68, 112, 156].map((y) => (
+              <line key={`h${y}`} x1="0" y1={y} x2="200" y2={y} />
+            ))}
+          </g>
+          <g fill="currentColor" fillOpacity="0.04">
+            <rect x="24" y="28" width="32" height="36" rx="3" />
+            <rect x="64" y="28" width="32" height="36" rx="3" />
+            <rect x="116" y="60" width="32" height="36" rx="3" />
+            <rect x="140" y="128" width="32" height="36" rx="3" />
+            <rect x="24" y="116" width="32" height="36" rx="3" />
+          </g>
+          <path
+            d="M0 96 L200 84"
+            stroke="currentColor"
+            strokeOpacity="0.1"
+            strokeWidth="5"
+            fill="none"
+          />
+
+          {treatment.coverage ? (
+            <g>
+              <circle cx="100" cy="100" r="92" fill="url(#service-map-coverage)" />
+              <circle
+                cx="100"
+                cy="100"
+                r="74"
+                fill="none"
+                stroke="currentColor"
+                strokeOpacity="0.16"
+                strokeWidth="1"
+                strokeDasharray="3 7"
+              />
+              <circle
+                cx="100"
+                cy="100"
+                r="44"
+                fill="none"
+                stroke="currentColor"
+                strokeOpacity="0.12"
+                strokeWidth="1"
+                strokeDasharray="3 7"
+              />
+              <circle cx="100" cy="100" r="3.5" fill="currentColor" fillOpacity="0.5" />
+            </g>
+          ) : null}
+
+          {path.length > 1 ? (
+            <polyline
+              points={path.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")}
+              fill="none"
+              stroke="currentColor"
+              strokeOpacity={treatment.route === "primary" ? "0.75" : "0.28"}
+              strokeWidth={treatment.route === "primary" ? "3" : "2"}
+              strokeDasharray={treatment.route === "muted" ? "5 5" : undefined}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ) : null}
+
+          {treatment.routeCaps && routeStart && routeEnd && path.length > 1 ? (
+            <g fill="currentColor">
+              <circle cx={routeStart.x} cy={routeStart.y} r="3.4" />
+              <circle cx={routeEnd.x} cy={routeEnd.y} r="3.4" />
+            </g>
+          ) : null}
+
+          {treatment.crosshair ? (
+            <g stroke="currentColor" strokeOpacity="0.35" strokeWidth="1">
+              <line x1="100" y1="72" x2="100" y2="90" />
+              <line x1="100" y1="110" x2="100" y2="128" />
+              <line x1="72" y1="100" x2="90" y2="100" />
+              <line x1="110" y1="100" x2="128" y2="100" />
+              <circle cx="100" cy="100" r="17" fill="none" strokeOpacity="0.25" />
+            </g>
+          ) : null}
+
+          {projected.map(({ point, at }, index) => {
+            const kind = point.kind ?? "marker";
+            const style = POINT_STYLE[kind] ?? POINT_STYLE.marker;
+            const emphasised = treatment.emphasis.includes(kind);
+            const dimmed = treatment.dimOthers && !emphasised;
+            return (
+              <g
+                key={`${point.latitude},${point.longitude},${index}`}
+                opacity={dimmed ? 0.45 : 1}
+              >
+                {style.halo && !dimmed ? (
+                  <circle
+                    cx={at.x}
+                    cy={at.y}
+                    r={emphasised ? 14 : 11}
+                    fill={style.fill}
+                    fillOpacity={emphasised ? 0.16 : 0.12}
+                  />
+                ) : null}
+                <circle
+                  cx={at.x}
+                  cy={at.y}
+                  r={emphasised ? 6.4 : dimmed ? 3.8 : 5}
+                  fill={style.fill}
+                />
+                <circle
+                  cx={at.x}
+                  cy={at.y}
+                  r={emphasised ? 2.4 : 1.9}
+                  className="fill-background"
+                />
+              </g>
+            );
+          })}
+
+          {frame && projected.length === 0 && !treatment.coverage ? (
+            <g>
+              <circle cx="100" cy="100" r="20" fill="currentColor" fillOpacity="0.1" />
+              <circle cx="100" cy="100" r="5.5" fill="currentColor" />
+              <circle cx="100" cy="100" r="2" className="fill-background" />
+            </g>
+          ) : null}
+        </svg>
+
+        {label ? (
+          <p className="bg-background/80 text-muted-foreground absolute top-3 left-4 max-w-[70%] truncate rounded-full px-2 py-0.5 text-xs">
+            {label}
+          </p>
+        ) : null}
+        {callout ? (
+          calloutOverProvider && providerAt ? (
+            <span
+              className="absolute -translate-x-1/2 -translate-y-full"
+              style={{
+                left: `${(providerAt.x / 200) * 100}%`,
+                top: `${(providerAt.y / 200) * 100}%`,
+              }}
+            >
+              <SpatialEtaMarker label={callout} status={markerStatus} selected />
+            </span>
+          ) : (
+            <SpatialEtaMarker
+              label={callout}
+              status={markerStatus}
+              className="absolute top-[26%] left-1/2 -translate-x-1/2"
+            />
+          )
+        ) : null}
+      </div>
+    );
+  }
+}

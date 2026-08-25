@@ -1,0 +1,149 @@
+[     134ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:14537
+[   72468ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5956
+[   72496ms] [LOG] [Fast Refresh] done in 41ms @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5816
+[  116948ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5956
+[  116976ms] [LOG] [Fast Refresh] done in 39ms @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5816
+[  123977ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5956
+[  124003ms] [LOG] [Fast Refresh] done in 43ms @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5816
+[  133997ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5956
+[  134010ms] ReferenceError: cancelOpen is not defined
+    at LimeCabSurfaces (http://localhost:3000/_next/static/chunks/projects_limecab_src_0d0b45ea._.js?id=%255Bproject%255D%252Fprojects%252Flimecab%252Fsrc%252Fcomponents%252Flimecab%252Flimecab-app.tsx+%255Bapp-client%255D+%2528ecmascript%2529:947:23)
+    at Object.react_stack_bottom_frame (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:13072:24)
+    at renderWithHooks (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:4091:24)
+    at updateFunctionComponent (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:5523:21)
+    at beginWork (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:6111:24)
+    at runWithFiberInDEV (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:886:74)
+    at performUnitOfWork (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8298:97)
+    at workLoopSync (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8190:40)
+    at renderRootSync (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8173:13)
+    at performWorkOnRoot (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:7932:56)
+    at performSyncWorkOnRoot (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8890:9)
+    at flushSyncWorkAcrossRoots_impl (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8809:316)
+    at flushSyncWork$1 (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8048:86)
+    at Object.scheduleRefresh (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:294:13)
+    at http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_3add8784._.js:391:33
+    at Set.forEach (<anonymous>)
+    at Object.performReactRefresh (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_3add8784._.js:384:38)
+    at applyUpdate (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_3add8784._.js:878:31)
+    at http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_3add8784._.js:886:13
+[  134028ms] [LOG] [Fast Refresh] done in 46ms @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5816
+[  149115ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5956
+[  149118ms] [WARNING] [Fast Refresh] performing full reload because your application had an unrecoverable error @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:6289
+[  149128ms] ReferenceError: cancelOpen is not defined
+    at LimeCabSurfaces (http://localhost:3000/_next/static/chunks/projects_limecab_src_0d0b45ea._.js?id=%255Bproject%255D%252Fprojects%252Flimecab%252Fsrc%252Fcomponents%252Flimecab%252Flimecab-app.tsx+%255Bapp-client%255D+%2528ecmascript%2529:1012:23)
+    at Object.react_stack_bottom_frame (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:13072:24)
+    at renderWithHooks (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:4091:24)
+    at updateFunctionComponent (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:5523:21)
+    at beginWork (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:6111:24)
+    at runWithFiberInDEV (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:886:74)
+    at performUnitOfWork (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8298:97)
+    at workLoopSync (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8190:40)
+    at renderRootSync (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8173:13)
+    at performWorkOnRoot (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:7932:56)
+    at performSyncWorkOnRoot (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8890:9)
+    at flushSyncWorkAcrossRoots_impl (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8809:316)
+    at flushSyncWork$1 (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8048:86)
+    at Object.scheduleRefresh (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:294:13)
+    at http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_3add8784._.js:391:33
+    at Set.forEach (<anonymous>)
+    at Object.performReactRefresh (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_3add8784._.js:384:38)
+    at applyUpdate (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_3add8784._.js:878:31)
+    at http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_3add8784._.js:886:13
+[  149205ms] [LOG] [Fast Refresh] done in 45ms @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5816
+[  149309ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/:0
+[  149354ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:14537
+[  149405ms] ReferenceError: cancelOpen is not defined
+    at LimeCabSurfaces (http://localhost:3000/_next/static/chunks/projects_limecab_src_0d0b45ea._.js:7193:23)
+    at Object.react_stack_bottom_frame (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:13072:24)
+    at renderWithHooks (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:4091:24)
+    at updateFunctionComponent (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:5523:21)
+    at beginWork (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:6111:24)
+    at runWithFiberInDEV (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:886:74)
+    at performUnitOfWork (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8298:97)
+    at workLoopSync (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8190:40)
+    at renderRootSync (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8173:13)
+    at performWorkOnRoot (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:7932:56)
+    at performWorkOnRootViaSchedulerTask (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8882:9)
+    at MessagePort.performWorkUntilDeadline (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_3add8784._.js:2601:64)
+[  174592ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5956
+[  174596ms] [WARNING] [Fast Refresh] performing full reload because your application had an unrecoverable error @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:6289
+[  174688ms] [LOG] [Fast Refresh] done in 82ms @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5816
+[  174786ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/:0
+[  174832ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:14537
+[  174879ms] ReferenceError: DETAIL_TITLE is not defined
+    at LimeCabSurfaces (http://localhost:3000/_next/static/chunks/projects_limecab_src_0d0b45ea._.js:7203:24)
+    at Object.react_stack_bottom_frame (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:13072:24)
+    at renderWithHooks (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:4091:24)
+    at updateFunctionComponent (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:5523:21)
+    at beginWork (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:6111:24)
+    at runWithFiberInDEV (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:886:74)
+    at performUnitOfWork (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8298:97)
+    at workLoopSync (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8190:40)
+    at renderRootSync (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8173:13)
+    at performWorkOnRoot (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:7932:56)
+    at performWorkOnRootViaSchedulerTask (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8882:9)
+    at MessagePort.performWorkUntilDeadline (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_3add8784._.js:2601:64)
+[  186836ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/:0
+[  186888ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:14537
+[  186954ms] ReferenceError: DETAIL_TITLE is not defined
+    at LimeCabSurfaces (http://localhost:3000/_next/static/chunks/projects_limecab_src_0d0b45ea._.js:7203:24)
+    at Object.react_stack_bottom_frame (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:13072:24)
+    at renderWithHooks (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:4091:24)
+    at updateFunctionComponent (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:5523:21)
+    at beginWork (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:6111:24)
+    at runWithFiberInDEV (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:886:74)
+    at performUnitOfWork (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8298:97)
+    at workLoopSync (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8190:40)
+    at renderRootSync (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8173:13)
+    at performWorkOnRoot (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:7932:56)
+    at performWorkOnRootViaSchedulerTask (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8882:9)
+    at MessagePort.performWorkUntilDeadline (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_3add8784._.js:2601:64)
+[  188288ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/:0
+[  188330ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:14537
+[  188380ms] ReferenceError: DETAIL_TITLE is not defined
+    at LimeCabSurfaces (http://localhost:3000/_next/static/chunks/projects_limecab_src_0d0b45ea._.js:7203:24)
+    at Object.react_stack_bottom_frame (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:13072:24)
+    at renderWithHooks (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:4091:24)
+    at updateFunctionComponent (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:5523:21)
+    at beginWork (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:6111:24)
+    at runWithFiberInDEV (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:886:74)
+    at performUnitOfWork (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8298:97)
+    at workLoopSync (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8190:40)
+    at renderRootSync (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8173:13)
+    at performWorkOnRoot (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:7932:56)
+    at performWorkOnRootViaSchedulerTask (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8882:9)
+    at MessagePort.performWorkUntilDeadline (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_3add8784._.js:2601:64)
+[  189082ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/:0
+[  189120ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:14537
+[  189154ms] ReferenceError: DETAIL_TITLE is not defined
+    at LimeCabSurfaces (http://localhost:3000/_next/static/chunks/projects_limecab_src_0d0b45ea._.js:7203:24)
+    at Object.react_stack_bottom_frame (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:13072:24)
+    at renderWithHooks (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:4091:24)
+    at updateFunctionComponent (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:5523:21)
+    at beginWork (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:6111:24)
+    at runWithFiberInDEV (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:886:74)
+    at performUnitOfWork (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8298:97)
+    at workLoopSync (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8190:40)
+    at renderRootSync (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8173:13)
+    at performWorkOnRoot (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:7932:56)
+    at performWorkOnRootViaSchedulerTask (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8882:9)
+    at MessagePort.performWorkUntilDeadline (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_3add8784._.js:2601:64)
+[  189717ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/:0
+[  189758ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:14537
+[  189791ms] ReferenceError: DETAIL_TITLE is not defined
+    at LimeCabSurfaces (http://localhost:3000/_next/static/chunks/projects_limecab_src_0d0b45ea._.js:7203:24)
+    at Object.react_stack_bottom_frame (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:13072:24)
+    at renderWithHooks (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:4091:24)
+    at updateFunctionComponent (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:5523:21)
+    at beginWork (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:6111:24)
+    at runWithFiberInDEV (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:886:74)
+    at performUnitOfWork (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8298:97)
+    at workLoopSync (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8190:40)
+    at renderRootSync (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8173:13)
+    at performWorkOnRoot (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:7932:56)
+    at performWorkOnRootViaSchedulerTask (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:8882:9)
+    at MessagePort.performWorkUntilDeadline (http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_3add8784._.js:2601:64)
+[  190057ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5956
+[  190062ms] [WARNING] [Fast Refresh] performing full reload because your application had an unrecoverable error @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:6289
+[  190160ms] [LOG] [Fast Refresh] done in 71ms @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5816
+[  190551ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:14537

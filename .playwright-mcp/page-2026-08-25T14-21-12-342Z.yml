@@ -1,0 +1,53 @@
+- generic [ref=f26e1]:
+  - main [ref=f26e2]:
+    - generic [ref=f26e3]: LimeCab
+    - generic [ref=f26e6]:
+      - paragraph [ref=f26e24]: E Colorado Blvd, Pasadena
+      - generic:
+        - generic:
+          - generic [ref=f26e27]: What service? Choose a service.
+          - dialog [active] [ref=f26e92]:
+            - generic [ref=f26e94]:
+              - heading "Your ride" [level=2] [ref=f26e95]
+              - paragraph [ref=f26e96]: Drag to resize.
+              - generic [ref=f26e98]:
+                - button "Back" [ref=f26e99]
+                - generic [ref=f26e100]:
+                  - heading "Choose your ride" [level=2] [ref=f26e101]
+                  - generic [ref=f26e102]: ~37 min trip
+                - paragraph [ref=f26e103]:
+                  - 'button "Pickup: S Grand Ave & W 5th St. Change" [ref=f26e104]': S Grand Ave & W 5th St
+                  - generic [ref=f26e105]: →
+                  - 'button "Destination: E Colorado Blvd. Change" [ref=f26e106]': E Colorado Blvd
+                - list [ref=f26e107]:
+                  - listitem [ref=f26e108]:
+                    - button "Lime. Everyday ride. $32.59. 4 min away · 4 seats." [ref=f26e109]:
+                      - generic [ref=f26e115]:
+                        - generic [ref=f26e116]: Lime
+                        - generic [ref=f26e117]: Everyday ride
+                      - generic [ref=f26e118]:
+                        - generic [ref=f26e119]: $32.59
+                        - generic [ref=f26e120]: 4 min away · 4 seats
+                  - listitem [ref=f26e121]:
+                    - button "Lime XL. More space, up to 6. $45.23. 7 min away · 6 seats." [ref=f26e122]:
+                      - generic [ref=f26e129]:
+                        - generic [ref=f26e130]: Lime XL
+                        - generic [ref=f26e131]: More space, up to 6
+                      - generic [ref=f26e132]:
+                        - generic [ref=f26e133]: $45.23
+                        - generic [ref=f26e134]: 7 min away · 6 seats
+                  - listitem [ref=f26e135]:
+                    - button "Lime Comfort. Newer cars, quiet ride. $41.02. 6 min away · 4 seats." [ref=f26e136]:
+                      - generic [ref=f26e141]:
+                        - generic [ref=f26e142]: Lime Comfort
+                        - generic [ref=f26e143]: Newer cars, quiet ride
+                      - generic [ref=f26e144]:
+                        - generic [ref=f26e145]: $41.02
+                        - generic [ref=f26e146]: 6 min away · 4 seats
+                  - listitem [ref=f26e147]:
+                    - button "Lime Pool. Coming soon." [ref=f26e148]:
+                      - generic [ref=f26e155]:
+                        - generic [ref=f26e156]: Lime Pool
+                        - generic [ref=f26e157]: Coming soon
+  - button "Open Next.js Dev Tools" [ref=f26e164] [cursor=pointer]
+  - alert [ref=f26e168]

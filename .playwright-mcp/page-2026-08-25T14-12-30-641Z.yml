@@ -1,0 +1,30 @@
+- generic [active] [ref=f12e1]:
+  - main [ref=f12e2]:
+    - generic [ref=f12e3]: LimeCab
+    - generic [ref=f12e6]:
+      - button "Choose a location" [ref=f12e73] [cursor=pointer]:
+        - paragraph [ref=f12e24]: S Grand Ave & W 5th St
+      - generic [ref=f12e26]:
+        - generic [ref=f12e27]: What do you want done, and where? Pick a service or a location.
+        - generic [ref=f12e28]:
+          - button "Pickup Current location Change" [ref=f12e29]:
+            - generic [ref=f12e31]:
+              - generic [ref=f12e32]: Pickup
+              - generic [ref=f12e33]: Current location
+            - generic [ref=f12e34]: Change
+          - button "Where to?" [ref=f12e35]
+          - region "Saved and recent" [ref=f12e40]:
+            - paragraph [ref=f12e41]: Saved and recent
+            - list [ref=f12e42]:
+              - listitem [ref=f12e43]:
+                - button "Home" [ref=f12e44]
+              - listitem [ref=f12e49]:
+                - button "Work" [ref=f12e50]
+              - listitem [ref=f12e55]:
+                - button "Pasadena" [ref=f12e56]
+              - listitem [ref=f12e61]:
+                - button "Union Station" [ref=f12e62]
+              - listitem [ref=f12e67]:
+                - button "Big Bear Lake" [ref=f12e68]
+  - button "Open Next.js Dev Tools" [ref=f12e79] [cursor=pointer]
+  - alert [ref=f12e83]

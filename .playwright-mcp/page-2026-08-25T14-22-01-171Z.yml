@@ -1,0 +1,50 @@
+- generic [ref=f26e1]:
+  - main [ref=f26e2]:
+    - generic [ref=f26e3]: LimeCab
+    - generic [ref=f26e6]:
+      - generic [ref=f26e10]:
+        - paragraph [ref=f26e24]: E Colorado Blvd, Pasadena
+        - generic [ref=f26e275]: 3 MIN
+      - generic:
+        - generic:
+          - generic [ref=f26e27]: Where is the provider? Wait.
+          - dialog [ref=f26e276]:
+            - generic [ref=f26e94]:
+              - heading [level=2] [ref=f26e277]: Your ride
+              - paragraph [ref=f26e96]: Drag to resize.
+              - generic [ref=f26e246]:
+                - paragraph [ref=f26e247]: Maya is on the way
+                - paragraph [ref=f26e249]: Follow the route on the map
+                - paragraph [ref=f26e278]:
+                  - generic [ref=f26e279]: Arriving in
+                  - text: 2 min
+                - paragraph [ref=f26e250]: Lime · E Colorado Blvd
+                - list [ref=f26e251]:
+                  - listitem [ref=f26e252]:
+                    - generic [ref=f26e254]: Matching
+                  - listitem [ref=f26e255]:
+                    - generic [ref=f26e257]: En route
+                  - listitem [ref=f26e258]:
+                    - generic [ref=f26e260]: In progress
+                  - listitem [ref=f26e261]:
+                    - generic [ref=f26e263]: Done
+                - generic [ref=f26e265]:
+                  - generic [ref=f26e280]:
+                    - generic [ref=f26e285]:
+                      - paragraph [ref=f26e286]: Maya
+                      - paragraph [ref=f26e287]: Slate Toyota Prius · 8XKR112
+                      - paragraph [ref=f26e288]: 3 min away
+                    - generic [ref=f26e289]: "4.9"
+                  - generic [ref=f26e292]:
+                    - button [ref=f26e293]: Driver details
+                    - button [ref=f26e294]: Trip details
+                  - button [ref=f26e295]: Cancel ride
+  - button "Open Next.js Dev Tools" [ref=f26e164] [cursor=pointer]
+  - alert [ref=f26e168]
+  - dialog [active] [ref=f26e299]:
+    - generic [ref=f26e301]:
+      - heading "Cancel this ride?" [level=2] [ref=f26e302]
+      - paragraph [ref=f26e303]: Maya stops heading to you. You won't be charged.
+      - generic [ref=f26e304]:
+        - button "Cancel ride" [ref=f26e305]
+        - button "Keep ride" [ref=f26e306]

@@ -1,0 +1,52 @@
+- generic [active] [ref=f12e1]:
+  - main [ref=f12e2]:
+    - generic [ref=f12e3]: LimeCab
+    - generic [ref=f12e6]:
+      - paragraph [ref=f12e24]: Echo Park Ave, Los Angeles
+      - generic:
+        - generic:
+          - generic [ref=f12e27]: Do you want to request this? Request.
+          - dialog [ref=f12e94]:
+            - generic [ref=f12e96]:
+              - heading "Your ride" [level=2] [ref=f12e97]
+              - paragraph [ref=f12e98]: Drag to resize.
+              - generic [ref=f12e99]:
+                - button "Back" [ref=f12e100]
+                - generic [ref=f12e160]:
+                  - heading "Lime" [level=2] [ref=f12e161]
+                  - paragraph [ref=f12e162]: Echo Park Ave
+                  - paragraph [ref=f12e163]: Los Angeles
+                  - generic [ref=f12e164]:
+                    - generic [ref=f12e165]:
+                      - term [ref=f12e166]: Base fare
+                      - definition [ref=f12e167]: $1.80
+                    - generic [ref=f12e168]:
+                      - term [ref=f12e169]: Distance · 2.4 mi
+                      - definition [ref=f12e170]: $4
+                    - generic [ref=f12e171]:
+                      - term [ref=f12e172]: Time · 8 min
+                      - definition [ref=f12e173]: $1.92
+                    - generic [ref=f12e174]:
+                      - term [ref=f12e175]: Booking fee
+                      - definition [ref=f12e176]: $2.49
+                    - separator [ref=f12e177]
+                    - generic [ref=f12e178]:
+                      - term [ref=f12e179]: Estimated total
+                      - definition [ref=f12e180]: $10.21
+                  - generic [ref=f12e182]:
+                    - 'button "Pickup: S Grand Ave & W 5th St. Change" [ref=f12e183]':
+                      - generic [ref=f12e185]: S Grand Ave & W 5th St
+                    - generic [ref=f12e187]:
+                      - generic [ref=f12e188]: "Destination:"
+                      - generic [ref=f12e190]: Echo Park Ave
+                    - generic [ref=f12e191]:
+                      - generic [ref=f12e192]:
+                        - term [ref=f12e193]: Driver arrival
+                        - definition [ref=f12e194]: ~4 min
+                      - generic [ref=f12e195]:
+                        - term [ref=f12e196]: Trip
+                        - definition [ref=f12e197]: ~8 min
+                  - button "Request Lime · $10.21" [ref=f12e198]
+                  - paragraph [ref=f12e199]: Fares are estimates. Nothing is charged in this demo.
+  - button "Open Next.js Dev Tools" [ref=f12e79] [cursor=pointer]
+  - alert [ref=f12e83]

@@ -1,0 +1,51 @@
+- generic [ref=f5e1]:
+  - main [ref=f5e2]:
+    - generic [ref=f5e3]: LimeCab
+    - generic [ref=f5e6]:
+      - paragraph [ref=f5e24]: S Grand Ave & W 5th St, Los Angeles
+      - generic: Where? Select an address.
+  - button "Open Next.js Dev Tools" [ref=f5e80] [cursor=pointer]
+  - alert [ref=f5e84]
+  - dialog [ref=f5e88]:
+    - heading "Where to?" [level=2] [ref=f5e89]
+    - paragraph [ref=f5e90]: Search for an address, use your current location, or pick a saved place.
+    - banner [ref=f5e91]:
+      - button "Close search" [ref=f5e92]
+      - paragraph [ref=f5e96]: Where to?
+    - generic [ref=f5e97]:
+      - combobox "Address" [active] [ref=f5e99]
+      - button "Current location Use" [ref=f5e100]:
+        - text: Current location
+        - generic [ref=f5e101]: Use
+      - paragraph [ref=f5e102]: Places
+      - list [ref=f5e103]:
+        - listitem [ref=f5e104]:
+          - button "Home Los Angeles Saved" [ref=f5e105]:
+            - generic [ref=f5e106]:
+              - generic [ref=f5e107]: Home
+              - generic [ref=f5e108]: Los Angeles
+            - generic [ref=f5e109]: Saved
+        - listitem [ref=f5e110]:
+          - button "Work Arts District Saved" [ref=f5e111]:
+            - generic [ref=f5e112]:
+              - generic [ref=f5e113]: Work
+              - generic [ref=f5e114]: Arts District
+            - generic [ref=f5e115]: Saved
+        - listitem [ref=f5e116]:
+          - button "Pasadena Pasadena Yesterday" [ref=f5e117]:
+            - generic [ref=f5e118]:
+              - generic [ref=f5e119]: Pasadena
+              - generic [ref=f5e120]: Pasadena
+            - generic [ref=f5e121]: Yesterday
+        - listitem [ref=f5e122]:
+          - button "Union Station Los Angeles Last week" [ref=f5e123]:
+            - generic [ref=f5e124]:
+              - generic [ref=f5e125]: Union Station
+              - generic [ref=f5e126]: Los Angeles
+            - generic [ref=f5e127]: Last week
+        - listitem [ref=f5e128]:
+          - button "Big Bear Lake Big Bear Lake Outside the service area" [ref=f5e129]:
+            - generic [ref=f5e130]:
+              - generic [ref=f5e131]: Big Bear Lake
+              - generic [ref=f5e132]: Big Bear Lake
+            - generic [ref=f5e133]: Outside the service area

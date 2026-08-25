@@ -1,0 +1,65 @@
+- generic [ref=f26e1]:
+  - main [ref=f26e2]:
+    - generic [ref=f26e3]: LimeCab
+    - generic [ref=f26e6]:
+      - paragraph [ref=f26e24]: E Colorado Blvd, Pasadena
+      - generic:
+        - generic:
+          - generic [ref=f26e27]: Do you want to request this? Request.
+          - dialog [ref=f26e199]:
+            - generic [ref=f26e94]:
+              - heading [level=2] [ref=f26e200]: Your ride
+              - paragraph [ref=f26e96]: Drag to resize.
+              - generic [ref=f26e98]:
+                - button [ref=f26e201]: Back
+                - generic [ref=f26e169]:
+                  - heading [level=2] [ref=f26e202]: Lime
+                  - paragraph [ref=f26e171]: E Colorado Blvd
+                  - paragraph [ref=f26e172]: Pasadena
+                  - generic [ref=f26e173]:
+                    - separator [ref=f26e174]
+                    - generic [ref=f26e175]:
+                      - term [ref=f26e176]: Estimated total
+                      - definition [ref=f26e177]: $32.59
+                  - generic [ref=f26e179]:
+                    - generic [ref=f26e180]:
+                      - button [ref=f26e203]:
+                        - generic [ref=f26e183]: S Grand Ave & W 5th St
+                      - generic [ref=f26e185]:
+                        - generic [ref=f26e186]: "Destination:"
+                        - generic [ref=f26e188]: E Colorado Blvd
+                      - generic [ref=f26e189]:
+                        - generic [ref=f26e190]:
+                          - term [ref=f26e191]: Driver arrival
+                          - definition [ref=f26e192]: ~4 min
+                        - generic [ref=f26e193]:
+                          - term [ref=f26e194]: Trip
+                          - definition [ref=f26e195]: ~37 min
+                    - button [ref=f26e204]: Fare details
+                  - button [ref=f26e205]: Request Lime · $32.59
+                  - paragraph [ref=f26e198]: Fares are estimates. Nothing is charged in this demo.
+  - button "Open Next.js Dev Tools" [ref=f26e164] [cursor=pointer]
+  - alert [ref=f26e168]
+  - dialog [active] [ref=f26e209]:
+    - generic [ref=f26e211]:
+      - heading "Fare details" [level=2] [ref=f26e212]
+      - generic [ref=f26e213]:
+        - generic [ref=f26e214]:
+          - generic [ref=f26e215]:
+            - generic [ref=f26e216]:
+              - term [ref=f26e217]: Base fare
+              - definition [ref=f26e218]: $1.80
+            - generic [ref=f26e219]:
+              - term [ref=f26e220]: Distance · 11.8 mi
+              - definition [ref=f26e221]: $19.42
+            - generic [ref=f26e222]:
+              - term [ref=f26e223]: Time · 37 min
+              - definition [ref=f26e224]: $8.88
+            - generic [ref=f26e225]:
+              - term [ref=f26e226]: Booking fee
+              - definition [ref=f26e227]: $2.49
+            - generic [ref=f26e228]:
+              - term [ref=f26e229]: Estimated total
+              - definition [ref=f26e230]: $32.59
+          - paragraph [ref=f26e231]: Estimates. The final fare follows the route actually driven.
+        - button "Close" [ref=f26e232]

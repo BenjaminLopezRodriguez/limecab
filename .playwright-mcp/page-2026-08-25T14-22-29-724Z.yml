@@ -1,0 +1,34 @@
+- generic [active] [ref=f26e1]:
+  - main [ref=f26e2]:
+    - generic [ref=f26e3]: LimeCab
+    - generic [ref=f26e6]:
+      - paragraph [ref=f26e24]: E Colorado Blvd, Pasadena
+      - generic:
+        - generic:
+          - generic [ref=f26e27]: What happened? Review the result.
+          - dialog [ref=f26e312]:
+            - generic [ref=f26e94]:
+              - heading "Your ride" [level=2] [ref=f26e313]
+              - paragraph [ref=f26e96]: Drag to resize.
+              - generic [ref=f26e321]:
+                - heading "You've arrived" [level=2] [ref=f26e322]
+                - paragraph [ref=f26e323]: E Colorado Blvd · thanks for riding with LimeCab.
+                - generic [ref=f26e325]:
+                  - paragraph [ref=f26e326]: 37 min · 11.8 mi
+                  - generic [ref=f26e327]:
+                    - paragraph [ref=f26e328]: How was your ride with Maya?
+                    - radiogroup "Rate your ride" [ref=f26e329]:
+                      - radio "1 star" [ref=f26e330]
+                      - radio "2 stars" [ref=f26e333]
+                      - radio "3 stars" [ref=f26e336]
+                      - radio "4 stars" [ref=f26e339]
+                      - radio "5 stars" [ref=f26e342]
+                - separator [ref=f26e345]
+                - generic [ref=f26e346]:
+                  - paragraph [ref=f26e347]: Trip total
+                  - paragraph [ref=f26e348]: $32.59
+                - generic [ref=f26e349]:
+                  - button "Done" [ref=f26e350]
+                  - button "View receipt" [ref=f26e351]
+  - button "Open Next.js Dev Tools" [ref=f26e164] [cursor=pointer]
+  - alert [ref=f26e168]

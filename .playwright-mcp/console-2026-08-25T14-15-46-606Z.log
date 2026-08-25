@@ -1,0 +1,11 @@
+[     141ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:14537
+[   32987ms] [INFO] [LimeCab] cancellation reason: Booked by mistake @ http://localhost:3000/_next/static/chunks/projects_limecab_src_0d0b45ea._.js:6809
+[   46222ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5956
+[   46374ms] [LOG] [Fast Refresh] done in 253ms @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5816
+[   60964ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5956
+[   61054ms] [LOG] [Fast Refresh] done in 122ms @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5816
+[   61560ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_compiled_react-dom_63b3d19f._.js:14537
+[   61709ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5956
+[   61727ms] [LOG] [Fast Refresh] done in 119ms @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5816
+[   70532ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5956
+[   70561ms] [LOG] [Fast Refresh] done in 73ms @ http://localhost:3000/_next/static/chunks/bb63f_next_dist_client_3cf072f6._.js:5816

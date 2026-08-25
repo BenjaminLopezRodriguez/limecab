@@ -1,0 +1,28 @@
+- generic [ref=f12e1]:
+  - main [ref=f12e2]:
+    - generic [ref=f12e3]: LimeCab
+    - generic [ref=f12e6]:
+      - paragraph [ref=f12e24]: Echo Park Ave, Los Angeles
+      - generic:
+        - generic:
+          - generic [ref=f12e27]: Is a provider available? Wait.
+          - dialog [active] [ref=f12e94]:
+            - generic [ref=f12e96]:
+              - heading "Your ride" [level=2] [ref=f12e97]
+              - paragraph [ref=f12e98]: Drag to resize.
+              - generic [ref=f12e205]:
+                - paragraph [ref=f12e206]: Not requested yet
+                - paragraph [ref=f12e208]: Nothing is dispatched until you confirm.
+                - paragraph [ref=f12e209]: Lime · Echo Park Ave
+                - list [ref=f12e210]:
+                  - listitem [ref=f12e211]:
+                    - generic [ref=f12e213]: Matching
+                  - listitem [ref=f12e214]:
+                    - generic [ref=f12e216]: En route
+                  - listitem [ref=f12e217]:
+                    - generic [ref=f12e219]: In progress
+                  - listitem [ref=f12e220]:
+                    - generic [ref=f12e222]: Done
+                - button "Cancel ride" [ref=f12e225]
+  - button "Open Next.js Dev Tools" [ref=f12e79] [cursor=pointer]
+  - alert [ref=f12e83]
