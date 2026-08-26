@@ -12,10 +12,14 @@ import { cn } from "@/lib/utils";
 /**
  * ServiceAppShell — the canvas + surface frame.
  *
- * `layout="home"` is a product launcher: a *bounded* map region above a
- * scrolling column of controls. `layout="task"` promotes the map to the full
- * canvas with the surface floating over it, because the spatial task has
- * become primary.
+ * On a phone the map is always the canvas and the content floats over it —
+ * the spatial question ("where am I, where is my car") is the screen, and a
+ * surface answers it from the thumb zone. `layout="home"` differs from
+ * `layout="task"` only in that its panel is anchored (a launcher that can be
+ * scrolled) rather than owned by the surface ladder.
+ *
+ * On a desktop `layout="home"` becomes a two-column launcher: controls left,
+ * a large map right. Same state, different composition.
  *
  * The map and the children stay mounted across that change, so map camera and
  * draft state survive the transition.
@@ -25,7 +29,6 @@ import { cn } from "@/lib/utils";
  *   <div style={{ "--service-app-chrome": "7rem" }}>
  */
 const SHELL_H = "h-[calc(100dvh-var(--service-app-chrome,0px))]";
-const SHELL_MIN_H = "min-h-[calc(100dvh-var(--service-app-chrome,0px))]";
 const SHELL_H_MD = "md:h-[calc(100dvh-var(--service-app-chrome,0px))]";
 
 export function ServiceAppShell({
@@ -78,16 +81,15 @@ function ShellBody({
   return (
     <div
       className={cn(
-        home
-          ? cn(
-              "flex flex-col",
-              SHELL_MIN_H,
-              // Desktop home: controls left, larger map right. Same state,
-              // different composition — no second state machine.
-              "md:grid md:min-h-0 md:grid-cols-[minmax(22rem,28rem)_minmax(0,1fr)]",
-              SHELL_H_MD,
-            )
-          : cn("relative flex flex-col overflow-hidden", SHELL_H),
+        "relative flex flex-col overflow-hidden",
+        SHELL_H,
+        // Desktop home: controls left, larger map right. Same state,
+        // different composition — no second state machine.
+        home &&
+          cn(
+            "md:grid md:min-h-0 md:grid-cols-[minmax(22rem,28rem)_minmax(0,1fr)] md:overflow-visible",
+            SHELL_H_MD,
+          ),
         className,
       )}
     >
@@ -97,7 +99,15 @@ function ShellBody({
       <div
         className={cn(
           home
-            ? "flex flex-1 flex-col px-5 pt-5 pb-6 md:col-start-1 md:row-start-1 md:overflow-y-auto md:px-6 md:py-6"
+            ? cn(
+                // The launcher floats over the canvas from the thumb zone and
+                // scrolls inside itself, so the map is never a postage stamp.
+                "bg-background border-border relative z-10 mt-auto max-h-[72%] shrink-0",
+                "overflow-y-auto rounded-t-3xl border-t px-5 pt-4",
+                "pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-lg",
+                "md:col-start-1 md:row-start-1 md:mt-0 md:max-h-none md:flex md:flex-1",
+                "md:flex-col md:rounded-none md:border-0 md:px-6 md:py-6 md:shadow-none",
+              )
             : "relative z-10 mt-auto md:pointer-events-none md:absolute md:inset-0 md:mt-0 md:flex md:justify-end md:p-6",
           !home && !sheetOpen && "md:hidden",
         )}
@@ -136,7 +146,7 @@ function MapSlot({
     <div
       className={cn(
         home
-          ? "px-5 pt-4 md:col-start-2 md:row-start-1 md:h-full md:min-h-0 md:p-6 md:pl-0"
+          ? "absolute inset-0 md:relative md:col-start-2 md:row-start-1 md:h-full md:min-h-0 md:p-6 md:pl-0"
           : "absolute inset-0 md:inset-6",
       )}
     >
@@ -147,10 +157,8 @@ function MapSlot({
         onKeyDown={onPress ? onKeyDown : undefined}
         aria-label={onPress ? "Choose a location" : undefined}
         className={cn(
-          "ring-border overflow-hidden ring-1",
-          home
-            ? "h-52 rounded-3xl md:h-full md:min-h-[22rem]"
-            : "size-full md:rounded-3xl",
+          "ring-border size-full overflow-hidden md:rounded-3xl md:ring-1",
+          home && "md:min-h-[22rem]",
           onPress &&
             "focus-visible:ring-ring cursor-pointer touch-manipulation focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none md:pointer-events-none md:cursor-default",
         )}

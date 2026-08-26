@@ -1,51 +1,29 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-import {
-  Car,
-  Check,
-  ChevronRight,
-  CreditCard,
-  MessageCircle,
-  Phone,
-  RotateCcw,
-  Sparkles,
-  Star,
-  Tag,
-  Users,
-} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import {
-  AdaptiveSurface,
-  useAdaptiveSurface,
-} from "@/components/service-app/adaptive-surface";
-import { CompletionPanel } from "@/components/service-app/completion-panel";
-import { ConfirmActionSurface } from "@/components/service-app/confirm-action-surface";
+import { useAdaptiveSurface } from "@/components/service-app/adaptive-surface";
 import { LocationSearchScene } from "@/components/service-app/location-search-scene";
-import { LocationTrigger } from "@/components/service-app/location-trigger";
-import { ProviderCard } from "@/components/service-app/provider-card";
-import { QuotePanel } from "@/components/service-app/quote-panel";
-import { SavedPlaces } from "@/components/service-app/saved-places";
 import { ServiceAppShell } from "@/components/service-app/service-app-shell";
-import { ServiceGrid } from "@/components/service-app/service-grid";
 import { ServiceMap } from "@/components/service-app/service-map";
 import { ServiceSheet } from "@/components/service-app/service-sheet";
-import { ServiceStatusPanel } from "@/components/service-app/service-status";
 import {
   ManagedSurface,
   SurfaceManagerProvider,
   useSurfaceManager,
 } from "@/components/service-app/surface-manager";
-import { SurfaceSkeleton } from "@/components/service-app/surface-skeleton";
-import { PrimaryAction } from "@/components/service-app/task-scene";
 import { Button } from "@/components/ui/button";
+import { LimeCabCompleteScene } from "@/components/limecab/limecab-complete-scene";
+import { LimeCabHomeScene } from "@/components/limecab/limecab-home-scene";
+import {
+  LimeCabCancelSurfaces,
+  LimeCabDetailSurface,
+  LimeCabUnavailableSurface,
+  type DetailKind,
+} from "@/components/limecab/limecab-interrupts";
+import { LimeCabQuoteScene } from "@/components/limecab/limecab-quote-scene";
+import { LimeCabRideSelectScene } from "@/components/limecab/limecab-ride-select-scene";
+import { LimeCabStatusScene } from "@/components/limecab/limecab-status-scene";
 import {
   LIMECAB_MAP_MODE,
   LIMECAB_SCENE_SURFACES,
@@ -53,35 +31,24 @@ import {
   type LimeCabAction,
   type LimeCabSurfaceId,
 } from "@/components/limecab/surfaces";
-import {
-  clockTime,
-  vehicleLabel,
-  TIP_PRESETS,
-  type RideProduct,
-  type Trip,
-} from "@/lib/limecab/domain";
+import type { Pickup, RideProduct, Trip } from "@/lib/limecab/domain";
 import {
   AVAILABLE_PROMO,
   CURRENT_LOCATION,
   DRIVER_START,
-  LAST_TRIP,
   NEARBY_DRIVERS,
   PAYMENT_METHODS,
   RIDE_PRODUCTS,
   SAVED_PLACES,
   geocodeAdapter,
   lerpPoint,
-  matchDriver,
   quoteFor,
-  submitRideRequest,
 } from "@/lib/limecab/mock";
 import type { MapPoint } from "@/lib/service-app/map-adapter";
 import {
   formatMoney,
   splitAddress,
   type Location,
-  type Place,
-  type ServiceDefinition,
 } from "@/lib/service-app/services";
 import {
   isCommitted,
@@ -91,7 +58,7 @@ import {
   type ServiceAppState,
 } from "@/lib/service-app/state";
 import type { ServiceStatus } from "@/lib/service-app/status";
-import { cn } from "@/lib/utils";
+import { api, type RouterOutputs } from "@/trpc/react";
 
 /**
  * LimeCab — the ride flow.
@@ -102,48 +69,128 @@ import { cn } from "@/lib/utils";
  * from the service-app kit unchanged.
  */
 
-const PRODUCT_ICON = {
-  lime: <Car strokeWidth={1.7} />,
-  "lime-xl": <Users strokeWidth={1.7} />,
-  "lime-comfort": <Sparkles strokeWidth={1.7} />,
-  "lime-pool": <Users strokeWidth={1.7} />,
-} as Record<string, React.ReactNode>;
+type TripRow = RouterOutputs["trip"]["get"];
+type TripStatus = TripRow["status"];
 
-/** Mocked lifecycle: how long each committed phase lasts. */
-const PHASE_MS: Partial<Record<ServiceAppState, number>> = {
+/**
+ * The server owns the lifecycle; this is the only place its statuses become
+ * client scenes. `cancelled` has no scene — the flow returns home.
+ */
+const SCENE_FOR_STATUS: Record<TripStatus, ServiceAppState> = {
+  requested: "matching",
+  matched: "assigned",
+  arriving: "provider_en_route",
+  in_progress: "active",
+  complete: "complete",
+  cancelled: "home",
+};
+
+function isTerminal(status: TripStatus | undefined): boolean {
+  return status === "complete" || status === "cancelled";
+}
+
+/** Cosmetic only: how long a phase usually runs, for the car track and the
+ *  countdown. Nothing here advances the ride — polling does. */
+const PHASE_HINT_MS: Partial<Record<ServiceAppState, number>> = {
   assigned: 2500,
   provider_en_route: 15_000,
   active: 16_000,
   completing: 2500,
 };
 
-const NEXT_EVENT: Partial<Record<ServiceAppState, ServiceAppEvent>> = {
-  assigned: "provider_moving",
-  provider_en_route: "service_started",
-  active: "service_finishing",
-  completing: "service_complete",
-};
+/**
+ * A trip row becomes a rider-facing `Trip` only once dispatch has attached a
+ * driver. Before that there is no trip object, so no scene can accidentally
+ * show a driver who does not exist yet.
+ */
+function toClientTrip(row: TripRow): Trip | null {
+  if (!row.driver) return null;
+  return {
+    id: row.id,
+    request: {
+      pickup: {
+        address: row.pickupAddress,
+        latitude: row.pickupLatitude ?? undefined,
+        longitude: row.pickupLongitude ?? undefined,
+        meetingPoint: row.pickupMeetingPoint ?? undefined,
+      },
+      destination: {
+        address: row.destinationAddress,
+        latitude: row.destinationLatitude ?? undefined,
+        longitude: row.destinationLongitude ?? undefined,
+      },
+      productId: row.productId,
+    },
+    driver: {
+      id: row.driver.id,
+      name: row.driver.name,
+      rating: row.driver.ratingHundredths / 100,
+      vehicle: {
+        make: row.driver.vehicleMake,
+        model: row.driver.vehicleModel,
+        color: row.driver.vehicleColor,
+        plate: row.driver.vehiclePlate,
+      },
+    },
+    fare: {
+      baseCents: row.baseCents,
+      distanceCents: row.distanceCents,
+      timeCents: row.timeCents,
+      bookingCents: row.bookingCents,
+      totalCents: row.totalCents,
+    },
+    distanceMiles: Number(row.distanceMiles.toFixed(1)),
+    tripMinutes: row.tripMinutes,
+    arrivalMinutes: row.arrivalMinutes,
+    pickupPin: row.pickupPin,
+  };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : "Something went wrong. Nothing was dispatched.";
+}
 
 /** The tail of the en-route phase, where the question becomes "which car?". */
 const ARRIVED_AT = 0.82;
 
 export function LimeCabApp({
   onSceneChange,
+  signedIn = false,
+  minimized = false,
 }: {
   /** The shell hides its chrome once the rider is inside a task. */
   onSceneChange?: (state: ServiceAppState) => void;
+  /** Signed-out riders browse and quote; only booking is gated. */
+  signedIn?: boolean;
+  /**
+   * The rider is looking at another tab. Every surface stands down — the
+   * sheet portals to `document.body`, so hiding an ancestor cannot hide it —
+   * while the state machine, the polling and the surface recipes keep running
+   * underneath, so coming back restores the exact scene they left.
+   */
+  minimized?: boolean;
 }) {
   return (
     <SurfaceManagerProvider manager={limeCabSurfaces}>
-      <LimeCabFlow onSceneChange={onSceneChange} />
+      <LimeCabFlow
+        onSceneChange={onSceneChange}
+        signedIn={signedIn}
+        minimized={minimized}
+      />
     </SurfaceManagerProvider>
   );
 }
 
 function LimeCabFlow({
   onSceneChange,
+  signedIn,
+  minimized,
 }: {
   onSceneChange?: (state: ServiceAppState) => void;
+  signedIn: boolean;
+  minimized: boolean;
 }) {
   const surfaces = useSurfaceManager<LimeCabSurfaceId, LimeCabAction>();
 
@@ -154,13 +201,93 @@ function LimeCabFlow({
     "destination",
   );
   const [productId, setProductId] = useState<string | null>(null);
-  const [trip, setTrip] = useState<Trip | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [phaseStart, setPhaseStart] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
 
   const product = RIDE_PRODUCTS.find((entry) => entry.id === productId) ?? null;
   const available = product?.status === "available";
+
+  // ---- the server is the truth -------------------------------------------
+  const [tripId, setTripId] = useState<string | null>(null);
+  const requestTrip = api.trip.request.useMutation();
+  const cancelTripMutation = api.trip.cancel.useMutation();
+
+  /** A ride already in flight, so a refresh does not lose it. */
+  const activeTrip = api.trip.active.useQuery(undefined, {
+    enabled: signedIn,
+    refetchOnWindowFocus: false,
+  });
+
+  // Polling, not a timer: the ride advances when the backend says it did.
+  const tripQuery = api.trip.get.useQuery(
+    { id: tripId ?? "" },
+    {
+      enabled: tripId !== null,
+      refetchInterval: (query) =>
+        isTerminal(query.state.data?.status) ? false : 3000,
+    },
+  );
+
+  const row = tripId ? (tripQuery.data ?? null) : null;
+  const serverStatus = row?.status ?? null;
+  const trip = useMemo(() => (row ? toClientTrip(row) : null), [row]);
+
+  const resumed = useRef(false);
+  useEffect(() => {
+    if (resumed.current || !activeTrip.isSuccess) return;
+    resumed.current = true;
+    const live = activeTrip.data;
+    if (!live) return;
+    setTripId(live.id);
+    setPickup({
+      address: live.pickupAddress,
+      latitude: live.pickupLatitude ?? undefined,
+      longitude: live.pickupLongitude ?? undefined,
+      meetingPoint: live.pickupMeetingPoint ?? undefined,
+      followsDevice: false,
+    });
+    setDestination({
+      address: live.destinationAddress,
+      latitude: live.destinationLatitude ?? undefined,
+      longitude: live.destinationLongitude ?? undefined,
+    });
+    setProductId(live.productId);
+    setState(SCENE_FOR_STATUS[live.status]);
+  }, [activeTrip.data, activeTrip.isSuccess]);
+
+  const startTrip = useCallback(
+    async (input: {
+      pickup: Pickup;
+      destination: Location;
+      productId: string;
+      idempotencyKey: string;
+    }) => {
+      const created = await requestTrip.mutateAsync({
+        pickup: {
+          address: input.pickup.address,
+          latitude: input.pickup.latitude,
+          longitude: input.pickup.longitude,
+          meetingPoint: input.pickup.meetingPoint,
+        },
+        destination: {
+          address: input.destination.address,
+          latitude: input.destination.latitude,
+          longitude: input.destination.longitude,
+        },
+        productId: input.productId,
+        idempotencyKey: input.idempotencyKey,
+      });
+      setTripId(created.id);
+    },
+    [requestTrip],
+  );
+
+  const cancelTrip = useCallback(async () => {
+    if (tripId) await cancelTripMutation.mutateAsync({ id: tripId });
+  }, [cancelTripMutation, tripId]);
+
+  const clearTrip = useCallback(() => setTripId(null), []);
 
   // The scene says which step; the recipe says how the surfaces sit around it.
   useEffect(() => {
@@ -178,23 +305,11 @@ function LimeCabFlow({
     return () => clearInterval(id);
   }, [state]);
 
-  // Mocked lifecycle advance. A real app advances on dispatch events.
+  // Each scene restarts the cosmetic clock. The scene itself comes from the
+  // server's status, never from a timer.
   useEffect(() => {
-    const next = NEXT_EVENT[state];
-    const ms = PHASE_MS[state];
-    if (!next || !ms) return;
-    const id = setTimeout(() => {
-      setPhaseStart(Date.now());
-      setNow(Date.now());
-      setState((current) =>
-        reduceServiceAppState(current, next, {
-          hasLocation: true,
-          hasService: true,
-          needsConfigure: false,
-        }),
-      );
-    }, ms);
-    return () => clearTimeout(id);
+    setPhaseStart(Date.now());
+    setNow(Date.now());
   }, [state]);
 
   const go = useCallback(
@@ -213,7 +328,7 @@ function LimeCabFlow({
     [available, destination],
   );
 
-  const duration = PHASE_MS[state] ?? 0;
+  const duration = PHASE_HINT_MS[state] ?? 0;
   const t = duration > 0 ? Math.min(1, (now - phaseStart) / duration) : 0;
   const arrived = state === "provider_en_route" && t >= ARRIVED_AT;
 
@@ -240,7 +355,10 @@ function LimeCabFlow({
 
   const driverPoint = useMemo<MapPoint | null>(() => {
     if (state === "assigned") {
-      return { ...lerpPoint(DRIVER_START, pickupPoint, 0.12), kind: "provider" };
+      return {
+        ...lerpPoint(DRIVER_START, pickupPoint, 0.12),
+        kind: "provider",
+      };
     }
     if (state === "provider_en_route") {
       return {
@@ -248,10 +366,7 @@ function LimeCabFlow({
         kind: "provider",
       };
     }
-    if (
-      (state === "active" || state === "completing") &&
-      destinationPoint
-    ) {
+    if ((state === "active" || state === "completing") && destinationPoint) {
       return {
         ...lerpPoint(pickupPoint, destinationPoint, state === "active" ? t : 1),
         kind: "provider",
@@ -271,7 +386,8 @@ function LimeCabFlow({
   }, [destinationPoint, driverPoint, pickupPoint, state]);
 
   const estimate = useMemo(
-    () => (destination ? quoteFor(RIDE_PRODUCTS[0]!, pickup, destination) : null),
+    () =>
+      destination ? quoteFor(RIDE_PRODUCTS[0]!, pickup, destination) : null,
     [destination, pickup],
   );
 
@@ -294,7 +410,9 @@ function LimeCabFlow({
               providerName: trip?.driver.name,
               etaSeconds: Math.max(
                 30,
-                Math.round((trip?.arrivalMinutes ?? 4) * 60 * (1 - t / ARRIVED_AT)),
+                Math.round(
+                  (trip?.arrivalMinutes ?? 4) * 60 * (1 - t / ARRIVED_AT),
+                ),
               ),
             };
       case "active":
@@ -313,7 +431,10 @@ function LimeCabFlow({
       case "completing":
         return { state: "completing", remainingSeconds: 20 };
       case "complete":
-        return { state: "complete", summary: "Thanks for riding with LimeCab." };
+        return {
+          state: "complete",
+          summary: "Thanks for riding with LimeCab.",
+        };
       default:
         return { state: "pending" };
     }
@@ -339,6 +460,7 @@ function LimeCabFlow({
       layout={state === "home" ? "home" : "task"}
       onMapPress={() => openSearch.current("destination")}
       map={
+        minimized ? null : (
         <ManagedSurface<LimeCabSurfaceId> id="map">
           <ServiceMap
             mode={LIMECAB_MAP_MODE[mapPosture] ?? "home"}
@@ -357,6 +479,7 @@ function LimeCabFlow({
             callout={status.state === "failed" ? null : serviceCallout(status)}
           />
         </ManagedSurface>
+        )
       }
     >
       <LimeCabSurfaces
@@ -372,15 +495,16 @@ function LimeCabFlow({
         product={product}
         setProductId={setProductId}
         trip={trip}
-        setTrip={setTrip}
+        serverStatus={serverStatus}
+        startTrip={startTrip}
+        cancelTrip={cancelTrip}
+        clearTrip={clearTrip}
+        signedIn={signedIn}
+        minimized={minimized}
         failure={failure}
         setFailure={setFailure}
         status={status}
         estimate={estimate}
-        onPhase={() => {
-          setPhaseStart(Date.now());
-          setNow(Date.now());
-        }}
       />
     </ServiceAppShell>
   );
@@ -408,12 +532,16 @@ function LimeCabSurfaces({
   product,
   setProductId,
   trip,
-  setTrip,
+  serverStatus,
+  startTrip,
+  cancelTrip,
+  clearTrip,
+  signedIn,
+  minimized,
   failure,
   setFailure,
   status,
   estimate,
-  onPhase,
 }: {
   state: ServiceAppState;
   setState: (next: ServiceAppState) => void;
@@ -421,8 +549,8 @@ function LimeCabSurfaces({
     event: ServiceAppEvent,
     overrides?: Partial<{ hasLocation: boolean; hasService: boolean }>,
   ) => void;
-  pickup: typeof CURRENT_LOCATION;
-  setPickup: (next: typeof CURRENT_LOCATION) => void;
+  pickup: Pickup;
+  setPickup: (next: Pickup) => void;
   destination: Location | null;
   setDestination: (next: Location | null) => void;
   searchTarget: "pickup" | "destination";
@@ -430,12 +558,21 @@ function LimeCabSurfaces({
   product: RideProduct | null;
   setProductId: (next: string | null) => void;
   trip: Trip | null;
-  setTrip: (next: Trip | null) => void;
+  serverStatus: TripStatus | null;
+  startTrip: (input: {
+    pickup: Pickup;
+    destination: Location;
+    productId: string;
+    idempotencyKey: string;
+  }) => Promise<void>;
+  cancelTrip: () => Promise<void>;
+  clearTrip: () => void;
+  signedIn: boolean;
+  minimized: boolean;
   failure: string | null;
   setFailure: (next: string | null) => void;
   status: ServiceStatus;
   estimate: { miles: number; minutes: number } | null;
-  onPhase: () => void;
 }) {
   const surface = useAdaptiveSurface();
   const surfaces = useSurfaceManager<LimeCabSurfaceId, LimeCabAction>();
@@ -450,6 +587,17 @@ function LimeCabSurfaces({
   const [promoApplied, setPromoApplied] = useState(false);
   const [tipCents, setTipCents] = useState<number | null>(null);
   const [quoteReady, setQuoteReady] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+
+  /**
+   * One key per request attempt. A double tap sends the same key twice and the
+   * server returns the one trip it already made. It is cleared only when the
+   * quote itself changes, so retrying the same attempt cannot book twice.
+   */
+  const idempotencyKey = useRef<string | null>(null);
+  useEffect(() => {
+    idempotencyKey.current = null;
+  }, [destination, product?.id]);
 
   // Mid-transition the surface shows the scene the choreography is on, not the
   // scene the app has already moved to.
@@ -473,60 +621,6 @@ function LimeCabSurfaces({
     return () => clearTimeout(id);
   }, [visible, product?.id]);
 
-  const rideOptions = useMemo<ServiceDefinition[]>(() => {
-    if (!destination) return [];
-    const priced = RIDE_PRODUCTS.map((entry) => ({
-      entry,
-      fare: quoteFor(entry, pickup, destination).fare,
-    }));
-
-    // The two comparisons riders actually make. Marking them is the whole
-    // reason the tiers sit in one list instead of behind a picker.
-    const sellable = priced.filter(({ entry }) => entry.status === "available");
-    const cheapest = sellable.reduce<string | null>(
-      (best, item) =>
-        best === null ||
-        item.fare.totalCents <
-          (sellable.find((x) => x.entry.id === best)?.fare.totalCents ?? 0)
-          ? item.entry.id
-          : best,
-      null,
-    );
-    const fastest = sellable.reduce<string | null>(
-      (best, item) =>
-        best === null ||
-        item.entry.etaMinutes <
-          (sellable.find((x) => x.entry.id === best)?.entry.etaMinutes ?? 0)
-          ? item.entry.id
-          : best,
-      null,
-    );
-
-    return priced.map(({ entry, fare }) => {
-      const badge =
-        entry.id === fastest
-          ? "Fastest"
-          : entry.id === cheapest
-            ? "Cheapest"
-            : null;
-      return {
-        id: entry.id,
-        title: entry.name,
-        description: entry.description,
-        icon: PRODUCT_ICON[entry.id],
-        status: entry.status,
-        meta: {
-          value: formatMoney(fare.totalCents),
-          // Dropoff as a clock time: "18 min" answers the wrong question when
-          // what the rider is really checking is whether they make the 3:30.
-          note: `${badge ? `${badge} · ` : ""}${clockTime(
-            entry.etaMinutes + (estimate?.minutes ?? 0),
-          )} dropoff · ${entry.seats} seats`,
-        },
-      };
-    });
-  }, [destination, estimate?.minutes, pickup]);
-
   const payment =
     PAYMENT_METHODS.find((entry) => entry.id === paymentId) ??
     PAYMENT_METHODS[0]!;
@@ -537,7 +631,6 @@ function LimeCabSurfaces({
     const { fare, miles, minutes } = quoteFor(product, pickup, destination);
     return {
       fare,
-      miles,
       minutes,
       panel: {
         totalCents: fare.totalCents,
@@ -574,9 +667,7 @@ function LimeCabSurfaces({
     go("select_location", { hasLocation: true });
   };
 
-  const chooseRide = (option: ServiceDefinition) => {
-    const next = RIDE_PRODUCTS.find((entry) => entry.id === option.id);
-    if (!next) return;
+  const chooseRide = (next: RideProduct) => {
     if (next.status !== "available") {
       // A temporary question about the task: the scene recedes, it is not lost.
       surfaces.perform("interruptCancel");
@@ -597,56 +688,48 @@ function LimeCabSurfaces({
   const requestRide = () => {
     if (!destination || !product || surface.progress.locked) return;
     setFailure(null);
+    idempotencyKey.current ??= crypto.randomUUID();
+    const key = idempotencyKey.current;
     void (async () => {
       try {
         surfaces.perform("requestRide");
-        const receipt = await surface.transition({
+        await surface.transition({
           intent: "progress",
           from: "quote",
           to: "matching",
           interim: "map",
-          task: () => submitRideRequest({ pickup, destination, product }),
+          task: () =>
+            startTrip({
+              pickup,
+              destination,
+              productId: product.id,
+              idempotencyKey: key,
+            }),
         });
-        onPhase();
+        // Truthful: the request is accepted, so "matching" is what is
+        // happening. No driver exists until the server sends one.
         setState("matching");
-
-        const matched = await matchDriver({
-          requestId: receipt.requestId,
-          pickup,
-          destination,
-          product,
-        });
-        setTrip(matched);
-        onPhase();
-        setState("assigned");
-      } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Something went wrong. Nothing was dispatched.";
-        if (state === "quote") {
-          // Submission failed: the quote comes back untouched.
-          surfaces.perform("requestFailed");
-          setState("quote");
-          return;
-        }
-        // Matching failed after the request was accepted: stay on the status
-        // surface and turn it into something the rider can act on.
-        setFailure(message);
+      } catch {
+        // Dispatch refused the request: the quote comes back untouched and
+        // carries the error the transition captured.
+        surfaces.perform("requestFailed");
+        setState("quote");
       }
     })();
   };
 
   const backToQuote = () => {
     setFailure(null);
-    setTrip(null);
+    clearTrip();
     surfaces.perform("requestFailed");
     setState("quote");
   };
 
   const reset = () => {
     setFailure(null);
-    setTrip(null);
+    setCancelError(null);
+    clearTrip();
+    idempotencyKey.current = null;
     setProductId(null);
     setDestination(null);
     setRating(null);
@@ -656,9 +739,41 @@ function LimeCabSurfaces({
     setState("home");
   };
 
+  /**
+   * The lifecycle, derived. Whatever the server says the trip is, that is the
+   * scene the rider is in — including a cancellation they did not make.
+   */
+  useEffect(() => {
+    if (!serverStatus) return;
+    if (serverStatus === "cancelled") {
+      reset();
+      return;
+    }
+    setState(SCENE_FOR_STATUS[serverStatus]);
+    // `reset` and `setState` are stable enough for a status-keyed sync.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverStatus]);
+
   const openDetail = (kind: DetailKind) => {
     surfaces.perform("openDetails");
     setDetail(kind);
+  };
+
+  /**
+   * The server decides whether a ride can still be stopped. An in-progress
+   * ride cannot, and the rider is told that instead of watching the UI clear.
+   */
+  const confirmCancel = () => {
+    void (async () => {
+      try {
+        await cancelTrip();
+        setCancelError(null);
+        setCancelStage("reason");
+      } catch (error) {
+        closeInterrupt(() => setCancelStage(null));
+        setCancelError(errorMessage(error));
+      }
+    })();
   };
 
   /** Cancellation is done; the reason is optional telemetry, not a gate. */
@@ -673,6 +788,19 @@ function LimeCabSurfaces({
     surfaces.perform("resumeRide");
   };
 
+  /**
+   * Standing down closes any interruption with it. A cancel confirmation or a
+   * receipt is a question about *this moment*; re-opening it minutes later,
+   * when the rider taps back in from another tab, would be answering a
+   * question they have long since walked away from.
+   */
+  useEffect(() => {
+    if (!minimized) return;
+    setDetail(null);
+    setCancelStage(null);
+    setUnavailable(null);
+  }, [minimized]);
+
   const live = isCommitted(visible) && visible !== "complete" && !failure;
   const cancellable =
     live &&
@@ -685,6 +813,11 @@ function LimeCabSurfaces({
       visible === "provider_en_route" ||
       visible === "active");
 
+  // Every surface below portals to `document.body`; nothing but returning
+  // nothing actually removes them from another tab's screen. The hooks above
+  // all keep running, so the scene the rider left is still here.
+  if (minimized) return null;
+
   return (
     <>
       <div className="sr-only" aria-live="polite">
@@ -692,39 +825,13 @@ function LimeCabSurfaces({
       </div>
 
       {visible === "home" ? (
-        <div className="flex flex-col gap-6">
-          <PickupRow
-            label={pickupLine}
-            onPress={() => openSearch("pickup")}
-            following={pickup.followsDevice ?? false}
-          />
-          <LocationTrigger
-            hint="Where to?"
-            label={destination?.address}
-            onPress={() => openSearch("destination")}
-          />
-          <SavedPlaces
-            title="Saved and recent"
-            places={SAVED_PLACES}
-            onSelect={(place) =>
-              chooseLocation({
-                address: place.address,
-                latitude: place.latitude ?? undefined,
-                longitude: place.longitude ?? undefined,
-              })
-            }
-          />
-          <RecentTrip
-            place={LAST_TRIP}
-            onPress={() =>
-              chooseLocation({
-                address: LAST_TRIP.address,
-                latitude: LAST_TRIP.latitude ?? undefined,
-                longitude: LAST_TRIP.longitude ?? undefined,
-              })
-            }
-          />
-        </div>
+        <LimeCabHomeScene
+          pickup={pickup}
+          pickupLine={pickupLine}
+          destination={destination}
+          onSearch={openSearch}
+          onChooseLocation={chooseLocation}
+        />
       ) : null}
 
       {visible !== "home" && visible !== "location_search" ? (
@@ -746,201 +853,91 @@ function LimeCabSurfaces({
             ) : null}
 
             {visible === "service_select" ? (
-              <>
-                <div className="flex items-baseline justify-between gap-3">
-                  <h2 className="text-[17px] font-medium tracking-tight">
-                    Choose your ride
-                  </h2>
-                  {estimate ? (
-                    <span className="text-muted-foreground shrink-0 text-sm tabular-nums">
-                      ~{estimate.minutes} min trip
-                    </span>
-                  ) : null}
-                </div>
-                <RouteLine
-                  className="mt-2"
-                  pickup={pickupLine}
-                  destination={destinationLine}
-                  onEditPickup={() => openSearch("pickup")}
-                  onEditDestination={() => openSearch("destination")}
-                />
-                <ServiceGrid
-                  className="mt-4"
-                  variant="list"
-                  services={rideOptions}
-                  selectedId={product?.id ?? null}
-                  onSelect={chooseRide}
-                />
-              </>
+              <LimeCabRideSelectScene
+                pickup={pickup}
+                pickupLine={pickupLine}
+                destination={destination}
+                destinationLine={destinationLine}
+                estimate={estimate}
+                product={product}
+                payment={payment}
+                onSelect={chooseRide}
+                onEditPickup={() => openSearch("pickup")}
+                onEditDestination={() => openSearch("destination")}
+                onOpenPayment={() => openDetail("payment")}
+              />
             ) : null}
 
             {visible === "quote" && product && quote && destination ? (
-              quoteReady ? (
-                <QuotePanel
-                  title={product.name}
-                  address={destination.address}
-                  quote={{ totalCents: payableCents, lines: [] }}
-                  confirmLabel={`Request ${product.name} · ${formatMoney(
-                    payableCents,
-                  )}`}
-                  busy={surface.progress.locked}
-                  error={surface.progress.error}
-                  extra={
-                    <div className="flex flex-col gap-3">
-                      <Itinerary
-                        pickup={pickupLine}
-                        destination={destinationLine}
-                        arrival={`~${product.etaMinutes} min`}
-                        trip={`${clockTime(
-                          product.etaMinutes + quote.minutes,
-                        )} dropoff`}
-                        onEditPickup={() => openSearch("pickup")}
-                      />
-                      <div className="divide-border ring-border divide-y rounded-2xl ring-1">
-                        <SettingRow
-                          icon={<CreditCard strokeWidth={1.7} />}
-                          label={payment.label}
-                          value={payment.detail}
-                          onPress={() => openDetail("payment")}
-                        />
-                        <SettingRow
-                          icon={<Tag strokeWidth={1.7} />}
-                          label="Promo"
-                          value={
-                            promoApplied
-                              ? `−${formatMoney(AVAILABLE_PROMO.amountCents)} applied`
-                              : "Add a code"
-                          }
-                          onPress={() => openDetail("promo")}
-                        />
-                      </div>
-                      <DetailButton onPress={() => openDetail("fare")}>
-                        Fare details
-                      </DetailButton>
-                    </div>
-                  }
-                  footnote="Fares are estimates. Nothing is charged in this demo."
-                  onConfirm={requestRide}
-                />
-              ) : (
-                <SurfaceSkeleton lines={4} showAction label="Pricing your ride" />
-              )
-            ) : null}
-
-            {isCommitted(visible) && visible !== "complete" ? (
-              <ServiceStatusPanel
-                status={status}
-                labels={{ provider: "driver", service: "ride" }}
-                subtitle={
-                  status.state === "arriving"
-                    ? `Meet at ${pickup.meetingPoint ?? pickupLine}`
-                    : product && destination
-                      ? `${product.name} · ${destinationLine}`
-                      : undefined
+              <LimeCabQuoteScene
+                ready={quoteReady}
+                product={product}
+                quoteMinutes={quote.minutes}
+                payableCents={payableCents}
+                fareLines={
+                  promoApplied
+                    ? [
+                        ...quote.panel.lines,
+                        {
+                          label: AVAILABLE_PROMO.label,
+                          value: `−${formatMoney(discountCents)}`,
+                        },
+                      ]
+                    : quote.panel.lines
                 }
-                actions={
-                  <div className="flex flex-col gap-3">
-                    {status.state === "arriving" && trip ? (
-                      <PickupPin
-                        pin={trip.pickupPin}
-                        meetAt={pickup.meetingPoint ?? pickupLine}
-                      />
-                    ) : null}
-                    {showDriver && trip ? (
-                      <ProviderCard
-                        provider={{
-                          id: trip.driver.id,
-                          name: trip.driver.name,
-                          detail: vehicleLabel(trip.driver.vehicle),
-                          rating: trip.driver.rating,
-                        }}
-                        actions={
-                          <div className="flex gap-2">
-                            <IconAction
-                              label={`Message ${trip.driver.name}`}
-                              onPress={() => openDetail("contact")}
-                            >
-                              <MessageCircle strokeWidth={1.7} />
-                            </IconAction>
-                            <IconAction
-                              label={`Call ${trip.driver.name}`}
-                              onPress={() => openDetail("contact")}
-                            >
-                              <Phone strokeWidth={1.7} />
-                            </IconAction>
-                          </div>
-                        }
-                        eta={
-                          status.state === "provider_en_route"
-                            ? `${Math.max(
-                                1,
-                                Math.ceil(status.etaSeconds / 60),
-                              )} min away`
-                            : status.state === "arriving"
-                              ? "Here now"
-                              : null
-                        }
-                      />
-                    ) : null}
-                    {showDriver && trip ? (
-                      <div className="grid grid-cols-2 gap-2">
-                        <DetailButton onPress={() => openDetail("trip")}>
-                          Trip details
-                        </DetailButton>
-                        <DetailButton onPress={() => openDetail("safety")}>
-                          Safety
-                        </DetailButton>
-                      </div>
-                    ) : null}
-                    {failure ? (
-                      <PrimaryAction onClick={backToQuote}>
-                        Back to the quote
-                      </PrimaryAction>
-                    ) : null}
-                    {cancellable ? (
-                      <Button
-                        variant="ghost"
-                        className="text-muted-foreground border-border h-11 w-full rounded-xl border"
-                        onClick={() => {
-                          surfaces.perform("interruptCancel");
-                          setCancelStage("confirm");
-                        }}
-                      >
-                        Cancel ride
-                      </Button>
-                    ) : null}
-                  </div>
+                pickupLine={pickupLine}
+                destinationLine={destinationLine}
+                payment={payment}
+                promoApplied={promoApplied}
+                busy={surface.progress.locked}
+                error={surface.progress.error}
+                signedIn={signedIn}
+                onEditPickup={() => openSearch("pickup")}
+                onOpenDetail={openDetail}
+                onConfirm={
+                  signedIn
+                    ? requestRide
+                    : () => {
+                        window.location.href = "/api/auth/signin";
+                      }
                 }
               />
             ) : null}
 
+            {isCommitted(visible) && visible !== "complete" ? (
+              <LimeCabStatusScene
+                status={status}
+                pickup={pickup}
+                pickupLine={pickupLine}
+                product={product}
+                destination={destination}
+                destinationLine={destinationLine}
+                trip={trip}
+                showDriver={showDriver}
+                failure={failure}
+                cancelError={cancelError}
+                cancellable={cancellable}
+                onOpenDetail={openDetail}
+                onBackToQuote={backToQuote}
+                onCancel={() => {
+                  setCancelError(null);
+                  surfaces.perform("interruptCancel");
+                  setCancelStage("confirm");
+                }}
+              />
+            ) : null}
+
             {visible === "complete" ? (
-              <CompletionPanel
-                headline="You've arrived"
-                summary={`${destinationLine || "Destination"} · thanks for riding with LimeCab.`}
-                totalCents={(trip?.fare.totalCents ?? 0) + (tipCents ?? 0)}
-                totalLabel="Trip total"
-                detail={
-                  <div className="flex flex-col gap-4">
-                    <p className="text-muted-foreground text-sm tabular-nums">
-                      {trip?.tripMinutes ?? 0} min · {trip?.distanceMiles ?? 0} mi
-                    </p>
-                    <RatePanel
-                      name={trip?.driver.name ?? "your driver"}
-                      value={rating}
-                      onRate={setRating}
-                    />
-                    <TipPanel value={tipCents} onTip={setTipCents} />
-                  </div>
-                }
-                actions={
-                  <>
-                    <PrimaryAction onClick={reset}>Done</PrimaryAction>
-                    <DetailButton onPress={() => openDetail("receipt")}>
-                      View receipt
-                    </DetailButton>
-                  </>
-                }
+              <LimeCabCompleteScene
+                pickupLine={pickupLine}
+                destinationLine={destinationLine}
+                trip={trip}
+                rating={rating}
+                onRate={setRating}
+                tipCents={tipCents}
+                onTip={setTipCents}
+                onDone={reset}
+                onOpenDetail={openDetail}
               />
             ) : null}
           </ServiceSheet>
@@ -953,6 +950,13 @@ function LimeCabSurfaces({
           adapter={geocodeAdapter}
           places={SAVED_PLACES}
           title={searchTarget === "pickup" ? "Pickup" : "Where to?"}
+          route={{
+            origin: pickupLine,
+            destination: destination?.address ?? "",
+            active: searchTarget === "pickup" ? "origin" : "destination",
+            onSwitch: (field) =>
+              openSearch(field === "origin" ? "pickup" : "destination"),
+          }}
           onSelect={chooseLocation}
           onDismiss={() => {
             setSearchError(null);
@@ -963,703 +967,52 @@ function LimeCabSurfaces({
         />
       </ManagedSurface>
 
-      <ConfirmActionSurface
-        open={unavailable !== null}
-        onOpenChange={(open) => {
-          if (!open) closeInterrupt(() => setUnavailable(null));
-        }}
-        id="ride-unavailable"
-        title={`${unavailable?.name ?? "This ride"} isn't live yet`}
-        description={
-          unavailable
-            ? `${unavailable.description}. We'll let you know when it reaches your city.`
-            : undefined
-        }
-        confirmLabel="Got it"
-        cancelLabel="Back to rides"
-        onConfirm={() => closeInterrupt(() => setUnavailable(null))}
+      <LimeCabUnavailableSurface
+        product={unavailable}
+        onDismiss={() => closeInterrupt(() => setUnavailable(null))}
       />
 
-      {/* Disclosure, not a step: the ride surface is suspended behind this and
-          restored untouched when it closes. */}
-      <AdaptiveSurface.Interrupt
-        open={detail !== null}
-        onOpenChange={(open) => {
-          if (!open) closeInterrupt(() => setDetail(null));
+      <LimeCabDetailSurface
+        detail={detail}
+        onClose={() => closeInterrupt(() => setDetail(null))}
+        quote={quote}
+        product={product}
+        trip={trip}
+        pickup={pickup}
+        pickupLine={pickupLine}
+        destinationLine={destinationLine}
+        payment={payment}
+        paymentId={paymentId}
+        onSelectPayment={(id) => {
+          setPaymentId(id);
+          closeInterrupt(() => setDetail(null));
         }}
-        id="ride-detail"
-        label={DETAIL_TITLE[detail ?? "fare"]}
-      >
-        {detail === "fare" && quote && product ? (
-          <DetailLines
-            lines={[
-              ...quote.panel.lines,
-              { label: "Estimated total", value: formatMoney(quote.fare.totalCents), strong: true },
-            ]}
-            footnote="Estimates. The final fare follows the route actually driven."
-          />
-        ) : null}
-
-        {detail === "trip" && trip ? (
-          <DetailLines
-            lines={[
-              { label: "Ride", value: product?.name ?? "Lime" },
-              { label: "Driver", value: trip.driver.name },
-              { label: "Vehicle", value: vehicleLabel(trip.driver.vehicle) },
-              { label: "Pickup", value: pickupLine },
-              { label: "Meet at", value: pickup.meetingPoint ?? pickupLine },
-              { label: "Destination", value: destinationLine },
-              { label: "Distance", value: `${trip.distanceMiles} mi` },
-              { label: "Trip time", value: `~${trip.tripMinutes} min` },
-              { label: "Payment", value: payment.detail },
-              {
-                label: "Estimated total",
-                value: formatMoney(trip.fare.totalCents - discountCents),
-                strong: true,
-              },
-            ]}
-          />
-        ) : null}
-
-        {detail === "receipt" && trip ? (
-          <DetailLines
-            lines={[
-              { label: "Base fare", value: formatMoney(trip.fare.baseCents) },
-              { label: `Distance · ${trip.distanceMiles} mi`, value: formatMoney(trip.fare.distanceCents) },
-              { label: `Time · ${trip.tripMinutes} min`, value: formatMoney(trip.fare.timeCents) },
-              { label: "Booking fee", value: formatMoney(trip.fare.bookingCents) },
-              ...(discountCents
-                ? [{ label: AVAILABLE_PROMO.label, value: `−${formatMoney(discountCents)}` }]
-                : []),
-              ...(tipCents
-                ? [{ label: `Tip for ${trip.driver.name}`, value: formatMoney(tipCents) }]
-                : []),
-              {
-                label: "Trip total",
-                value: formatMoney(trip.fare.totalCents - discountCents + (tipCents ?? 0)),
-                strong: true,
-              },
-            ]}
-            footnote={`Trip ${trip.id} · ${product?.name ?? "Lime"} with ${trip.driver.name}.`}
-          />
-        ) : null}
-
-        {detail === "payment" ? (
-          <ul className="divide-border ring-border divide-y rounded-2xl ring-1">
-            {PAYMENT_METHODS.map((method) => (
-              <li key={method.id}>
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={method.id === paymentId}
-                  onClick={() => {
-                    setPaymentId(method.id);
-                    closeInterrupt(() => setDetail(null));
-                  }}
-                  className="focus-visible:ring-ring active:bg-accent flex min-h-14 w-full items-center gap-3 px-4 text-left first:rounded-t-2xl last:rounded-b-2xl focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
-                >
-                  <CreditCard
-                    className="text-muted-foreground size-4 shrink-0"
-                    strokeWidth={1.7}
-                    aria-hidden="true"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-medium tracking-tight">
-                      {method.label}
-                    </span>
-                    <span className="text-muted-foreground block truncate text-sm">
-                      {method.detail}
-                    </span>
-                  </span>
-                  {method.id === paymentId ? (
-                    <Check
-                      className="text-primary size-5 shrink-0"
-                      strokeWidth={2}
-                      aria-hidden="true"
-                    />
-                  ) : null}
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-
-        {detail === "promo" ? (
-          <div className="flex flex-col gap-3">
-            <p className="text-muted-foreground text-sm leading-relaxed">
-              {promoApplied
-                ? `${AVAILABLE_PROMO.label} is applied to this ride.`
-                : `Code ${AVAILABLE_PROMO.code} is available on your account.`}
-            </p>
-            <PrimaryAction
-              onClick={() => {
-                setPromoApplied(!promoApplied);
-                closeInterrupt(() => setDetail(null));
-              }}
-            >
-              {promoApplied
-                ? "Remove credit"
-                : `Apply ${formatMoney(AVAILABLE_PROMO.amountCents)} credit`}
-            </PrimaryAction>
-          </div>
-        ) : null}
-
-        {detail === "contact" && trip ? (
-          <p className="text-muted-foreground text-sm leading-relaxed">
-            Calling and messaging {trip.driver.name} needs a dispatch connection,
-            which this build doesn&apos;t have. Nothing was sent.
-          </p>
-        ) : null}
-
-        {detail === "safety" ? (
-          <div className="flex flex-col gap-3">
-            <DetailLines
-              lines={[
-                { label: "Trip", value: trip?.id ?? "—" },
-                { label: "Driver", value: trip?.driver.name ?? "—" },
-                { label: "Vehicle", value: trip ? trip.driver.vehicle.plate : "—" },
-              ]}
-              footnote="Sharing and emergency calling need a live trip service. Nothing here contacts anyone yet."
-            />
-            <DetailButton onPress={() => undefined}>Share trip status</DetailButton>
-          </div>
-        ) : null}
-
-        <Button
-          variant="ghost"
-          className="border-border h-11 w-full rounded-xl border"
-          onClick={() => closeInterrupt(() => setDetail(null))}
-        >
-          Close
-        </Button>
-      </AdaptiveSurface.Interrupt>
-
-      <ConfirmActionSurface
-        open={cancelStage === "confirm"}
-        onOpenChange={(open) => {
-          if (!open) closeInterrupt(() => setCancelStage(null));
+        promoApplied={promoApplied}
+        onTogglePromo={() => {
+          setPromoApplied(!promoApplied);
+          closeInterrupt(() => setDetail(null));
         }}
-        id="cancel-ride"
-        intent="destructive"
-        title="Cancel this ride?"
-        description={
-          trip
-            ? `${trip.driver.name} stops heading to you. You won't be charged.`
-            : "We'll stop looking for a driver. You won't be charged."
-        }
-        confirmLabel="Cancel ride"
-        cancelLabel="Keep ride"
-        // The ride is cancelled here. The reason is asked *after*, because
-        // making the rider answer a survey before we stop the car would be
-        // holding the cancellation hostage.
-        onConfirm={() => setCancelStage("reason")}
-        onCancel={() => closeInterrupt(() => setCancelStage(null))}
+        discountCents={discountCents}
+        tipCents={tipCents}
       />
 
-      <AdaptiveSurface.Interrupt
-        open={cancelStage === "reason"}
-        onOpenChange={(open) => {
-          if (!open) finishCancel();
-        }}
-        id="cancel-reason"
-        label="Ride cancelled"
-        description="What happened? This helps us send a better driver next time."
-      >
-        <ul className="divide-border ring-border divide-y rounded-2xl ring-1">
-          {CANCEL_REASONS.map((reason) => (
-            <li key={reason}>
-              <button
-                type="button"
-                onClick={() => finishCancel(reason)}
-                className="focus-visible:ring-ring active:bg-accent flex min-h-12 w-full items-center px-4 text-left text-[15px] first:rounded-t-2xl last:rounded-b-2xl focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
-              >
-                {reason}
-              </button>
-            </li>
-          ))}
-        </ul>
-        <Button
-          variant="ghost"
-          className="text-muted-foreground h-11 w-full rounded-xl"
-          onClick={() => finishCancel()}
-        >
-          Skip
-        </Button>
-      </AdaptiveSurface.Interrupt>
+      <LimeCabCancelSurfaces
+        stage={cancelStage}
+        trip={trip}
+        onDismiss={() => closeInterrupt(() => setCancelStage(null))}
+        onConfirm={confirmCancel}
+        onFinish={finishCancel}
+      />
     </>
   );
 }
 
-/**
- * Progressive density: the live scene answers "where are we and when", and
- * everything the rider might *also* want — the fare breakdown, the plate, the
- * receipt — sits one deliberate tap away instead of crowding the answer.
- */
-type DetailKind =
-  | "fare"
-  | "trip"
-  | "receipt"
-  | "payment"
-  | "promo"
-  | "contact"
-  | "safety";
-
-const DETAIL_TITLE: Record<DetailKind, string> = {
-  fare: "Fare details",
-  trip: "Trip details",
-  receipt: "Receipt",
-  payment: "Payment method",
-  promo: "Promo code",
-  contact: "Contact your driver",
-  safety: "Safety",
-};
-
-const CANCEL_REASONS = [
-  "Driver was too far away",
-  "Wait was too long",
-  "Booked by mistake",
-  "Plans changed",
-  "Price was too high",
+const SHEET_PRESENTATIONS = [
+  "peek",
+  "sheet",
+  "expanded",
+  "fullscreen",
 ] as const;
-
-/** A settings-style row: what it is now, and that it can be changed. */
-function SettingRow({
-  icon,
-  label,
-  value,
-  onPress,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-  onPress: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onPress}
-      aria-label={`${label}: ${value}. Change`}
-      className="focus-visible:ring-ring active:bg-accent flex min-h-14 w-full items-center gap-3 px-4 text-left first:rounded-t-2xl last:rounded-b-2xl focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
-    >
-      <span
-        aria-hidden="true"
-        className="text-muted-foreground shrink-0 [&_svg]:size-4"
-      >
-        {icon}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-[15px]">{value}</span>
-      <ChevronRight
-        className="text-muted-foreground size-4 shrink-0"
-        strokeWidth={1.7}
-        aria-hidden="true"
-      />
-    </button>
-  );
-}
-
-/** A round icon-only affordance. Label is spoken, never drawn. */
-function IconAction({
-  label,
-  onPress,
-  children,
-}: {
-  label: string;
-  onPress: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onPress}
-      aria-label={label}
-      className="ring-border focus-visible:ring-ring active:bg-accent inline-flex size-10 shrink-0 items-center justify-center rounded-full ring-1 focus-visible:ring-2 focus-visible:outline-none [&_svg]:size-4"
-    >
-      {children}
-    </button>
-  );
-}
-
-/**
- * The code the rider reads out at the curb.
- *
- * It is the largest thing on the screen for the few seconds it matters,
- * because the rider is looking at a phone at arm's length beside a road.
- */
-function PickupPin({ pin, meetAt }: { pin: string; meetAt: string }) {
-  return (
-    <div className="bg-accent text-accent-foreground rounded-2xl px-4 py-3">
-      <p className="text-[11px] tracking-[0.12em] uppercase opacity-70">
-        Give your driver this code
-      </p>
-      <p className="mt-1 text-[28px] leading-none font-semibold tabular-nums">
-        {pin.split("").join(" ")}
-      </p>
-      <p className="mt-2 text-sm opacity-80">Meet at {meetAt}</p>
-    </div>
-  );
-}
-
-/** Flat tip amounts. Percentages make the rider do arithmetic to be kind. */
-function TipPanel({
-  value,
-  onTip,
-}: {
-  value: number | null;
-  onTip: (next: number | null) => void;
-}) {
-  return (
-    <div className="bg-muted/60 rounded-2xl p-4">
-      <p className="text-[15px] font-medium tracking-tight">
-        {value ? "Tip added" : "Add a tip?"}
-      </p>
-      <div className="mt-3 flex gap-2">
-        {TIP_PRESETS.map((amount) => {
-          const selected = value === amount;
-          return (
-            <button
-              key={amount}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => onTip(selected ? null : amount)}
-              className={cn(
-                "ring-border focus-visible:ring-ring h-11 flex-1 rounded-xl text-[15px] font-medium tabular-nums ring-1 focus-visible:ring-2 focus-visible:outline-none",
-                selected
-                  ? "bg-primary text-primary-foreground ring-primary"
-                  : "bg-card active:bg-accent",
-              )}
-            >
-              {formatMoney(amount)}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/** The affordance that discloses a detail surface. Never the primary action. */
-function DetailButton({
-  onPress,
-  children,
-}: {
-  onPress: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <Button
-      variant="ghost"
-      className="text-muted-foreground border-border h-11 w-full rounded-xl border text-sm font-normal"
-      onClick={onPress}
-    >
-      {children}
-    </Button>
-  );
-}
-
-/** A label/value ledger. Amounts share precision so the column reads. */
-function DetailLines({
-  lines,
-  footnote,
-}: {
-  lines: { label: string; value: string; strong?: boolean }[];
-  footnote?: string;
-}) {
-  return (
-    <div>
-      <dl className="flex flex-col gap-2.5">
-        {lines.map((row) => (
-          <div
-            key={row.label}
-            className={cn(
-              "flex items-baseline gap-3 text-sm",
-              row.strong && "border-border mt-1 border-t pt-3",
-            )}
-          >
-            <dt className={cn("text-muted-foreground", row.strong && "text-foreground font-medium")}>
-              {row.label}
-            </dt>
-            <dd
-              className={cn(
-                "ml-auto tabular-nums",
-                row.strong && "text-[15px] font-medium",
-              )}
-            >
-              {row.value}
-            </dd>
-          </div>
-        ))}
-      </dl>
-      {footnote ? (
-        <p className="text-muted-foreground mt-4 text-xs leading-relaxed">
-          {footnote}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * The last trip, offered as one tap. Most rides repeat, so the cheapest good
- * home screen answers "again?" before it asks "where to?".
- */
-function RecentTrip({
-  place,
-  onPress,
-}: {
-  place: Place;
-  onPress: () => void;
-}) {
-  return (
-    <section aria-label="Recent trip">
-      <p className="text-muted-foreground text-xs tracking-wide uppercase">
-        Recent trip
-      </p>
-      <button
-        type="button"
-        onClick={onPress}
-        className="bg-card ring-border focus-visible:ring-ring hover:ring-ring/40 mt-2 flex min-h-16 w-full items-center gap-3 rounded-2xl px-4 text-left ring-1 focus-visible:ring-2 focus-visible:outline-none"
-      >
-        <RotateCcw
-          className="text-muted-foreground size-4 shrink-0"
-          strokeWidth={1.75}
-          aria-hidden="true"
-        />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[15px] font-medium tracking-tight">
-            {place.label}
-          </span>
-          <span className="text-muted-foreground block truncate text-sm">
-            {place.hint} · {splitAddress(place.address).line}
-          </span>
-        </span>
-        <span className="text-muted-foreground shrink-0 text-sm">Rebook</span>
-      </button>
-    </section>
-  );
-}
-
-/** Pickup is editable from the first screen — it is not just "wherever I am". */
-function PickupRow({
-  label,
-  following,
-  onPress,
-}: {
-  label: string;
-  following: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onPress}
-      className="focus-visible:ring-ring group flex w-full items-center gap-3 rounded-2xl text-left focus-visible:ring-2 focus-visible:outline-none"
-    >
-      <span
-        aria-hidden="true"
-        className="bg-primary ring-primary/25 size-2.5 shrink-0 rounded-full ring-4"
-      />
-      <span className="min-w-0 flex-1">
-        <span className="text-muted-foreground block text-[11px] tracking-[0.12em] uppercase">
-          Pickup
-        </span>
-        <span className="block truncate text-[15px] font-medium tracking-tight">
-          {following ? "Current location" : label}
-        </span>
-      </span>
-      <span className="text-muted-foreground text-sm group-hover:underline">
-        Change
-      </span>
-    </button>
-  );
-}
-
-/**
- * The one-line route. Ride selection is a comparison scene: the itinerary is
- * context the rider has already decided, so it gets a line, not a card.
- */
-function RouteLine({
-  pickup,
-  destination,
-  onEditPickup,
-  onEditDestination,
-  className,
-}: {
-  pickup: string;
-  destination: string;
-  onEditPickup: () => void;
-  onEditDestination: () => void;
-  className?: string;
-}) {
-  return (
-    <p className={cn("text-muted-foreground flex items-center gap-1.5 text-sm", className)}>
-      <button
-        type="button"
-        onClick={onEditPickup}
-        aria-label={`Pickup: ${pickup}. Change`}
-        className="focus-visible:ring-ring min-w-0 truncate rounded hover:underline focus-visible:ring-2 focus-visible:outline-none"
-      >
-        {pickup}
-      </button>
-      <span aria-hidden="true">→</span>
-      <button
-        type="button"
-        onClick={onEditDestination}
-        aria-label={`Destination: ${destination}. Change`}
-        className="text-foreground focus-visible:ring-ring min-w-0 truncate rounded font-medium hover:underline focus-visible:ring-2 focus-visible:outline-none"
-      >
-        {destination}
-      </button>
-    </p>
-  );
-}
-
-/** Pickup → destination, with the two estimates that answer "when". */
-function Itinerary({
-  pickup,
-  destination,
-  arrival,
-  trip,
-  onEditPickup,
-  onEditDestination,
-  className,
-}: {
-  pickup: string;
-  destination: string;
-  arrival?: string;
-  trip?: string;
-  onEditPickup?: () => void;
-  onEditDestination?: () => void;
-  className?: string;
-}) {
-  return (
-    <div className={cn("bg-muted/60 rounded-2xl p-3", className)}>
-      <ItineraryRow
-        kind="pickup"
-        label="Pickup"
-        value={pickup}
-        onPress={onEditPickup}
-      />
-      <div aria-hidden="true" className="border-border ml-[5px] h-4 border-l" />
-      <ItineraryRow
-        kind="destination"
-        label="Destination"
-        value={destination}
-        onPress={onEditDestination}
-      />
-      {arrival ?? trip ? (
-        <dl className="border-border mt-3 flex gap-6 border-t pt-3 text-sm">
-          {arrival ? (
-            <div>
-              <dt className="text-muted-foreground text-[11px] tracking-[0.12em] uppercase">
-                Driver arrival
-              </dt>
-              <dd className="font-medium tabular-nums">{arrival}</dd>
-            </div>
-          ) : null}
-          {trip ? (
-            <div>
-              <dt className="text-muted-foreground text-[11px] tracking-[0.12em] uppercase">
-                Trip
-              </dt>
-              <dd className="font-medium tabular-nums">{trip}</dd>
-            </div>
-          ) : null}
-        </dl>
-      ) : null}
-    </div>
-  );
-}
-
-function ItineraryRow({
-  kind,
-  label,
-  value,
-  onPress,
-}: {
-  kind: "pickup" | "destination";
-  label: string;
-  value: string;
-  onPress?: () => void;
-}) {
-  const body = (
-    <>
-      <span
-        aria-hidden="true"
-        className={cn(
-          "size-2.5 shrink-0",
-          kind === "pickup"
-            ? "bg-primary rounded-full"
-            : "bg-foreground rounded-[3px]",
-        )}
-      />
-      <span className="min-w-0 flex-1 truncate text-sm">
-        {value || "Not set"}
-      </span>
-    </>
-  );
-
-  if (!onPress) {
-    return (
-      <div className="flex items-center gap-3">
-        <span className="sr-only">{label}: </span>
-        {body}
-      </div>
-    );
-  }
-  return (
-    <button
-      type="button"
-      onClick={onPress}
-      aria-label={`${label}: ${value}. Change`}
-      className="focus-visible:ring-ring flex w-full items-center gap-3 rounded-lg text-left focus-visible:ring-2 focus-visible:outline-none"
-    >
-      {body}
-    </button>
-  );
-}
-
-function RatePanel({
-  name,
-  value,
-  onRate,
-}: {
-  name: string;
-  value: number | null;
-  onRate: (next: number) => void;
-}) {
-  return (
-    <div className="bg-muted/60 rounded-2xl p-4">
-      <p className="text-[15px] font-medium tracking-tight">
-        {value ? "Thanks for the feedback" : `How was your ride with ${name}?`}
-      </p>
-      <div className="mt-3 flex gap-1.5" role="radiogroup" aria-label="Rate your ride">
-        {[1, 2, 3, 4, 5].map((star) => (
-          <button
-            key={star}
-            type="button"
-            role="radio"
-            aria-checked={value === star}
-            aria-label={`${star} star${star === 1 ? "" : "s"}`}
-            onClick={() => onRate(star)}
-            className="focus-visible:ring-ring rounded-lg p-1.5 focus-visible:ring-2 focus-visible:outline-none"
-          >
-            <Star
-              className={cn(
-                "size-7",
-                value !== null && star <= value
-                  ? "fill-primary text-primary"
-                  : "text-muted-foreground",
-              )}
-              strokeWidth={1.6}
-            />
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-const SHEET_PRESENTATIONS = ["peek", "sheet", "expanded", "fullscreen"] as const;
 type SheetPresentation = (typeof SHEET_PRESENTATIONS)[number];
 
 function sheetPresentation(value: string | null): SheetPresentation {

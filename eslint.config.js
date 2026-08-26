@@ -49,6 +49,12 @@ export default tseslint.config(
     },
   },
   {
+    // `node:test` returns a promise the runner already awaits; a bare `test()`
+    // call is the documented usage, not a dropped promise.
+    files: ["**/*.test.ts"],
+    rules: { "@typescript-eslint/no-floating-promises": "off" },
+  },
+  {
     linterOptions: {
       reportUnusedDisableDirectives: true,
     },

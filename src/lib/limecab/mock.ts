@@ -1,9 +1,9 @@
 /**
  * LimeCab's mocked marketplace.
  *
- * Everything a dispatch backend would own — the catalogue, the geocoder, the
- * driver pool, the matching call — behind functions shaped like the real ones,
- * so replacing them later is a swap and not a rewrite.
+ * Client-side fixtures only: the catalogue, the geocoder, saved places, the
+ * driver pool and payment methods. Dispatch itself is real — requesting,
+ * matching and the trip lifecycle all live on the server now.
  */
 
 import {
@@ -21,7 +21,6 @@ import {
   type Pickup,
   type Promo,
   type RideProduct,
-  type Trip,
 } from "@/lib/limecab/domain";
 
 /** Rider's device fix. Pickup starts here but is not pinned to it. */
@@ -287,9 +286,6 @@ export const NEARBY_DRIVERS: MapPoint[] = [
   { latitude: 34.0578, longitude: -118.2603, kind: "marker" },
 ];
 
-/** Beyond this, LimeCab has no supply. The one honest failure in the mock. */
-const COVERAGE_MILES = 40;
-
 export function estimateTrip(pickup: Location, destination: Location) {
   const miles = distanceMiles(pickup, destination);
   return { miles, minutes: tripMinutes(miles) };
@@ -302,67 +298,6 @@ export function quoteFor(
 ) {
   const { miles, minutes } = estimateTrip(pickup, destination);
   return { fare: estimateFare(product, miles, minutes), miles, minutes };
-}
-
-export class NoDriversError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "NoDriversError";
-  }
-}
-
-export type RideRequestReceipt = { requestId: string; submittedAt: number };
-
-/**
- * Step one of dispatch: the request is accepted and queued. Fast, because the
- * rider is watching a surface leave while it runs.
- */
-export async function submitRideRequest(input: {
-  pickup: Pickup;
-  destination: Location;
-  product: RideProduct;
-}): Promise<RideRequestReceipt> {
-  await new Promise((resolve) => setTimeout(resolve, 850));
-  if (input.product.status !== "available") {
-    throw new Error(`${input.product.name} is not available yet.`);
-  }
-  return { requestId: `req_${Date.now().toString(36)}`, submittedAt: Date.now() };
-}
-
-/**
- * Step two: an actual driver accepts. Rejects when nobody does — the rider is
- * never shown a driver this has not returned.
- */
-export async function matchDriver(input: {
-  requestId: string;
-  pickup: Pickup;
-  destination: Location;
-  product: RideProduct;
-}): Promise<Trip> {
-  const { miles, minutes } = estimateTrip(input.pickup, input.destination);
-  await new Promise((resolve) => setTimeout(resolve, 3200));
-
-  if (miles > COVERAGE_MILES) {
-    throw new NoDriversError(
-      "No LimeCab drivers cover a trip that far. Try a closer destination.",
-    );
-  }
-
-  const driver = DRIVER_POOL[Math.floor(Math.random() * DRIVER_POOL.length)]!;
-  return {
-    id: `trip_${input.requestId.slice(4)}`,
-    request: {
-      pickup: input.pickup,
-      destination: input.destination,
-      productId: input.product.id,
-    },
-    driver,
-    fare: estimateFare(input.product, miles, minutes),
-    distanceMiles: Number(miles.toFixed(1)),
-    tripMinutes: minutes,
-    arrivalMinutes: input.product.etaMinutes,
-    pickupPin: String(1000 + Math.floor(Math.random() * 9000)),
-  };
 }
 
 /** Linear interpolation between two points — the mocked vehicle track. */

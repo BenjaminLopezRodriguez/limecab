@@ -1,6 +1,8 @@
 import { relations } from "drizzle-orm";
-import { index, pgTableCreator, primaryKey } from "drizzle-orm/pg-core";
-import { type AdapterAccount } from "next-auth/adapters";
+import { index, pgTableCreator, primaryKey, unique } from "drizzle-orm/pg-core";
+
+import type { TripStatus } from "@/server/limecab/state";
+import type { AdapterAccount } from "next-auth/adapters";
 
 /**
  * This is an example of how to use the multi-project schema feature of Drizzle ORM. Use the same
@@ -26,8 +28,8 @@ export const posts = createTable(
     updatedAt: d.timestamp({ withTimezone: true }).$onUpdate(() => new Date()),
   }),
   (t) => [
-    index("created_by_idx").on(t.createdById),
-    index("name_idx").on(t.name),
+    index("limecab_created_by_idx").on(t.createdById),
+    index("limecab_name_idx").on(t.name),
   ],
 );
 
@@ -72,7 +74,7 @@ export const accounts = createTable(
   }),
   (t) => [
     primaryKey({ columns: [t.provider, t.providerAccountId] }),
-    index("account_user_id_idx").on(t.userId),
+    index("limecab_account_user_id_idx").on(t.userId),
   ],
 );
 
@@ -90,7 +92,7 @@ export const sessions = createTable(
       .references(() => users.id),
     expires: d.timestamp({ mode: "date", withTimezone: true }).notNull(),
   }),
-  (t) => [index("t_user_id_idx").on(t.userId)],
+  (t) => [index("limecab_t_user_id_idx").on(t.userId)],
 );
 
 export const sessionsRelations = relations(sessions, ({ one }) => ({
@@ -106,3 +108,109 @@ export const verificationTokens = createTable(
   }),
   (t) => [primaryKey({ columns: [t.identifier, t.token] })],
 );
+
+/**
+ * LimeCab trips. One row per ride request. Money is integer cents — never
+ * float. Fare columns mirror `Fare` in `@/lib/limecab/domain` and are computed
+ * server-side at request time so quote and receipt are the same number.
+ */
+export const trips = createTable(
+  "trip",
+  (d) => ({
+    id: d
+      .varchar({ length: 255 })
+      .notNull()
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: d
+      .varchar({ length: 255 })
+      .notNull()
+      .references(() => users.id),
+    status: d
+      .varchar({ length: 16 })
+      .$type<TripStatus>()
+      .default("requested")
+      .notNull(),
+
+    pickupAddress: d.varchar({ length: 512 }).notNull(),
+    pickupLatitude: d.doublePrecision(),
+    pickupLongitude: d.doublePrecision(),
+    pickupMeetingPoint: d.varchar({ length: 256 }),
+
+    destinationAddress: d.varchar({ length: 512 }).notNull(),
+    destinationLatitude: d.doublePrecision(),
+    destinationLongitude: d.doublePrecision(),
+
+    productId: d.varchar({ length: 64 }).notNull(),
+
+    baseCents: d.integer().notNull(),
+    distanceCents: d.integer().notNull(),
+    timeCents: d.integer().notNull(),
+    bookingCents: d.integer().notNull(),
+    totalCents: d.integer().notNull(),
+
+    distanceMiles: d.doublePrecision().notNull(),
+    tripMinutes: d.integer().notNull(),
+    arrivalMinutes: d.integer().notNull(),
+    pickupPin: d.varchar({ length: 8 }).notNull(),
+
+    driverId: d.varchar({ length: 255 }).references(() => drivers.id),
+
+    requestIdempotencyKey: d.varchar({ length: 255 }),
+
+    requestedAt: d
+      .timestamp({ withTimezone: true })
+      .$defaultFn(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    cancelledAt: d.timestamp({ withTimezone: true }),
+    completedAt: d.timestamp({ withTimezone: true }),
+    createdAt: d
+      .timestamp({ withTimezone: true })
+      .$defaultFn(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    updatedAt: d.timestamp({ withTimezone: true }).$onUpdate(() => new Date()),
+  }),
+  (t) => [
+    index("limecab_trip_user_id_idx").on(t.userId),
+    index("limecab_trip_status_idx").on(t.status),
+    index("limecab_trip_requested_at_idx").on(t.requestedAt),
+    unique("limecab_trip_request_idempotency_unique").on(t.requestIdempotencyKey),
+  ],
+);
+
+/** The driver side of a trip. A driver is a user who accepts rides. */
+export const drivers = createTable(
+  "driver",
+  (d) => ({
+    id: d
+      .varchar({ length: 255 })
+      .notNull()
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: d
+      .varchar({ length: 255 })
+      .notNull()
+      .references(() => users.id),
+    name: d.varchar({ length: 128 }).notNull(),
+    /** Stars ×100 so ratings stay integral, like money. */
+    ratingHundredths: d.integer().default(500).notNull(),
+    vehicleMake: d.varchar({ length: 64 }).notNull(),
+    vehicleModel: d.varchar({ length: 64 }).notNull(),
+    vehicleColor: d.varchar({ length: 32 }).notNull(),
+    vehiclePlate: d.varchar({ length: 16 }).notNull(),
+    available: d.boolean().default(false).notNull(),
+    createdAt: d
+      .timestamp({ withTimezone: true })
+      .$defaultFn(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  }),
+  (t) => [
+    unique("limecab_driver_user_id_unique").on(t.userId),
+    index("limecab_driver_available_idx").on(t.available),
+  ],
+);
+
+export const tripsRelations = relations(trips, ({ one }) => ({
+  user: one(users, { fields: [trips.userId], references: [users.id] }),
+  driver: one(drivers, { fields: [trips.driverId], references: [drivers.id] }),
+}));

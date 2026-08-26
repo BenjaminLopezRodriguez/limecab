@@ -39,11 +39,11 @@ export function CompletionPanel({
 }) {
   return (
     <section className={cn("flex flex-col", className)}>
-      <h2 className="text-[19px] leading-snug font-medium tracking-tight text-balance">
+      <h2 className="text-[22px] leading-snug font-semibold tracking-[-0.02em] text-balance">
         {headline}
       </h2>
       {summary ? (
-        <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">
+        <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed tabular-nums">
           {summary}
         </p>
       ) : null}
@@ -68,7 +68,7 @@ export function CompletionPanel({
             <p className="text-[15px] font-medium tracking-tight">
               {totalLabel}
             </p>
-            <p className="ml-auto text-[17px] font-medium tabular-nums">
+            <p className="ml-auto text-[28px] leading-none font-semibold tracking-[-0.02em] tabular-nums">
               {formatMoney(totalCents, currency)}
             </p>
           </div>

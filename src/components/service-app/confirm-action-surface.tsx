@@ -4,7 +4,6 @@ import { useState, type ReactNode } from "react";
 
 import { AdaptiveSurface } from "@/components/service-app/adaptive-surface";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
 /**
  * ConfirmActionSurface — one high-consequence question about the current task.
@@ -38,7 +37,8 @@ export function ConfirmActionSurface({
   title: string;
   description?: string;
   confirmLabel: string;
-  cancelLabel?: string;
+  /** Null for an acknowledgement: one question, one button. */
+  cancelLabel?: string | null;
   onConfirm: () => void | Promise<unknown>;
   onCancel?: () => void;
   /** Optional slot between the description and the actions. */
@@ -98,16 +98,16 @@ export function ConfirmActionSurface({
       >
         {busy ? "Working…" : confirmLabel}
       </Button>
-      <Button
-        variant="ghost"
-        className={cn(
-          "text-muted-foreground border-border h-11 w-full rounded-xl border",
-        )}
-        disabled={busy}
-        onClick={dismiss}
-      >
-        {cancelLabel}
-      </Button>
+      {cancelLabel === null ? null : (
+        <Button
+          variant="ghost"
+          className="text-muted-foreground border-border h-11 w-full rounded-xl border"
+          disabled={busy}
+          onClick={dismiss}
+        >
+          {cancelLabel}
+        </Button>
+      )}
     </AdaptiveSurface.Interrupt>
   );
 }

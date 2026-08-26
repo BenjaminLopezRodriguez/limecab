@@ -22,18 +22,30 @@ import { cn } from "@/lib/utils";
 export function ProviderEta({
   label,
   value,
+  hero = false,
   className,
 }: {
   label?: string | null;
   value: string;
+  /** The metric is the answer to the scene's question — size it like one. */
+  hero?: boolean;
   className?: string;
 }) {
   return (
     <p className={cn("text-sm", className)}>
       {label ? (
-        <span className="text-muted-foreground block">{label}</span>
+        <span className="text-muted-foreground block text-[11px] tracking-[0.12em] uppercase">
+          {label}
+        </span>
       ) : null}
-      <span className="text-[17px] font-medium tracking-tight tabular-nums">
+      <span
+        className={cn(
+          "block tabular-nums",
+          hero
+            ? "text-[34px] leading-none font-semibold tracking-[-0.03em]"
+            : "text-[17px] font-medium tracking-tight",
+        )}
+      >
         {value}
       </span>
     </p>
@@ -113,6 +125,16 @@ export function ServiceMilestones({
  * `actions` is a slot — cancellation, "contact provider", "view receipt" and
  * anything else product-specific belongs to the consuming app, not here.
  */
+/** States whose estimate is a duration band or a phrase, not a live metric. */
+const BAND_STATES = new Set<ServiceStatus["state"]>([
+  "pending",
+  "matching",
+  "completing",
+  "complete",
+  "cancelled",
+  "failed",
+]);
+
 export function ServiceStatusPanel({
   status,
   labels,
@@ -130,31 +152,41 @@ export function ServiceStatusPanel({
   className?: string;
 }) {
   const view = serviceStatusView(status, labels);
+  // A band ("usually under a minute") is not an answer; an arrival time or a
+  // remaining time is. Only the answer gets hero weight.
+  const hero = !BAND_STATES.has(status.state);
 
   return (
     <div className={className}>
-      <p className="flex items-center gap-2 text-[17px] leading-snug font-medium tracking-tight">
-        <span
-          className={cn(
-            "size-2 shrink-0 rounded-full",
-            view.live ? "bg-foreground" : "bg-muted-foreground/40",
-          )}
-          aria-hidden="true"
-        />
-        {view.headline}
-      </p>
+      {/* One live region for the whole answer: the headline and the metric
+          change together, and both are minute-granular. */}
+      <div aria-live="polite">
+        <p className="flex items-center gap-2 text-[17px] leading-snug font-medium tracking-tight">
+          <span
+            className={cn(
+              "size-2 shrink-0 rounded-full",
+              view.live ? "bg-foreground" : "bg-muted-foreground/40",
+            )}
+            aria-hidden="true"
+          />
+          {view.headline}
+        </p>
 
-      {view.detail ? (
-        <p className="mt-2 text-[15px] leading-relaxed">{view.detail}</p>
-      ) : null}
+        {view.estimate ? (
+          <ProviderEta
+            className={hero ? "mt-3" : "mt-2"}
+            label={view.estimateLabel}
+            value={view.estimate}
+            hero={hero}
+          />
+        ) : null}
 
-      {view.estimate ? (
-        <ProviderEta
-          className="mt-4"
-          label={view.estimateLabel}
-          value={view.estimate}
-        />
-      ) : null}
+        {view.detail ? (
+          <p className="text-muted-foreground mt-2 text-[15px] leading-relaxed">
+            {view.detail}
+          </p>
+        ) : null}
+      </div>
 
       {subtitle ? (
         <p className="text-muted-foreground mt-4 truncate text-sm">{subtitle}</p>

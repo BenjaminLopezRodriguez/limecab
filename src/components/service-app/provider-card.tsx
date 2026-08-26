@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Star, User } from "lucide-react";
+import { Star } from "lucide-react";
 
 import type { Provider } from "@/lib/service-app/services";
 import { cn } from "@/lib/utils";
@@ -12,11 +12,15 @@ import { cn } from "@/lib/utils";
  * A driver, a courier, a technician, a guard, a carrier. The component takes
  * a `Provider` and slots; it never inspects an id and never names a vertical.
  * `detail` is whatever identifies them in this product — a plate, a
- * certification level, a vehicle.
+ * certification level, a vehicle. `badge` is the single hardest-working
+ * identifier, sized to be read at arm's length: a plate, a unit number.
+ *
+ * No avatar image is required — initials are composed, never downloaded.
  */
 export function ProviderCard({
   provider,
   eta,
+  badge,
   actions,
   compact = false,
   className,
@@ -24,6 +28,8 @@ export function ProviderCard({
   provider: Provider;
   /** Short status line, e.g. an ETA phrase supplied by the app. */
   eta?: string | null;
+  /** The glanceable identifier, rendered large beneath the detail line. */
+  badge?: ReactNode;
   /** Contact affordances: call, message, share. */
   actions?: ReactNode;
   compact?: boolean;
@@ -32,57 +38,80 @@ export function ProviderCard({
   return (
     <div
       className={cn(
-        "bg-card ring-border flex items-center gap-3 rounded-2xl ring-1",
+        "bg-card ring-border rounded-2xl ring-1",
         compact ? "p-3" : "p-4",
         className,
       )}
     >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "bg-accent text-muted-foreground flex shrink-0 items-center justify-center overflow-hidden rounded-full",
-          compact ? "size-10" : "size-12",
-        )}
-      >
-        {provider.avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={provider.avatarUrl}
-            alt=""
-            className="size-full object-cover"
-          />
-        ) : (
-          <User className="size-5" strokeWidth={1.7} />
-        )}
-      </span>
+      <div className="flex items-center gap-3">
+        <span
+          aria-hidden="true"
+          className={cn(
+            "bg-accent text-accent-foreground flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold tracking-tight",
+            compact ? "size-10 text-sm" : "size-12 text-[17px]",
+          )}
+        >
+          {provider.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={provider.avatarUrl}
+              alt=""
+              className="size-full object-cover"
+            />
+          ) : (
+            initials(provider.name)
+          )}
+        </span>
 
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[15px] font-medium tracking-tight">
-          {provider.name}
-        </p>
-        {provider.detail ? (
-          <p className="text-muted-foreground truncate text-sm">
-            {provider.detail}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[17px] leading-tight font-semibold tracking-tight">
+            {provider.name}
           </p>
-        ) : null}
-        {eta ? (
-          <p className="text-muted-foreground mt-0.5 text-sm tabular-nums">
-            {eta}
-          </p>
-        ) : null}
+          {typeof provider.rating === "number" ? (
+            <span
+              className="text-muted-foreground mt-0.5 flex items-center gap-1 text-sm tabular-nums"
+              aria-label={`Rated ${provider.rating.toFixed(1)} out of 5`}
+            >
+              <Star
+                className="size-3.5 fill-current"
+                strokeWidth={0}
+                aria-hidden="true"
+              />
+              {provider.rating.toFixed(1)}
+            </span>
+          ) : null}
+          {eta ? (
+            <p className="text-muted-foreground mt-0.5 text-sm tabular-nums">
+              {eta}
+            </p>
+          ) : null}
+        </div>
+
+        {actions ? <div className="flex shrink-0 gap-2">{actions}</div> : null}
       </div>
 
-      {typeof provider.rating === "number" ? (
-        <span
-          className="text-muted-foreground flex shrink-0 items-center gap-1 text-sm tabular-nums"
-          aria-label={`Rated ${provider.rating.toFixed(1)} out of 5`}
-        >
-          <Star className="size-3.5" strokeWidth={2} aria-hidden="true" />
-          {provider.rating.toFixed(1)}
-        </span>
+      {provider.detail || badge ? (
+        <div className="border-border mt-3 flex items-center justify-between gap-3 border-t pt-3">
+          {provider.detail ? (
+            <p className="min-w-0 flex-1 truncate text-[15px] leading-tight font-medium tracking-tight">
+              {provider.detail}
+            </p>
+          ) : (
+            <span />
+          )}
+          {badge ? <div className="shrink-0">{badge}</div> : null}
+        </div>
       ) : null}
-
-      {actions ? <div className="flex shrink-0 gap-1">{actions}</div> : null}
     </div>
   );
+}
+
+/** Up to two initials from a display name. */
+function initials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join("");
 }

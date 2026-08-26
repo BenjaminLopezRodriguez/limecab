@@ -17,7 +17,9 @@
     "lint:fix": "next lint --fix",
     "preview": "next build && next start",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "test": "node --experimental-strip-types --test src/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "db:seed": "esbuild src/server/limecab/seed-drivers.ts --bundle --platform=node --format=esm --packages=external --outfile=node_modules/.cache/limecab-seed.mjs && node --env-file=.env node_modules/.cache/limecab-seed.mjs"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.7.2",

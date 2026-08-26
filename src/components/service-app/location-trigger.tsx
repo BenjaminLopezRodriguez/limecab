@@ -15,22 +15,29 @@ export function LocationTrigger({
   label,
   hint = "Where to?",
   onPress,
+  size = "md",
   className,
 }: {
   /** The chosen address, or empty to show the hint. */
   label?: string;
   hint?: string;
   onPress: () => void;
+  /** "lg" is the primary affordance of a launcher screen. */
+  size?: "md" | "lg";
   className?: string;
 }) {
   const empty = !label;
+  const large = size === "lg";
 
   return (
     <button
       type="button"
       onClick={onPress}
       className={cn(
-        "bg-card ring-border flex h-12 w-full items-center gap-3 rounded-full px-4 text-left text-[15px] ring-1",
+        "bg-card ring-border flex w-full items-center gap-3 rounded-full text-left ring-1",
+        large
+          ? "h-14 px-5 text-[17px] font-medium tracking-tight shadow-sm"
+          : "h-12 px-4 text-[15px]",
         "hover:ring-ring/40",
         "focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
         "touch-manipulation",
@@ -38,7 +45,10 @@ export function LocationTrigger({
       )}
     >
       <Search
-        className="text-muted-foreground size-4 shrink-0"
+        className={cn(
+          "text-muted-foreground shrink-0",
+          large ? "size-5" : "size-4",
+        )}
         strokeWidth={1.75}
         aria-hidden="true"
       />

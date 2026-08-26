@@ -45,3 +45,9 @@ yarn-error.log*
 # idea files
 .idea
 .env*
+
+# playwright mcp scratch output
+.playwright-mcp/
+
+# orchestration bookkeeping, not product
+.claude/memory.md

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { MapPin } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import type {
@@ -25,6 +26,10 @@ export function LocationSearch({
   className,
   layout = "scene",
   inputRef,
+  before,
+  after,
+  fieldsClassName,
+  inputClassName,
 }: {
   adapter: GeocodeAdapter;
   value?: string;
@@ -35,11 +40,23 @@ export function LocationSearch({
   /** "scene" renders results in flow; "overlay" floats them over the field. */
   layout?: "overlay" | "scene";
   inputRef?: React.Ref<HTMLInputElement>;
+  /**
+   * Slots inside the field group, above and below the input. They exist so a
+   * caller can present the input as one field of a connected set — an
+   * origin/destination pair, say — without the results list landing between
+   * the fields.
+   */
+  before?: React.ReactNode;
+  after?: React.ReactNode;
+  fieldsClassName?: string;
+  inputClassName?: string;
 }) {
   const listId = React.useId();
   const [text, setText] = React.useState(value);
   const [lastValue, setLastValue] = React.useState(value);
-  const [suggestions, setSuggestions] = React.useState<LocationSuggestion[]>([]);
+  const [suggestions, setSuggestions] = React.useState<LocationSuggestion[]>(
+    [],
+  );
   const [open, setOpen] = React.useState(false);
   const [active, setActive] = React.useState(-1);
 
@@ -90,7 +107,10 @@ export function LocationSearch({
     setSuggestions([]);
     try {
       const resolved = await adapter.retrieve(suggestion.id);
-      onSelect({ ...resolved, address: resolved.address || suggestion.address });
+      onSelect({
+        ...resolved,
+        address: resolved.address || suggestion.address,
+      });
     } catch {
       onSelect({ address: suggestion.address });
     }
@@ -126,35 +146,39 @@ export function LocationSearch({
 
   return (
     <div className={cn("relative", className)}>
-      <Input
-        type="text"
-        role="combobox"
-        aria-expanded={listOpen}
-        aria-controls={listId}
-        aria-autocomplete="list"
-        aria-label="Address"
-        aria-activedescendant={
-          listOpen && active >= 0 ? `${listId}-${active}` : undefined
-        }
-        ref={inputRef}
-        autoComplete="off"
-        autoFocus={autoFocus}
-        enterKeyHint="search"
-        placeholder={placeholder}
-        value={text}
-        onChange={(event) => {
-          setText(event.target.value);
-          setOpen(true);
-          setActive(-1);
-        }}
-        onFocus={() => setOpen(true)}
-        onBlur={() => {
-          if (layout === "scene") return;
-          window.setTimeout(() => setOpen(false), 120);
-        }}
-        onKeyDown={onKeyDown}
-        className="h-12 rounded-xl text-[15px]"
-      />
+      <div className={cn("relative", fieldsClassName)}>
+        {before}
+        <Input
+          type="text"
+          role="combobox"
+          aria-expanded={listOpen}
+          aria-controls={listId}
+          aria-autocomplete="list"
+          aria-label="Address"
+          aria-activedescendant={
+            listOpen && active >= 0 ? `${listId}-${active}` : undefined
+          }
+          ref={inputRef}
+          autoComplete="off"
+          autoFocus={autoFocus}
+          enterKeyHint="search"
+          placeholder={placeholder}
+          value={text}
+          onChange={(event) => {
+            setText(event.target.value);
+            setOpen(true);
+            setActive(-1);
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => {
+            if (layout === "scene") return;
+            window.setTimeout(() => setOpen(false), 120);
+          }}
+          onKeyDown={onKeyDown}
+          className={cn("h-12 rounded-xl text-[15px]", inputClassName)}
+        />
+        {after}
+      </div>
       {listOpen ? (
         <ul
           id={listId}
@@ -162,7 +186,7 @@ export function LocationSearch({
           aria-label="Address suggestions"
           className={
             layout === "scene"
-              ? "mt-3 overflow-hidden"
+              ? "-mx-2 mt-2 overflow-hidden"
               : "bg-popover border-border absolute top-[calc(100%+6px)] right-0 left-0 z-20 overflow-hidden rounded-2xl border py-1 shadow-lg"
           }
         >
@@ -180,16 +204,26 @@ export function LocationSearch({
                 onClick={() => void choose(suggestion)}
                 onMouseEnter={() => setActive(index)}
                 className={cn(
-                  "flex min-h-11 w-full flex-col justify-center px-4 py-2 text-left",
+                  "flex min-h-14 w-full items-center gap-3 rounded-2xl px-2 py-2 text-left",
                   index === active && "bg-accent",
                 )}
               >
-                <span className="truncate text-[15px]">{suggestion.address}</span>
-                {suggestion.context ? (
-                  <span className="text-muted-foreground truncate text-xs">
-                    {suggestion.context}
+                <span
+                  aria-hidden="true"
+                  className="bg-muted text-muted-foreground flex size-10 shrink-0 items-center justify-center rounded-full"
+                >
+                  <MapPin className="size-[18px]" strokeWidth={1.75} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[15px] font-medium tracking-tight">
+                    {suggestion.address}
                   </span>
-                ) : null}
+                  {suggestion.context ? (
+                    <span className="text-muted-foreground block truncate text-sm">
+                      {suggestion.context}
+                    </span>
+                  ) : null}
+                </span>
               </button>
             </li>
           ))}
