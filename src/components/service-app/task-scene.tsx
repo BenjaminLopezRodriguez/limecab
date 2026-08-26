@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ComponentProps, ReactNode, RefObject } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft01Icon } from "@hugeicons/core-free-icons";
 
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 import {
   Dialog,
   DialogContent,
@@ -46,7 +47,10 @@ export function TaskScene({
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) onDismiss();
+        // Parent-driven close (progressing to another scene) must not be
+        // treated as a user dismiss — that would fire `cancel_search` and
+        // unwind the flow we just entered.
+        if (!next && open) onDismiss();
       }}
     >
       {/* A selection inside the scene closes it, and the browser then delivers
@@ -90,9 +94,9 @@ export function TaskSceneHeader({
       <button
         type="button"
         onClick={onBack}
-        className="focus-visible:ring-ring inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg focus-visible:ring-2 focus-visible:outline-none"
+        className="focus-visible:ring-ring inline-flex min-h-11 min-w-11 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:outline-none"
       >
-        <ArrowLeft className="size-5" strokeWidth={1.75} />
+        <Icon icon={ArrowLeft01Icon} size={22} />
         <span className="sr-only">{backLabel}</span>
       </button>
       <p className="min-w-0 truncate text-[17px] font-medium tracking-tight">
@@ -108,7 +112,7 @@ export function PrimaryAction({
   ...props
 }: ComponentProps<typeof Button>) {
   return (
-    <Button className={cn("h-12 w-full rounded-xl", className)} {...props} />
+    <Button className={cn("h-12 w-full", className)} {...props} />
   );
 }
 

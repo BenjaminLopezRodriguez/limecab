@@ -1,13 +1,15 @@
 "use client";
 
-import { Star } from "lucide-react";
+import { StarIcon } from "@hugeicons/core-free-icons";
 
 import { CompletionPanel } from "@/components/service-app/completion-panel";
 import { PrimaryAction } from "@/components/service-app/task-scene";
 import { DetailButton } from "@/components/limecab/limecab-parts";
+import { Icon } from "@/components/ui/icon";
 import { RouteRail } from "@/components/limecab/limecab-status-scene";
 import type { DetailKind } from "@/components/limecab/limecab-interrupts";
 import { TIP_PRESETS, type Trip } from "@/lib/limecab/domain";
+import { courierProofLabel } from "@/lib/limecab/courier";
 import { formatMoney } from "@/lib/service-app/services";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +24,9 @@ export function LimeCabCompleteScene({
   onTip,
   onDone,
   onOpenDetail,
+  headline = "You've arrived",
+  totalLabel = "Trip total",
+  providerNoun = "your driver",
 }: {
   pickupLine: string;
   destinationLine: string;
@@ -32,15 +37,18 @@ export function LimeCabCompleteScene({
   onTip: (next: number | null) => void;
   onDone: () => void;
   onOpenDetail: (kind: DetailKind) => void;
+  headline?: string;
+  totalLabel?: string;
+  providerNoun?: string;
 }) {
   const fare = trip?.fare;
 
   return (
     <CompletionPanel
-      headline="You've arrived"
+      headline={headline}
       summary={`${trip?.tripMinutes ?? 0} min · ${trip?.distanceMiles ?? 0} mi`}
       totalCents={(fare?.totalCents ?? 0) + (tipCents ?? 0)}
-      totalLabel="Trip total"
+      totalLabel={totalLabel}
       lines={
         fare
           ? [
@@ -63,8 +71,21 @@ export function LimeCabCompleteScene({
       detail={
         <div className="flex flex-col gap-4">
           <RouteRail pickup={pickupLine} destination={destinationLine} />
+          {trip?.courier ? (
+            <div className="bg-muted/60 rounded-2xl p-4">
+              <p className="text-[15px] font-medium tracking-tight">
+                {courierProofLabel(trip.courier.proof)}
+              </p>
+              <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
+                {trip.courier.packageCount === 1
+                  ? "1 package"
+                  : `${trip.courier.packageCount} packages`}{" "}
+                · {trip.courier.recipientName}
+              </p>
+            </div>
+          ) : null}
           <RatePanel
-            name={trip?.driver.name ?? "your driver"}
+            name={trip?.driver.name ?? providerNoun}
             value={rating}
             onRate={onRate}
           />
@@ -111,9 +132,9 @@ function TipPanel({
               aria-pressed={selected}
               onClick={() => onTip(selected ? null : amount)}
               className={cn(
-                "ring-border focus-visible:ring-ring h-12 flex-1 rounded-xl text-[15px] font-medium tabular-nums ring-1 focus-visible:ring-2 focus-visible:outline-none",
+                "ring-border focus-visible:ring-ring h-12 flex-1 rounded-full text-[15px] font-semibold tabular-nums ring-1 focus-visible:ring-2 focus-visible:outline-none",
                 selected
-                  ? "bg-accent ring-primary text-foreground ring-2"
+                  ? "bg-accent ring-foreground text-foreground ring-2"
                   : "bg-card active:bg-accent",
               )}
             >
@@ -155,14 +176,14 @@ function RatePanel({
             onClick={() => onRate(star)}
             className="focus-visible:ring-ring flex size-12 items-center justify-center rounded-xl focus-visible:ring-2 focus-visible:outline-none"
           >
-            <Star
+            <Icon
+              icon={StarIcon}
+              size={32}
               className={cn(
-                "size-8",
                 value !== null && star <= value
-                  ? "fill-primary text-primary"
+                  ? "text-lime"
                   : "text-muted-foreground",
               )}
-              strokeWidth={1.5}
             />
           </button>
         ))}

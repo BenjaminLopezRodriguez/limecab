@@ -1,16 +1,18 @@
-import { type ComponentType, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { redirect } from "next/navigation";
 import {
-  Inbox,
-  LifeBuoy,
-  Mail,
-  ShieldCheck,
-  Star,
-  User,
-  Wallet,
-} from "lucide-react";
+  CustomerSupportIcon,
+  InboxIcon,
+  Mail01Icon,
+  Shield01Icon,
+  StarIcon,
+  UserIcon,
+  Wallet01Icon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 
 import { TabPage } from "@/components/limecab/limecab-shell";
+import { Icon } from "@/components/ui/icon";
 import { PAYMENT_METHODS, RIDER, SAVED_PLACES } from "@/lib/limecab/mock";
 import { auth } from "@/server/auth";
 
@@ -21,11 +23,11 @@ import { auth } from "@/server/auth";
  * tappable and isn't is a bug wearing a design.
  */
 const SHORTCUTS = [
-  { label: "Help", icon: LifeBuoy },
-  { label: "Wallet", icon: Wallet },
-  { label: "Safety", icon: ShieldCheck },
-  { label: "Inbox", icon: Inbox },
-] satisfies { label: string; icon: ComponentType<{ className?: string }> }[];
+  { label: "Help", icon: CustomerSupportIcon },
+  { label: "Wallet", icon: Wallet01Icon },
+  { label: "Safety", icon: Shield01Icon },
+  { label: "Inbox", icon: InboxIcon },
+] satisfies { label: string; icon: IconSvgElement }[];
 
 export default async function ProfilePage() {
   const session = await auth();
@@ -41,8 +43,8 @@ export default async function ProfilePage() {
           name long enough to wrap must not collide with a pulled-up circle. */}
       <div className="-mt-3 flex items-center gap-3">
         <div className="flex min-w-0 flex-1 flex-wrap gap-2">
-          <Chip icon={Star} label={RIDER.rating.toFixed(2)} />
-          {email ? <Chip icon={Mail} label={email} /> : null}
+          <Chip icon={StarIcon} label={RIDER.rating.toFixed(2)} />
+          {email ? <Chip icon={Mail01Icon} label={email} /> : null}
         </div>
         <span
           aria-hidden="true"
@@ -54,9 +56,10 @@ export default async function ProfilePage() {
 
       {profile ? (
         <div className="bg-card ring-border mt-6 flex min-h-14 items-center gap-3 rounded-2xl px-4 py-3 ring-1">
-          <User
-            className="text-muted-foreground size-5 shrink-0"
-            strokeWidth={1.7}
+          <Icon
+            icon={UserIcon}
+            size={20}
+            className="text-muted-foreground shrink-0"
             aria-hidden="true"
           />
           <div className="min-w-0 flex-1">
@@ -71,14 +74,15 @@ export default async function ProfilePage() {
       ) : null}
 
       <div className="mt-3 grid grid-cols-2 gap-3">
-        {SHORTCUTS.map(({ label, icon: Icon }) => (
+        {SHORTCUTS.map(({ label, icon }) => (
           <div
             key={label}
             className="bg-card ring-border flex h-[5.5rem] flex-col justify-between rounded-2xl p-4 ring-1"
           >
             <Icon
-              className="text-muted-foreground size-6"
-              strokeWidth={1.7}
+              icon={icon}
+              size={24}
+              className="text-muted-foreground"
               aria-hidden="true"
             />
             <div className="flex items-baseline justify-between gap-2">
@@ -107,7 +111,7 @@ export default async function ProfilePage() {
       {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
       <a
         href="/api/auth/signout"
-        className="ring-border focus-visible:ring-ring active:bg-accent mt-7 flex min-h-14 items-center justify-center rounded-2xl text-[15px] font-medium tracking-tight ring-1 focus-visible:ring-2 focus-visible:outline-none"
+        className="ring-border focus-visible:ring-ring active:bg-accent mt-7 flex min-h-14 items-center justify-center rounded-full text-[15px] font-semibold tracking-tight ring-1 focus-visible:ring-2 focus-visible:outline-none"
       >
         Sign out
       </a>
@@ -116,15 +120,15 @@ export default async function ProfilePage() {
 }
 
 function Chip({
-  icon: Icon,
+  icon,
   label,
 }: {
-  icon: ComponentType<{ className?: string; strokeWidth?: number }>;
+  icon: IconSvgElement;
   label: string;
 }) {
   return (
-    <span className="bg-card ring-border flex max-w-full items-center gap-1.5 rounded-full ring-1 px-3 py-1.5 text-[13px] font-medium tracking-tight">
-      <Icon className="size-3.5 shrink-0" strokeWidth={2} aria-hidden="true" />
+    <span className="bg-card ring-border flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium tracking-tight ring-1">
+      <Icon icon={icon} size={14} className="shrink-0" aria-hidden="true" />
       <span className="truncate tabular-nums">{label}</span>
     </span>
   );

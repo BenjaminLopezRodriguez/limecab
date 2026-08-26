@@ -1,12 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, CreditCard, Share2 } from "lucide-react";
+import {
+  CreditCardIcon,
+  Share05Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
 
 import { AdaptiveSurface } from "@/components/service-app/adaptive-surface";
 import { ConfirmActionSurface } from "@/components/service-app/confirm-action-surface";
 import { PrimaryAction } from "@/components/service-app/task-scene";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 import { DetailLines } from "@/components/limecab/limecab-parts";
 import {
   vehicleLabel,
@@ -190,9 +195,10 @@ export function LimeCabDetailSurface({
                 onClick={() => onSelectPayment(method.id)}
                 className="focus-visible:ring-ring active:bg-accent flex min-h-14 w-full items-center gap-3 px-4 text-left first:rounded-t-2xl last:rounded-b-2xl focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
               >
-                <CreditCard
-                  className="text-muted-foreground size-4 shrink-0"
-                  strokeWidth={1.7}
+                <Icon
+                  icon={CreditCardIcon}
+                  size={16}
+                  className="text-muted-foreground shrink-0"
                   aria-hidden="true"
                 />
                 <span className="min-w-0 flex-1">
@@ -204,9 +210,10 @@ export function LimeCabDetailSurface({
                   </span>
                 </span>
                 {method.id === paymentId ? (
-                  <Check
-                    className="text-primary size-5 shrink-0"
-                    strokeWidth={2}
+                  <Icon
+                    icon={Tick02Icon}
+                    size={20}
+                    className="text-lime shrink-0"
                     aria-hidden="true"
                   />
                 ) : null}
@@ -366,10 +373,10 @@ function ShareTripButton({
   return (
     <Button
       variant="ghost"
-      className="border-border h-12 w-full rounded-xl"
+      className="border-border h-12 w-full"
       onClick={share}
     >
-      <Share2 className="size-4" strokeWidth={1.7} aria-hidden="true" />
+      <Icon icon={Share05Icon} size={16} aria-hidden="true" />
       Share trip details
     </Button>
   );

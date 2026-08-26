@@ -2,18 +2,31 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Moon, Navigation, Power } from "lucide-react";
+import {
+  ArrowRight01Icon,
+  Moon02Icon,
+  Navigation03Icon,
+  PowerIcon,
+} from "@hugeicons/core-free-icons";
 
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
+import { isCourierProduct } from "@/lib/limecab/courier";
 import { formatMoney } from "@/lib/service-app/services";
 import { api } from "@/trpc/react";
 
 /** Ride states a driver can be mid-job in, in the words a driver uses. */
-const ACTIVE_LABEL: Record<string, string> = {
+const RIDE_ACTIVE_LABEL: Record<string, string> = {
   matched: "Head to pickup",
   arriving: "At the curb",
   in_progress: "Rider on board",
+};
+
+const COURIER_ACTIVE_LABEL: Record<string, string> = {
+  matched: "Head to merchant",
+  arriving: "At pickup",
+  in_progress: "Package in transit",
 };
 
 export default function DriverInboxPage() {
@@ -56,7 +69,7 @@ export default function DriverInboxPage() {
       <section
         className={
           available
-            ? "bg-accent text-accent-foreground ring-primary/40 rounded-3xl p-5 ring-2"
+            ? "bg-accent text-accent-foreground ring-lime/40 rounded-3xl p-5 ring-2"
             : "bg-muted text-foreground ring-border rounded-3xl p-5 ring-1"
         }
       >
@@ -64,7 +77,7 @@ export default function DriverInboxPage() {
           <span
             className={
               available
-                ? "bg-primary size-3 shrink-0 animate-pulse rounded-full"
+                ? "bg-lime size-3 shrink-0 animate-pulse rounded-full"
                 : "bg-muted-foreground/60 size-3 shrink-0 rounded-full"
             }
             aria-hidden="true"
@@ -95,7 +108,7 @@ export default function DriverInboxPage() {
           disabled={setAvailable.isPending}
           onClick={() => setAvailable.mutate({ available: !available })}
         >
-          <Power className="size-5" aria-hidden="true" strokeWidth={2} />
+          <Icon icon={PowerIcon} size={20} aria-hidden="true" />
           {available ? "Go offline" : "Go online"}
         </Button>
       </section>
@@ -109,14 +122,14 @@ export default function DriverInboxPage() {
         {open.length === 0 ? (
           available ? (
             <Empty
-              icon={<Navigation className="size-6" aria-hidden="true" />}
+              icon={<Icon icon={Navigation03Icon} size={24} aria-hidden="true" />}
               title="Waiting for requests"
             >
               This list updates on its own — no need to refresh.
             </Empty>
           ) : (
             <Empty
-              icon={<Moon className="size-6" aria-hidden="true" />}
+              icon={<Icon icon={Moon02Icon} size={24} aria-hidden="true" />}
               title="No rides come in while you’re offline"
             >
               Go online above and new requests will show up here.
@@ -140,6 +153,7 @@ export default function DriverInboxPage() {
                     </p>
                   </div>
                   <p className="mt-1 text-[15px] font-medium tabular-nums">
+                    {isCourierProduct(trip.productId) ? "Courier · " : null}
                     {trip.arrivalMinutes
                       ? `${trip.arrivalMinutes} min to pickup`
                       : "Pickup nearby"}
@@ -187,8 +201,10 @@ export default function DriverInboxPage() {
                   className="focus-visible:ring-ring flex min-h-16 items-center gap-3 px-5 py-4 focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="text-primary text-xs font-semibold tracking-[0.12em] uppercase">
-                      {ACTIVE_LABEL[trip.status] ?? trip.status}
+                    <p className="text-lime text-xs font-semibold tracking-[0.12em] uppercase">
+                      {(isCourierProduct(trip.productId)
+                        ? COURIER_ACTIVE_LABEL
+                        : RIDE_ACTIVE_LABEL)[trip.status] ?? trip.status}
                     </p>
                     <p className="mt-1 truncate text-[17px] font-medium tracking-tight">
                       {trip.destinationAddress}
@@ -200,8 +216,10 @@ export default function DriverInboxPage() {
                   <p className="shrink-0 text-[17px] font-semibold tabular-nums">
                     {formatMoney(trip.totalCents)}
                   </p>
-                  <ChevronRight
-                    className="text-muted-foreground size-5 shrink-0"
+                  <Icon
+                    icon={ArrowRight01Icon}
+                    size={20}
+                    className="text-muted-foreground shrink-0"
                     aria-hidden="true"
                   />
                 </Link>

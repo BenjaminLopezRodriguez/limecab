@@ -2,6 +2,11 @@ import { TRPCError } from "@trpc/server";
 import { and, desc, eq, isNull, notInArray } from "drizzle-orm";
 import { z } from "zod";
 
+import {
+  courierCompleteAllowed,
+  courierStartAllowed,
+  isCourierProduct,
+} from "@/lib/limecab/courier";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { drivers, trips } from "@/server/db/schema";
 import {
@@ -24,6 +29,10 @@ const tripIdInput = z.object({ tripId: z.string().min(1).max(255) });
 
 const advanceInput = tripIdInput.extend({
   action: z.enum(["arrive", "start", "complete"]),
+  pickupCode: z.string().max(8).optional(),
+  submittedPin: z.string().max(8).optional(),
+  leftAtDoor: z.boolean().optional(),
+  signatureCaptured: z.boolean().optional(),
 });
 
 export const driverRouter = createTRPCRouter({
@@ -103,8 +112,14 @@ export const driverRouter = createTRPCRouter({
       throw new TRPCError({ code: "NOT_FOUND" });
     }
 
-    // The PIN belongs to the rider until this driver actually owns the ride.
-    return { ...trip, pickupPin: isAssigned ? trip.pickupPin : null };
+    // Ride PINs are shown so the driver can read them back. Courier codes
+    // stay with the merchant and recipient — the driver types what they see.
+    const courier = isCourierProduct(trip.productId);
+    return {
+      ...trip,
+      pickupPin: isAssigned && !courier ? trip.pickupPin : null,
+      deliveryPin: null,
+    };
   }),
 
   accept: protectedProcedure
@@ -167,11 +182,50 @@ export const driverRouter = createTRPCRouter({
         });
       }
 
+      const courier = isCourierProduct(trip.productId);
+      if (courier && action === "start") {
+        const gate = courierStartAllowed(input.pickupCode, trip.pickupPin);
+        if (!gate.ok) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: gate.message,
+          });
+        }
+      }
+      if (courier && action === "complete") {
+        const proof =
+          trip.deliveryProof === "door" || trip.deliveryProof === "signature"
+            ? trip.deliveryProof
+            : "hand";
+        const gate = courierCompleteAllowed({
+          proof,
+          deliveryPin: trip.deliveryPin,
+          submittedPin: input.submittedPin,
+          leftAtDoor: input.leftAtDoor,
+          signatureCaptured: input.signatureCaptured,
+        });
+        if (!gate.ok) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: gate.message,
+          });
+        }
+      }
+
+      const now = new Date();
       const [advanced] = await ctx.db
         .update(trips)
         .set({
           status: to,
-          ...(to === "complete" ? { completedAt: new Date() } : {}),
+          ...(courier && to === "in_progress"
+            ? { pickupVerifiedAt: now }
+            : {}),
+          ...(to === "complete"
+            ? {
+                completedAt: now,
+                ...(courier ? { deliveryVerifiedAt: now } : {}),
+              }
+            : {}),
         })
         .where(
           and(

@@ -7,6 +7,10 @@ import {
   estimateFare,
   tripMinutes as computeTripMinutes,
 } from "@/lib/limecab/domain";
+import {
+  findBookableProduct,
+  isCourierProduct,
+} from "@/lib/limecab/courier";
 import { RIDE_PRODUCTS } from "@/lib/limecab/mock";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { trips } from "@/server/db/schema";
@@ -21,6 +25,13 @@ const locationInput = z.object({
   longitude: z.number().min(-180).max(180).optional(),
 });
 
+const courierInput = z.object({
+  recipientName: z.string().min(1).max(80),
+  recipientPhone: z.string().min(7).max(20),
+  packageCount: z.number().int().min(1).max(8),
+  proof: z.enum(["hand", "door", "signature"]),
+});
+
 const requestInput = z.object({
   pickup: locationInput.extend({
     meetingPoint: z.string().max(256).optional(),
@@ -29,6 +40,7 @@ const requestInput = z.object({
   productId: z.string().min(1).max(64),
   /** Client-supplied so a retried request cannot book two rides. */
   idempotencyKey: z.string().min(8).max(255),
+  courier: courierInput.optional(),
 });
 
 /** Spoken to the driver at the curb; never accepted from the client. */
@@ -63,11 +75,19 @@ export const tripRouter = createTRPCRouter({
         return existing;
       }
 
-      const product = RIDE_PRODUCTS.find((p) => p.id === input.productId);
+      const product = findBookableProduct(input.productId, RIDE_PRODUCTS);
       if (product?.status !== "available") {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "That ride option is not bookable.",
+          message: "That option is not bookable.",
+        });
+      }
+
+      const courier = isCourierProduct(product.id);
+      if (courier && !input.courier) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Courier trips need a recipient.",
         });
       }
 
@@ -76,6 +96,7 @@ export const tripRouter = createTRPCRouter({
       const miles = computeDistanceMiles(input.pickup, input.destination);
       const minutes = computeTripMinutes(miles);
       const fare = estimateFare(product, miles, minutes);
+      const proof = courier ? (input.courier?.proof ?? "hand") : null;
 
       const [trip] = await ctx.db
         .insert(trips)
@@ -99,6 +120,11 @@ export const tripRouter = createTRPCRouter({
           tripMinutes: minutes,
           arrivalMinutes: product.etaMinutes,
           pickupPin: pickupPin(),
+          recipientName: input.courier?.recipientName ?? null,
+          recipientPhone: input.courier?.recipientPhone ?? null,
+          packageCount: input.courier?.packageCount ?? 1,
+          deliveryProof: proof,
+          deliveryPin: proof === "hand" ? pickupPin() : null,
           requestIdempotencyKey: input.idempotencyKey,
         })
         .returning();

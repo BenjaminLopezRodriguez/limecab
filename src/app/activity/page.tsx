@@ -1,8 +1,10 @@
-import { redirect } from "next/navigation";
+import { Car01Icon, Location01Icon, Package01Icon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
-import { CarFront, MapPin } from "lucide-react";
+import { redirect } from "next/navigation";
 
 import { TabPage } from "@/components/limecab/limecab-shell";
+import { Icon } from "@/components/ui/icon";
+import { findBookableProduct, isCourierProduct } from "@/lib/limecab/courier";
 import { RIDE_PRODUCTS } from "@/lib/limecab/mock";
 import { formatMoney } from "@/lib/service-app/services";
 import { auth } from "@/server/auth";
@@ -30,7 +32,7 @@ function when(date: Date): string {
 }
 
 function productName(id: string): string {
-  return RIDE_PRODUCTS.find((product) => product.id === id)?.name ?? "Lime";
+  return findBookableProduct(id, RIDE_PRODUCTS)?.name ?? "Lime";
 }
 
 export default async function ActivityPage() {
@@ -71,7 +73,9 @@ export default async function ActivityPage() {
           </div>
         ) : (
           <ul className="mt-3 flex flex-col gap-3">
-            {trips.map((trip) => (
+            {trips.map((trip) => {
+              const courier = isCourierProduct(trip.productId);
+              return (
               <li
                 key={trip.id}
                 className="bg-card ring-border flex items-center gap-3 rounded-2xl p-3 ring-1"
@@ -80,22 +84,29 @@ export default async function ActivityPage() {
                   aria-hidden="true"
                   className="bg-muted relative flex size-16 shrink-0 items-center justify-center rounded-xl"
                 >
-                  <CarFront
-                    className="text-muted-foreground size-7"
-                    strokeWidth={1.6}
+                  <Icon
+                    icon={courier ? Package01Icon : Car01Icon}
+                    size={28}
+                    className="text-muted-foreground"
                   />
-                  <MapPin
-                    className="text-foreground absolute right-1.5 bottom-1.5 size-3.5"
-                    strokeWidth={2.2}
+                  <Icon
+                    icon={Location01Icon}
+                    size={14}
+                    className="text-foreground absolute right-1.5 bottom-1.5"
                   />
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[15px] font-medium tracking-tight">
-                    {trip.destinationAddress}
+                    {courier && trip.recipientName
+                      ? trip.recipientName
+                      : trip.destinationAddress}
                   </p>
                   <p className="text-muted-foreground truncate text-sm tabular-nums">
                     {when(trip.requestedAt)} · {productName(trip.productId)}
                     {trip.status === "cancelled" ? " · Cancelled" : null}
+                    {trip.status === "complete" && courier
+                      ? " · Delivered"
+                      : null}
                     {trip.status !== "cancelled" && trip.status !== "complete"
                       ? " · In progress"
                       : null}
@@ -105,13 +116,14 @@ export default async function ActivityPage() {
                   </p>
                 </div>
                 <Link
-                  href="/"
+                  href={courier ? "/?service=courier" : "/"}
                   className="ring-border focus-visible:ring-ring active:bg-accent flex min-h-11 shrink-0 items-center rounded-full px-4 text-sm font-medium tracking-tight ring-1 focus-visible:ring-2 focus-visible:outline-none"
                 >
                   Rebook
                 </Link>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </section>

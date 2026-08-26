@@ -1,9 +1,16 @@
 "use client";
 
-import { useMemo } from "react";
-import { Car, ChevronRight, CreditCard, Sparkles, Users } from "lucide-react";
+import { useMemo, type ReactNode } from "react";
+import {
+  ArrowRight01Icon,
+  Car01Icon,
+  CreditCardIcon,
+  SparklesIcon,
+  UserGroupIcon,
+} from "@hugeicons/core-free-icons";
 
 import { PrimaryAction } from "@/components/service-app/task-scene";
+import { Icon } from "@/components/ui/icon";
 import {
   clockTime,
   type PaymentMethod,
@@ -14,11 +21,11 @@ import { RIDE_PRODUCTS, quoteFor } from "@/lib/limecab/mock";
 import { formatMoney, type Location } from "@/lib/service-app/services";
 import { cn } from "@/lib/utils";
 
-const PRODUCT_ICON: Record<string, React.ReactNode> = {
-  lime: <Car strokeWidth={1.6} />,
-  "lime-xl": <Users strokeWidth={1.6} />,
-  "lime-comfort": <Sparkles strokeWidth={1.6} />,
-  "lime-pool": <Users strokeWidth={1.6} />,
+const PRODUCT_ICON: Record<string, ReactNode> = {
+  lime: <Icon icon={Car01Icon} size={24} />,
+  "lime-xl": <Icon icon={UserGroupIcon} size={24} />,
+  "lime-comfort": <Icon icon={SparklesIcon} size={24} />,
+  "lime-pool": <Icon icon={UserGroupIcon} size={24} />,
 };
 
 const UNAVAILABLE = "Not in your city yet";
@@ -86,7 +93,7 @@ export function LimeCabRideSelectScene({
   return (
     <>
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="text-[22px] font-semibold tracking-[-0.02em]">
+        <h2 className="font-heading text-[22px] font-semibold tracking-[-0.02em]">
           Choose a ride
         </h2>
         {estimate ? (
@@ -124,17 +131,19 @@ export function LimeCabRideSelectScene({
           aria-label={`Payment: ${payment.detail}. Change`}
           className="focus-visible:ring-ring flex min-h-11 w-full items-center gap-3 rounded-xl text-left focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
         >
-          <CreditCard
-            className="text-muted-foreground size-4 shrink-0"
-            strokeWidth={1.7}
+          <Icon
+            icon={CreditCardIcon}
+            size={16}
+            className="text-muted-foreground shrink-0"
             aria-hidden="true"
           />
           <span className="min-w-0 flex-1 truncate text-sm">
             {payment.detail}
           </span>
-          <ChevronRight
-            className="text-muted-foreground size-4 shrink-0"
-            strokeWidth={1.7}
+          <Icon
+            icon={ArrowRight01Icon}
+            size={16}
+            className="text-muted-foreground shrink-0"
             aria-hidden="true"
           />
         </button>
@@ -185,8 +194,8 @@ function RideRow({
         "flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left ring-1",
         "focus-visible:ring-ring focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none",
         selected
-          ? "ring-primary bg-accent ring-2"
-          : "ring-border hover:ring-ring/40 active:bg-accent",
+          ? "ring-foreground bg-accent ring-2"
+          : "ring-border hover:ring-foreground/20 active:bg-accent",
         !available && "ring-border/60 opacity-60",
       )}
     >
@@ -195,7 +204,7 @@ function RideRow({
         className={cn(
           "flex size-12 shrink-0 items-center justify-center rounded-2xl [&_svg]:size-6",
           selected
-            ? "bg-primary text-primary-foreground"
+            ? "bg-lime text-lime-foreground"
             : "bg-muted text-foreground",
         )}
       >
@@ -211,11 +220,11 @@ function RideRow({
             aria-hidden="true"
             className="text-muted-foreground flex shrink-0 items-center gap-0.5 text-xs tabular-nums"
           >
-            <Users className="size-3.5" strokeWidth={1.7} />
+            <Icon icon={UserGroupIcon} size={14} />
             {product.seats}
           </span>
           {badge && available ? (
-            <span className="bg-primary text-primary-foreground shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium">
+            <span className="bg-lime text-lime-foreground shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium">
               {badge}
             </span>
           ) : null}

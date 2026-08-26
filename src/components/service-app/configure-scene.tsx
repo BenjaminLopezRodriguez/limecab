@@ -1,7 +1,8 @@
 "use client";
 
-import { Minus, Plus } from "lucide-react";
+import { MinusSignIcon, PlusSignIcon } from "@hugeicons/core-free-icons";
 
+import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 import type {
   ServiceOption,
@@ -148,7 +149,7 @@ function OptionRow({
             disabled={current <= min}
             onClick={() => onChange(option.id, Math.max(min, current - step))}
           >
-            <Minus className="size-4" strokeWidth={2} />
+            <Icon icon={MinusSignIcon} size={16} />
           </CounterButton>
           <output
             aria-labelledby={labelId}
@@ -161,7 +162,7 @@ function OptionRow({
             disabled={current >= max}
             onClick={() => onChange(option.id, Math.min(max, current + step))}
           >
-            <Plus className="size-4" strokeWidth={2} />
+            <Icon icon={PlusSignIcon} size={16} />
           </CounterButton>
         </div>
       </div>
@@ -169,6 +170,9 @@ function OptionRow({
   }
 
   const text = typeof value === "string" ? value : "";
+  const rows = option.kind === "text" ? (option.rows ?? 3) : 3;
+  const fieldClass =
+    "bg-card ring-border placeholder:text-muted-foreground focus-visible:ring-ring mt-2 w-full rounded-xl px-3 py-2.5 text-[15px] leading-relaxed ring-1 focus-visible:ring-2 focus-visible:outline-none";
   return (
     <div>
       <label
@@ -178,15 +182,27 @@ function OptionRow({
         {option.label}
       </label>
       <OptionDescription text={option.description} />
-      <textarea
-        id={labelId}
-        rows={3}
-        value={text}
-        maxLength={option.maxLength}
-        placeholder={option.placeholder}
-        onChange={(event) => onChange(option.id, event.target.value)}
-        className="bg-card ring-border placeholder:text-muted-foreground focus-visible:ring-ring mt-2 w-full resize-none rounded-xl px-3 py-2.5 text-[15px] leading-relaxed ring-1 focus-visible:ring-2 focus-visible:outline-none"
-      />
+      {rows === 1 ? (
+        <input
+          id={labelId}
+          type="text"
+          value={text}
+          maxLength={option.maxLength}
+          placeholder={option.placeholder}
+          onChange={(event) => onChange(option.id, event.target.value)}
+          className={fieldClass}
+        />
+      ) : (
+        <textarea
+          id={labelId}
+          rows={rows}
+          value={text}
+          maxLength={option.maxLength}
+          placeholder={option.placeholder}
+          onChange={(event) => onChange(option.id, event.target.value)}
+          className={`${fieldClass} resize-none`}
+        />
+      )}
     </div>
   );
 }

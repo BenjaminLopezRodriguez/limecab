@@ -1,8 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { MapPin } from "lucide-react";
+import { Location01Icon } from "@hugeicons/core-free-icons";
 
+import { Icon } from "@/components/ui/icon";
 import { splitAddress, type Place } from "@/lib/service-app/services";
 import { cn } from "@/lib/utils";
 
@@ -36,7 +37,7 @@ export function SavedPlaces({
   if (places.length === 0) return null;
 
   const icon = (place: Place) =>
-    iconFor?.(place) ?? <MapPin strokeWidth={1.75} />;
+    iconFor?.(place) ?? <Icon icon={Location01Icon} size={18} />;
 
   if (variant === "rows") {
     return (

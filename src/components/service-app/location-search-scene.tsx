@@ -1,14 +1,26 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
-import { Clock, LocateFixed, MapPin } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  Clock01Icon,
+  Gps01Icon,
+  Location01Icon,
+  MinusSignIcon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
 
 import { LocationSearch } from "@/components/service-app/location-search";
 import {
   TaskScene,
   TaskSceneHeader,
 } from "@/components/service-app/task-scene";
+import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 import type { GeocodeAdapter } from "@/lib/service-app/geocode-adapter";
+import {
+  MAX_INTERMEDIATE_STOPS,
+  type SearchField,
+} from "@/lib/service-app/route-draft";
 import {
   splitAddress,
   type Location,
@@ -30,6 +42,7 @@ export function LocationSearchScene({
   route,
   onSelect,
   onDismiss,
+  onChooseOnMap,
   error,
   onError,
 }: {
@@ -39,18 +52,23 @@ export function LocationSearchScene({
   places?: Place[];
   title?: string;
   /**
-   * The pair of points the search belongs to. Supplied, the input becomes one
-   * field of a connected route stack; the other field switches the search to
-   * that point. Omitted, the scene is a single free-standing search.
+   * The points the search belongs to. Supplied, the input is one field of a
+   * connected route stack (origin, optional stops, destination). Omitted, the
+   * scene is a single free-standing search.
    */
   route?: {
     origin: string;
     destination: string;
-    active: "origin" | "destination";
-    onSwitch: (field: "origin" | "destination") => void;
+    stops?: string[];
+    active: SearchField;
+    onSwitch: (field: SearchField) => void;
+    onAddStop?: () => void;
+    onRemoveStop?: (index: number) => void;
   };
   onSelect: (result: Location) => void;
   onDismiss: () => void;
+  /** Opens the map so the user can drop a pin instead of typing. */
+  onChooseOnMap?: () => void;
   /** Shown inline under the current-location row. Errors belong to the scene
    *  that caused them, not to a modal stacked on top of it. */
   error?: string | null;
@@ -59,6 +77,35 @@ export function LocationSearchScene({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [locating, setLocating] = useState(false);
+
+  const stops = route?.stops ?? [];
+  const rows = route
+    ? [
+        { id: "origin" as const, label: "Pickup", value: route.origin },
+        ...stops.map((value, index) => ({
+          id: `stop:${index}` as const,
+          label: `Stop ${index + 1}`,
+          value,
+        })),
+        {
+          id: "destination" as const,
+          label: "Destination",
+          value: route.destination,
+        },
+      ]
+    : [];
+  const activeIndex = rows.findIndex((row) => row.id === route?.active);
+  const activeRow = activeIndex >= 0 ? rows[activeIndex] : undefined;
+  const canAddStop =
+    Boolean(route?.onAddStop) && stops.length < MAX_INTERMEDIATE_STOPS;
+  const activeStopIndex =
+    route?.active?.startsWith("stop:") === true
+      ? Number(route.active.slice("stop:".length))
+      : null;
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [route?.active]);
 
   const choose = (result: Location) => {
     const address = result.address.trim();
@@ -103,7 +150,7 @@ export function LocationSearchScene({
     <TaskScene
       open={open}
       title={title}
-      description="Search for an address, use your current location, or pick a saved place."
+      description="Search for an address, use your current location, set a pin on the map, or pick a saved place."
       onDismiss={onDismiss}
       initialFocusRef={inputRef}
     >
@@ -113,67 +160,143 @@ export function LocationSearchScene({
         backLabel="Close search"
       />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        <LocationSearch
-          adapter={adapter}
-          layout="scene"
-          inputRef={inputRef}
-          onSelect={choose}
-          placeholder={
-            route?.active === "origin"
-              ? "Pickup address…"
-              : "Search an address…"
-          }
-          fieldsClassName={
-            route
-              ? "bg-card ring-border flex flex-col rounded-2xl ring-1"
-              : undefined
-          }
-          inputClassName={
-            route
-              ? cn(
-                  "h-12 rounded-none pr-4 pl-10",
-                  // The divider belongs to the first row only; on the last row
-                  // the input's own underline would double the card's edge.
-                  route.active === "destination" &&
-                    "border-transparent focus-visible:border-b-transparent",
-                )
-              : undefined
-          }
-          before={
-            route ? (
-              <>
-                <RouteRail />
-                {route.active === "destination" ? (
-                  <RouteField
-                    label="Pickup"
-                    value={route.origin}
-                    first
-                    onPress={() => route.onSwitch("origin")}
-                  />
-                ) : null}
-              </>
-            ) : null
-          }
-          after={
-            route?.active === "origin" ? (
-              <RouteField
-                label="Destination"
-                value={route.destination}
-                onPress={() => route.onSwitch("destination")}
-              />
-            ) : null
-          }
-        />
-
-        <div className="-mx-2 mt-4">
-          <AffordanceRow
-            icon={<LocateFixed strokeWidth={1.75} />}
-            label="Use current location"
-            detail={locating ? "Finding…" : undefined}
-            disabled={locating}
-            onPress={useCurrent}
+        <div className="relative">
+          <LocationSearch
+            key={route?.active ?? "search"}
+            adapter={adapter}
+            layout="scene"
+            inputRef={inputRef}
+            value={activeRow?.value ?? ""}
+            onSelect={choose}
+            placeholder={
+              route?.active === "origin"
+                ? "Pickup address…"
+                : activeStopIndex !== null
+                  ? `Stop ${activeStopIndex + 1}…`
+                  : "Search an address…"
+            }
+            fieldsClassName={
+              route
+                ? "bg-card ring-border flex flex-col rounded-2xl ring-1"
+                : undefined
+            }
+            inputClassName={
+              route
+                ? cn(
+                    "h-12 rounded-none pl-10",
+                    canAddStop ? "pr-12" : "pr-4",
+                    route.active === "destination" &&
+                      "border-transparent focus-visible:border-b-transparent",
+                  )
+                : undefined
+            }
+            before={
+              route ? (
+                <>
+                  <RouteRail count={rows.length} />
+                  {rows.slice(0, Math.max(0, activeIndex)).map((row, index) => (
+                    <RouteField
+                      key={row.id}
+                      label={row.label}
+                      value={row.value}
+                      position={index === 0 ? "first" : "middle"}
+                      inset={canAddStop}
+                      trailing={
+                        row.id.startsWith("stop:") && route.onRemoveStop ? (
+                          <RemoveStopButton
+                            onPress={() =>
+                              route.onRemoveStop!(
+                                Number(row.id.slice("stop:".length)),
+                              )
+                            }
+                          />
+                        ) : null
+                      }
+                      onPress={() => route.onSwitch(row.id)}
+                    />
+                  ))}
+                </>
+              ) : null
+            }
+            after={
+              route
+                ? rows.slice(activeIndex + 1).map((row, offset) => {
+                    const index = activeIndex + 1 + offset;
+                    const last = index === rows.length - 1;
+                    return (
+                      <RouteField
+                        key={row.id}
+                        label={row.label}
+                        value={row.value}
+                        position={last ? "last" : "middle"}
+                        inset={canAddStop}
+                        trailing={
+                          row.id.startsWith("stop:") && route.onRemoveStop ? (
+                            <RemoveStopButton
+                              onPress={() =>
+                                route.onRemoveStop!(
+                                  Number(row.id.slice("stop:".length)),
+                                )
+                              }
+                            />
+                          ) : null
+                        }
+                        onPress={() => route.onSwitch(row.id)}
+                      />
+                    );
+                  })
+                : null
+            }
+            end={
+              route?.active === "origin" ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  disabled={locating}
+                  aria-label={
+                    locating
+                      ? "Finding current location"
+                      : "Use current location"
+                  }
+                  aria-busy={locating}
+                  onClick={useCurrent}
+                  className="text-muted-foreground"
+                >
+                  <Icon icon={Gps01Icon} size={18} />
+                </Button>
+              ) : activeStopIndex !== null && route?.onRemoveStop ? (
+                <RemoveStopButton
+                  onPress={() => route.onRemoveStop!(activeStopIndex)}
+                />
+              ) : null
+            }
           />
+          {canAddStop ? (
+            <button
+              type="button"
+              aria-label="Add stop"
+              onClick={route?.onAddStop}
+              className={cn(
+                "bg-background ring-border absolute top-12 right-2 z-20",
+                "flex size-8 -translate-y-1/2 items-center justify-center rounded-full ring-1",
+                "hover:bg-accent focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none",
+              )}
+            >
+              <Icon icon={PlusSignIcon} size={16} />
+            </button>
+          ) : null}
         </div>
+
+        {onChooseOnMap ? (
+          <div className="-mx-2 mt-4">
+            <AffordanceRow
+              icon={<Icon icon={Location01Icon} size={18} />}
+              label="Set location with pin"
+              onPress={onChooseOnMap}
+            />
+          </div>
+        ) : null}
 
         {error ? (
           <p role="alert" className="text-muted-foreground mt-1 text-sm">
@@ -194,9 +317,9 @@ export function LocationSearchScene({
                     <AffordanceRow
                       icon={
                         place.source === "recent" ? (
-                          <Clock strokeWidth={1.75} />
+                          <Icon icon={Clock01Icon} size={18} />
                         ) : (
-                          <MapPin strokeWidth={1.75} />
+                          <Icon icon={Location01Icon} size={18} />
                         )
                       }
                       label={place.label}
@@ -222,16 +345,40 @@ export function LocationSearchScene({
 }
 
 /**
- * The dot → line → square rail behind the two route fields. Purely a drawing:
- * both fields are exactly one 3rem row, so the glyph positions are fixed.
+ * Dot → (optional numbered stops) → square. Each field is one 3rem row, so
+ * glyph positions are a function of count alone.
  */
-function RouteRail() {
+function RouteRail({ count }: { count: number }) {
   return (
     <span aria-hidden="true" className="pointer-events-none absolute inset-0">
       <span className="bg-border absolute top-[30px] bottom-[30px] left-[20.5px] w-px" />
-      <span className="bg-primary absolute top-[19px] left-4 size-2.5 rounded-full" />
+      <span className="bg-lime absolute top-[19px] left-4 size-2.5 rounded-full" />
+      {Array.from({ length: Math.max(0, count - 2) }, (_, index) => (
+        <span
+          key={index}
+          className="border-foreground text-foreground absolute left-[14px] flex size-4 items-center justify-center rounded-full border text-[9px] font-medium"
+          style={{ top: (index + 1) * 48 + 16 }}
+        >
+          {index + 1}
+        </span>
+      ))}
       <span className="bg-foreground absolute bottom-[19px] left-4 size-2.5 rounded-[3px]" />
     </span>
+  );
+}
+
+function RemoveStopButton({ onPress }: { onPress: () => void }) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label="Remove stop"
+      onClick={onPress}
+      className="text-muted-foreground"
+    >
+      <Icon icon={MinusSignIcon} size={16} />
+    </Button>
   );
 }
 
@@ -239,29 +386,44 @@ function RouteRail() {
 function RouteField({
   label,
   value,
-  first,
+  position,
+  inset,
+  trailing,
   onPress,
 }: {
   label: string;
   value: string;
-  first?: boolean;
+  position: "first" | "middle" | "last";
+  inset?: boolean;
+  trailing?: ReactNode;
   onPress: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onPress}
-      aria-label={`${label}: ${value || "Not set"}. Search this instead`}
+    <div
       className={cn(
-        "focus-visible:ring-ring relative flex h-12 w-full items-center pr-4 pl-10 text-left text-[15px]",
-        "focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none",
-        first ? "border-border rounded-t-2xl border-b" : "rounded-b-2xl",
+        "relative flex h-12 w-full items-center",
+        position === "first" && "rounded-t-2xl",
+        position === "last" ? "rounded-b-2xl" : "border-border border-b",
       )}
     >
-      <span className={cn("truncate", !value && "text-muted-foreground")}>
-        {value || label}
-      </span>
-    </button>
+      <button
+        type="button"
+        onClick={onPress}
+        aria-label={`${label}: ${value || "Not set"}. Search this instead`}
+        className={cn(
+          "focus-visible:ring-ring min-w-0 flex-1 truncate py-0 pl-10 text-left text-[15px]",
+          "focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none",
+          inset || trailing ? "pr-2" : "pr-4",
+        )}
+      >
+        <span
+          className={cn("block truncate", !value && "text-muted-foreground")}
+        >
+          {value || label}
+        </span>
+      </button>
+      {trailing}
+    </div>
   );
 }
 

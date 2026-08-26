@@ -1,24 +1,31 @@
-import { type ComponentType } from "react";
+import {
+  Calendar03Icon,
+  Car01Icon,
+  Package01Icon,
+  WheelchairIcon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 import Link from "next/link";
-import { Accessibility, CalendarClock, CarFront, Package } from "lucide-react";
 
 import { TabPage } from "@/components/limecab/limecab-shell";
+import { Icon } from "@/components/ui/icon";
 import { LIMECAB_SERVICES } from "@/lib/limecab/mock";
 import { cn } from "@/lib/utils";
 
-type Icon = ComponentType<{ className?: string; strokeWidth?: number }>;
-
-const ICONS: Record<string, Icon> = {
-  ride: CarFront,
-  reserve: CalendarClock,
-  courier: Package,
-  assist: Accessibility,
+const ICONS: Record<string, IconSvgElement> = {
+  ride: Car01Icon,
+  reserve: Calendar03Icon,
+  courier: Package01Icon,
+  assist: WheelchairIcon,
 };
 
 export default function ServicesPage() {
-  // Two lead tiles, then the rest smaller: the reference's mixed grid.
-  const featured = LIMECAB_SERVICES.slice(0, 2);
-  const others = LIMECAB_SERVICES.slice(2);
+  const live = LIMECAB_SERVICES.filter(
+    (service) => service.status === "available",
+  );
+  const soon = LIMECAB_SERVICES.filter(
+    (service) => service.status !== "available",
+  );
 
   return (
     <TabPage title="Services">
@@ -27,22 +34,22 @@ export default function ServicesPage() {
       </h2>
 
       <div className="mt-3 grid grid-cols-2 gap-3">
-        {featured.map((service) => (
+        {live.map((service) => (
           <Tile key={service.id} service={service} className="h-[7rem]" />
         ))}
       </div>
 
-      {others.length > 0 ? (
+      {soon.length > 0 ? (
         <div className="mt-3 grid grid-cols-2 gap-3">
-          {others.map((service) => (
+          {soon.map((service) => (
             <Tile key={service.id} service={service} className="h-[5.5rem]" />
           ))}
         </div>
       ) : null}
 
       <p className="text-muted-foreground mt-5 text-sm leading-relaxed">
-        Only rides are live. The rest are listed so you can see where LimeCab is
-        going, not to take your booking.
+        Rides and Courier are live. Reserve and Assist are listed so you can see
+        where LimeCab is going, not to take your booking.
       </p>
     </TabPage>
   );
@@ -59,14 +66,14 @@ function Tile({
   service: (typeof LIMECAB_SERVICES)[number];
   className?: string;
 }) {
-  const Icon = ICONS[service.id] ?? CarFront;
+  const icon = ICONS[service.id] ?? Car01Icon;
   const body = (
     <>
       <span
         aria-hidden="true"
-        className="bg-muted flex size-10 items-center justify-center rounded-xl"
+        className="bg-muted flex size-10 items-center justify-center rounded-full"
       >
-        <Icon className="text-foreground size-5" strokeWidth={1.7} />
+        <Icon icon={icon} size={20} className="text-foreground" />
       </span>
       <span className="mt-auto">
         <span className="block text-[15px] font-medium tracking-tight">
@@ -94,9 +101,11 @@ function Tile({
     );
   }
 
+  const href = service.id === "courier" ? "/?service=courier" : "/";
+
   return (
     <Link
-      href="/"
+      href={href}
       className={cn(
         shell,
         "focus-visible:ring-ring active:bg-accent focus-visible:ring-2 focus-visible:outline-none",

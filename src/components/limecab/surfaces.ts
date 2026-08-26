@@ -69,6 +69,22 @@ export const limeCabSurfaces = createSurfaceManager({
     },
   },
   actions: {
+    /**
+     * "Set location with pin" — search recedes, the canvas is the subject,
+     * and a confirm strip holds the address.
+     */
+    chooseOnMap: {
+      intent: "expand",
+      surfaces: {
+        map: {
+          emphasis: "primary",
+          presentation: "locating",
+          interaction: "active",
+        },
+        primary: { emphasis: "primary", presentation: "peek" },
+        search: { emphasis: "hidden" },
+      },
+    },
     /** "Where to?" — the search scene takes the screen; the map stays put. */
     openDestinationSearch: {
       intent: "expand",
@@ -182,6 +198,15 @@ export const LIMECAB_SCENE_SURFACES: Record<
     map: { emphasis: "background", presentation: "locating" },
     primary: { emphasis: "hidden" },
     search: { emphasis: "primary", presentation: "fullscreen" },
+  },
+  location_pin: {
+    map: {
+      emphasis: "primary",
+      presentation: "locating",
+      interaction: "active",
+    },
+    primary: { emphasis: "primary", presentation: "peek" },
+    search: { emphasis: "hidden" },
   },
   service_select: {
     map: { emphasis: "background", presentation: "route" },

@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { MapPin } from "lucide-react";
+import { Location01Icon } from "@hugeicons/core-free-icons";
 
 import { Input } from "@/components/ui/input";
+import { Icon } from "@/components/ui/icon";
 import type {
   GeocodeAdapter,
   LocationSuggestion,
@@ -28,6 +29,7 @@ export function LocationSearch({
   inputRef,
   before,
   after,
+  end,
   fieldsClassName,
   inputClassName,
 }: {
@@ -48,6 +50,8 @@ export function LocationSearch({
    */
   before?: React.ReactNode;
   after?: React.ReactNode;
+  /** Trailing control inside the input row (locate, clear). */
+  end?: React.ReactNode;
   fieldsClassName?: string;
   inputClassName?: string;
 }) {
@@ -148,35 +152,46 @@ export function LocationSearch({
     <div className={cn("relative", className)}>
       <div className={cn("relative", fieldsClassName)}>
         {before}
-        <Input
-          type="text"
-          role="combobox"
-          aria-expanded={listOpen}
-          aria-controls={listId}
-          aria-autocomplete="list"
-          aria-label="Address"
-          aria-activedescendant={
-            listOpen && active >= 0 ? `${listId}-${active}` : undefined
-          }
-          ref={inputRef}
-          autoComplete="off"
-          autoFocus={autoFocus}
-          enterKeyHint="search"
-          placeholder={placeholder}
-          value={text}
-          onChange={(event) => {
-            setText(event.target.value);
-            setOpen(true);
-            setActive(-1);
-          }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => {
-            if (layout === "scene") return;
-            window.setTimeout(() => setOpen(false), 120);
-          }}
-          onKeyDown={onKeyDown}
-          className={cn("h-12 rounded-xl text-[15px]", inputClassName)}
-        />
+        <div className="relative">
+          <Input
+            type="text"
+            role="combobox"
+            aria-expanded={listOpen}
+            aria-controls={listId}
+            aria-autocomplete="list"
+            aria-label="Address"
+            aria-activedescendant={
+              listOpen && active >= 0 ? `${listId}-${active}` : undefined
+            }
+            ref={inputRef}
+            autoComplete="off"
+            autoFocus={autoFocus}
+            enterKeyHint="search"
+            placeholder={placeholder}
+            value={text}
+            onChange={(event) => {
+              setText(event.target.value);
+              setOpen(true);
+              setActive(-1);
+            }}
+            onFocus={() => setOpen(true)}
+            onBlur={() => {
+              if (layout === "scene") return;
+              window.setTimeout(() => setOpen(false), 120);
+            }}
+            onKeyDown={onKeyDown}
+            className={cn(
+            "h-12 rounded-full text-[15px]",
+              inputClassName,
+              end && "pr-11",
+            )}
+          />
+          {end ? (
+            <div className="absolute inset-y-0 right-1 z-10 flex items-center">
+              {end}
+            </div>
+          ) : null}
+        </div>
         {after}
       </div>
       {listOpen ? (
@@ -212,7 +227,7 @@ export function LocationSearch({
                   aria-hidden="true"
                   className="bg-muted text-muted-foreground flex size-10 shrink-0 items-center justify-center rounded-full"
                 >
-                  <MapPin className="size-[18px]" strokeWidth={1.75} />
+                  <Icon icon={Location01Icon} size={18} />
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[15px] font-medium tracking-tight">

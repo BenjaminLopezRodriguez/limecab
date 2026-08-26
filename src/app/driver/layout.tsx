@@ -23,7 +23,7 @@ export default async function DriverLayout({
           href="/driver"
           className="focus-visible:ring-ring rounded-lg text-[21px] font-semibold tracking-[-0.03em] focus-visible:ring-2 focus-visible:outline-none"
         >
-          LimeCab <span className="text-primary">Driver</span>
+          LimeCab <span className="text-lime">Driver</span>
         </Link>
       </header>
       {children}

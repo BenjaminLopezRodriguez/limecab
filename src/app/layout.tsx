@@ -1,14 +1,17 @@
 import "@/styles/globals.css";
 
 import { type Metadata } from "next";
-import { Geist, Noto_Sans } from "next/font/google";
+import { Geist, Plus_Jakarta_Sans } from "next/font/google";
 
 import { LimeCabShell } from "@/components/limecab/limecab-shell";
 import { auth } from "@/server/auth";
 import { TRPCReactProvider } from "@/trpc/react";
 import { cn } from "@/lib/utils";
 
-const notoSans = Noto_Sans({subsets:['latin'],variable:'--font-sans'});
+const plusJakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  variable: "--font-plus-jakarta",
+});
 
 const title = "LimeCab";
 const description = "Get where you're going. LimeCab rides on demand.";
@@ -33,11 +36,11 @@ export default async function RootLayout({
   const session = await auth();
 
   return (
-    // Dark by default: a ride app is used at night, in a car, and the map
-    // reads better against it. There is no theme toggle to honour yet.
+    // Light paper by default — Uber and Lyft both run a light rider canvas.
+    // Dark tokens remain for a later toggle; they are not forced on.
     <html
       lang="en"
-      className={cn(geist.variable, notoSans.variable, "dark font-sans")}
+      className={cn(geist.variable, plusJakarta.variable, "font-sans")}
     >
       <body>
         <a

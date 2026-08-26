@@ -16,7 +16,7 @@ export function DetailButton({
   return (
     <Button
       variant="ghost"
-      className="text-muted-foreground border-border h-11 w-full rounded-xl border text-sm font-normal"
+      className="text-muted-foreground border-border h-11 w-full rounded-full border text-sm font-normal"
       onClick={onPress}
     >
       {children}

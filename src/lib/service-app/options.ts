@@ -42,6 +42,8 @@ export type ServiceOption =
       description?: string;
       placeholder?: string;
       maxLength?: number;
+      /** Visible lines. Short fields (a name, a phone) are 1; notes stay 3. */
+      rows?: number;
       defaultValue?: string;
     };
 

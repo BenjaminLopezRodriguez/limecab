@@ -1,12 +1,18 @@
 "use client";
 
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode, Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Clock, Grid2x2, House, User } from "lucide-react";
+import {
+  Clock01Icon,
+  DashboardSquare01Icon,
+  Home01Icon,
+  UserIcon,
+} from "@hugeicons/core-free-icons";
 
 import { LimeCabApp } from "@/components/limecab/limecab-app";
 import { LimeCabTripPill } from "@/components/limecab/limecab-trip-pill";
+import { Icon } from "@/components/ui/icon";
 import type { ServiceAppState } from "@/lib/service-app/state";
 import { cn } from "@/lib/utils";
 
@@ -22,10 +28,10 @@ import { cn } from "@/lib/utils";
  */
 
 const TABS = [
-  { href: "/", label: "Home", icon: House },
-  { href: "/services", label: "Services", icon: Grid2x2 },
-  { href: "/activity", label: "Activity", icon: Clock },
-  { href: "/profile", label: "Profile", icon: User },
+  { href: "/", label: "Home", icon: Home01Icon },
+  { href: "/services", label: "Services", icon: DashboardSquare01Icon },
+  { href: "/activity", label: "Activity", icon: Clock01Icon },
+  { href: "/profile", label: "Profile", icon: UserIcon },
 ] as const;
 
 export function LimeCabShell({
@@ -66,10 +72,11 @@ export function LimeCabShell({
     >
       {showChrome ? (
         <header className="flex h-[3.75rem] items-center justify-between px-5 md:px-6">
-          <p className="text-[19px] font-semibold tracking-[-0.03em]">
+          <p className="font-heading text-[19px] font-semibold tracking-[-0.03em]">
             {signedIn ? (
               <>
-                Hello, <span className="text-primary">{riderName ?? "there"}</span>
+                Hello,{" "}
+                <span className="text-lime">{riderName ?? "there"}</span>
               </>
             ) : (
               "LimeCab"
@@ -81,7 +88,7 @@ export function LimeCabShell({
             // eslint-disable-next-line @next/next/no-html-link-for-pages
             <a
               href="/api/auth/signin"
-              className="focus-visible:ring-ring text-primary rounded-lg px-2 py-1 text-sm font-medium focus-visible:ring-2 focus-visible:outline-none"
+              className="focus-visible:ring-ring rounded-full px-3 py-1.5 text-sm font-semibold focus-visible:ring-2 focus-visible:outline-none"
             >
               Sign in
             </a>
@@ -91,13 +98,15 @@ export function LimeCabShell({
 
       {/* Never unmounted: a half-chosen ride survives a trip to Activity. */}
       <div className={cn(!onHome && "hidden")}>
-        <LimeCabApp
-          onSceneChange={onSceneChange}
-          signedIn={signedIn}
-          // Off Home the ride is the pill, so render no surfaces at all: the
-          // sheet portals to <body> and would otherwise escape `hidden`.
-          minimized={!onHome}
-        />
+        <Suspense fallback={null}>
+          <LimeCabApp
+            onSceneChange={onSceneChange}
+            signedIn={signedIn}
+            // Off Home the ride is the pill, so render no surfaces at all: the
+            // sheet portals to <body> and would otherwise escape `hidden`.
+            minimized={!onHome}
+          />
+        </Suspense>
       </div>
 
       {onHome ? null : children}
@@ -122,8 +131,8 @@ function TabBar({ pathname }: { pathname: string }) {
       aria-label="Sections"
       className="fixed inset-x-0 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 flex justify-center px-4"
     >
-      <ul className="bg-card/85 ring-border flex items-center gap-1 rounded-full p-1.5 shadow-lg ring-1 backdrop-blur-xl">
-        {TABS.map(({ href, label, icon: Icon }) => {
+      <ul className="bg-card/90 ring-border flex items-center gap-1 rounded-full p-1.5 shadow-[0_8px_28px_rgba(26,24,20,0.12)] ring-1 backdrop-blur-xl">
+        {TABS.map(({ href, label, icon }) => {
           const active = href === pathname;
           return (
             <li key={href}>
@@ -133,13 +142,14 @@ function TabBar({ pathname }: { pathname: string }) {
                 className={cn(
                   "focus-visible:ring-ring flex min-h-[3.25rem] min-w-[4.5rem] flex-col items-center justify-center gap-1 rounded-full px-3 transition-colors focus-visible:ring-2 focus-visible:outline-none",
                   active
-                    ? "bg-secondary text-foreground"
+                    ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 <Icon
-                  className="size-[1.375rem]"
-                  strokeWidth={active ? 2.1 : 1.7}
+                  icon={icon}
+                  size={22}
+                  strokeWidth={active ? 2 : 1.5}
                   aria-hidden="true"
                 />
                 <span
@@ -170,7 +180,7 @@ export function TabPage({
   return (
     // pb clears the floating tab capsule, which no longer reserves layout space.
     <div className="min-h-[calc(100dvh-8rem)] px-5 pb-28 md:mx-auto md:max-w-2xl md:px-6">
-      <h1 className="text-[34px] leading-none font-bold tracking-[-0.035em]">
+      <h1 className="font-heading text-[34px] leading-none font-bold tracking-[-0.035em]">
         {title}
       </h1>
       <div className="mt-7">{children}</div>

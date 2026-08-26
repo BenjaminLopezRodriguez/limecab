@@ -6,17 +6,17 @@ import {
   AdaptiveSurface,
   useOptionalAdaptiveSurface,
 } from "@/components/service-app/adaptive-surface";
-import { useServiceAppMobile } from "@/hooks/use-service-app-mobile";
 import { cn } from "@/lib/utils";
 
 /**
  * ServiceAppShell — the canvas + surface frame.
  *
- * On a phone the map is always the canvas and the content floats over it —
- * the spatial question ("where am I, where is my car") is the screen, and a
- * surface answers it from the thumb zone. `layout="home"` differs from
- * `layout="task"` only in that its panel is anchored (a launcher that can be
- * scrolled) rather than owned by the surface ladder.
+ * On a phone, `layout="home"` is a column: a rounded map card above, then the
+ * launcher (Where to?, places). The map is a sibling, not a full-bleed canvas
+ * clipped by an overlay sheet — so the rounded region is actually visible.
+ *
+ * `layout="task"` keeps the map as the full canvas with the sheet floating
+ * over it from the thumb zone.
  *
  * On a desktop `layout="home"` becomes a two-column launcher: controls left,
  * a large map right. Same state, different composition.
@@ -40,7 +40,7 @@ export function ServiceAppShell({
 }: {
   map: ReactNode;
   layout?: "home" | "task";
-  /** Mobile home only: tapping the bounded map starts the spatial task. */
+  /** Home map card: tapping adjusts pickup (or starts the spatial task). */
   onMapPress?: () => void;
   className?: string;
   children: ReactNode;
@@ -73,10 +73,10 @@ function ShellBody({
   children: ReactNode;
 }) {
   const home = layout === "home";
-  const isMobile = useServiceAppMobile();
   const surface = useOptionalAdaptiveSurface();
   const sheetOpen = surface?.progress.sheetOpen ?? true;
-  const mapPress = home && isMobile ? onMapPress : undefined;
+  // Home map is tappable on every width — it is the pickup affordance.
+  const mapPress = home ? onMapPress : undefined;
 
   return (
     <div
@@ -100,13 +100,15 @@ function ShellBody({
         className={cn(
           home
             ? cn(
-                // The launcher floats over the canvas from the thumb zone and
-                // scrolls inside itself, so the map is never a postage stamp.
-                "bg-background border-border relative z-10 mt-auto max-h-[72%] shrink-0",
+                // Home launcher sits below the map card on mobile — a sibling,
+                // not an overlay that clips the rounded map.
+                "bg-card border-border relative z-10 shrink-0",
                 "overflow-y-auto rounded-t-3xl border-t px-5 pt-4",
                 "pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-lg",
                 "md:col-start-1 md:row-start-1 md:mt-0 md:max-h-none md:flex md:flex-1",
                 "md:flex-col md:rounded-none md:border-0 md:px-6 md:py-6 md:shadow-none",
+                // Cap height so a long recent list does not eat the map card.
+                "max-h-[min(52%,28rem)] md:max-h-none",
               )
             : "relative z-10 mt-auto md:pointer-events-none md:absolute md:inset-0 md:mt-0 md:flex md:justify-end md:p-6",
           !home && !sheetOpen && "md:hidden",
@@ -146,7 +148,8 @@ function MapSlot({
     <div
       className={cn(
         home
-          ? "absolute inset-0 md:relative md:col-start-2 md:row-start-1 md:h-full md:min-h-0 md:p-6 md:pl-0"
+          ? // Home: flex sibling with padding so the rounded card is visible.
+            "relative min-h-[12rem] flex-1 p-4 pb-2 md:col-start-2 md:row-start-1 md:h-full md:min-h-0 md:p-6 md:pl-0"
           : "absolute inset-0 md:inset-6",
       )}
     >
@@ -155,12 +158,16 @@ function MapSlot({
         tabIndex={onPress ? 0 : undefined}
         onClick={onPress}
         onKeyDown={onPress ? onKeyDown : undefined}
-        aria-label={onPress ? "Choose a location" : undefined}
+        aria-label={onPress ? "Adjust pickup on map" : undefined}
         className={cn(
-          "ring-border size-full overflow-hidden md:rounded-3xl md:ring-1",
-          home && "md:min-h-[22rem]",
+          "size-full overflow-hidden",
+          // Rounded map card on home at every width; task canvas stays square
+          // on mobile and rounds only in the desktop inset.
+          home
+            ? "ring-border rounded-3xl ring-1 md:min-h-[22rem]"
+            : "ring-border md:rounded-3xl md:ring-1",
           onPress &&
-            "focus-visible:ring-ring cursor-pointer touch-manipulation focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none md:pointer-events-none md:cursor-default",
+            "focus-visible:ring-ring cursor-pointer touch-manipulation focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
         )}
       >
         {children}

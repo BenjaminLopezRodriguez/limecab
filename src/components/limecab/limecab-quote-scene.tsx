@@ -1,11 +1,16 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ChevronRight, CreditCard, Tag } from "lucide-react";
+import {
+  ArrowRight01Icon,
+  CreditCardIcon,
+  Tag01Icon,
+} from "@hugeicons/core-free-icons";
 
 import { PrimaryAction } from "@/components/service-app/task-scene";
 import { SurfaceSkeleton } from "@/components/service-app/surface-skeleton";
 import { DetailLines } from "@/components/limecab/limecab-parts";
+import { Icon } from "@/components/ui/icon";
 import type { DetailKind } from "@/components/limecab/limecab-interrupts";
 import {
   clockTime,
@@ -25,11 +30,16 @@ export function LimeCabQuoteScene({
   fareLines,
   pickupLine,
   destinationLine,
+  pickupLabel = "Pickup",
+  destinationLabel = "Destination",
   payment,
   promoApplied,
   busy,
   error,
   signedIn,
+  signInLabel = "Sign in to request a ride",
+  pricingLabel = "Pricing your ride",
+  etaLine,
   onEditPickup,
   onOpenDetail,
   onConfirm,
@@ -42,18 +52,24 @@ export function LimeCabQuoteScene({
   fareLines: { label: string; value: string }[];
   pickupLine: string;
   destinationLine: string;
+  pickupLabel?: string;
+  destinationLabel?: string;
   payment: PaymentMethod;
   promoApplied: boolean;
   busy: boolean;
   error?: string | null;
   /** Booking needs an account; browsing and pricing do not. */
   signedIn: boolean;
+  signInLabel?: string;
+  pricingLabel?: string;
+  /** Overrides the default “dropoff · eta” line. */
+  etaLine?: string;
   onEditPickup: () => void;
   onOpenDetail: (kind: DetailKind) => void;
   onConfirm: () => void;
 }) {
   if (!ready) {
-    return <SurfaceSkeleton lines={4} showAction label="Pricing your ride" />;
+    return <SurfaceSkeleton lines={4} showAction label={pricingLabel} />;
   }
 
   return (
@@ -64,8 +80,8 @@ export function LimeCabQuoteScene({
             {product.name}
           </h2>
           <p className="text-muted-foreground text-sm tabular-nums">
-            {clockTime(product.etaMinutes + quoteMinutes)} dropoff ·{" "}
-            {product.etaMinutes} min away
+            {etaLine ??
+              `${clockTime(product.etaMinutes + quoteMinutes)} dropoff · ${product.etaMinutes} min away`}
           </p>
         </div>
         <p className="shrink-0 text-[28px] leading-none font-semibold tracking-[-0.02em] tabular-nums">
@@ -77,6 +93,8 @@ export function LimeCabQuoteScene({
         className="mt-4"
         pickup={pickupLine}
         destination={destinationLine}
+        pickupLabel={pickupLabel}
+        destinationLabel={destinationLabel}
         onEditPickup={onEditPickup}
       />
 
@@ -84,13 +102,13 @@ export function LimeCabQuoteScene({
 
       <div className="divide-border ring-border mt-4 divide-y rounded-2xl ring-1">
         <SettingRow
-          icon={<CreditCard strokeWidth={1.7} />}
+          icon={<Icon icon={CreditCardIcon} size={16} />}
           label="Payment"
           value={payment.detail}
           onPress={() => onOpenDetail("payment")}
         />
         <SettingRow
-          icon={<Tag strokeWidth={1.7} />}
+          icon={<Icon icon={Tag01Icon} size={16} />}
           label="Promo"
           value={
             promoApplied
@@ -118,7 +136,7 @@ export function LimeCabQuoteScene({
             ? "Try again"
             : signedIn
               ? `Request ${product.name} · ${formatMoney(payableCents)}`
-              : "Sign in to request a ride"}
+              : signInLabel}
         </PrimaryAction>
         <p className="text-muted-foreground mt-2 text-center text-xs leading-relaxed">
           Fares are estimates. Nothing is charged in this demo.
@@ -154,9 +172,10 @@ function SettingRow({
         {icon}
       </span>
       <span className="min-w-0 flex-1 truncate text-[15px]">{value}</span>
-      <ChevronRight
-        className="text-muted-foreground size-4 shrink-0"
-        strokeWidth={1.7}
+      <Icon
+        icon={ArrowRight01Icon}
+        size={16}
+        className="text-muted-foreground shrink-0"
         aria-hidden="true"
       />
     </button>
@@ -167,12 +186,16 @@ function SettingRow({
 function Itinerary({
   pickup,
   destination,
+  pickupLabel = "Pickup",
+  destinationLabel = "Destination",
   onEditPickup,
   onEditDestination,
   className,
 }: {
   pickup: string;
   destination: string;
+  pickupLabel?: string;
+  destinationLabel?: string;
   onEditPickup?: () => void;
   onEditDestination?: () => void;
   className?: string;
@@ -181,14 +204,14 @@ function Itinerary({
     <div className={cn("bg-muted/60 rounded-2xl p-3", className)}>
       <ItineraryRow
         kind="pickup"
-        label="Pickup"
+        label={pickupLabel}
         value={pickup}
         onPress={onEditPickup}
       />
       <div aria-hidden="true" className="border-border ml-[5px] h-4 border-l" />
       <ItineraryRow
         kind="destination"
-        label="Destination"
+        label={destinationLabel}
         value={destination}
         onPress={onEditDestination}
       />
@@ -214,7 +237,7 @@ function ItineraryRow({
         className={cn(
           "size-2.5 shrink-0",
           kind === "pickup"
-            ? "bg-primary rounded-full"
+            ? "bg-lime rounded-full"
             : "bg-foreground rounded-[3px]",
         )}
       />

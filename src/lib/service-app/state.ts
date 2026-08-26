@@ -12,6 +12,7 @@
 export const SERVICE_APP_STATES = [
   "home",
   "location_search",
+  "location_pin",
   "service_select",
   "configure",
   "quote",
@@ -36,6 +37,7 @@ export type TransitionIntent = "progress" | "interrupt" | "return";
 
 export type ServiceAppEvent =
   | "open_search"
+  | "choose_on_map"
   | "select_location"
   | "cancel_search"
   | "select_service"
@@ -58,6 +60,17 @@ export type ServiceAppContext = {
    * than showing an empty one.
    */
   needsConfigure?: boolean;
+  /**
+   * Whether choosing among services is its own scene. Apps that enter with a
+   * service already chosen skip `service_select`; back from configure returns
+   * home with the location intact.
+   */
+  needsServiceSelect?: boolean;
+  /**
+   * How the rider opened the pin scene. Home map tap returns to home on Back;
+   * search's "choose on map" returns to search.
+   */
+  pinEntry?: "home" | "search";
 };
 
 /** The state entered once both location and service are known. */
@@ -88,6 +101,11 @@ export function reduceServiceAppState(
   switch (event) {
     case "open_search":
       return isCommitted(state) ? state : "location_search";
+
+    case "choose_on_map":
+      return state === "location_search" || state === "home"
+        ? "location_pin"
+        : state;
 
     case "select_location":
       return ctx.hasService ? afterIntent(ctx) : "service_select";
@@ -134,10 +152,12 @@ export function backServiceAppState(
     case "location_search":
       if (ctx.hasLocation && ctx.hasService) return afterIntent(ctx);
       return ctx.hasLocation ? "service_select" : "home";
+    case "location_pin":
+      return ctx.pinEntry === "home" ? "home" : "location_search";
     case "service_select":
       return "home";
     case "configure":
-      return "service_select";
+      return ctx.needsServiceSelect === false ? "home" : "service_select";
     case "quote":
       return ctx.needsConfigure ? "configure" : "service_select";
     default:
@@ -170,6 +190,12 @@ export function serviceAppQuestion(state: ServiceAppState): {
         question: "Where?",
         action: "Select an address",
         exit: "Cancel search",
+      };
+    case "location_pin":
+      return {
+        question: "Where on the map?",
+        action: "Place the pin",
+        exit: "Back",
       };
     case "service_select":
       return {

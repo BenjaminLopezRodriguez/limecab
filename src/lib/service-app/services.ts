@@ -25,6 +25,8 @@ export type ServiceDefinition = {
 
 export type Location = {
   address: string;
+  /** Nearest short label for a pin, e.g. a POI or street name. */
+  shortName?: string;
   latitude?: number;
   longitude?: number;
 };

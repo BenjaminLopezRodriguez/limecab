@@ -1,8 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Star } from "lucide-react";
+import { StarIcon } from "@hugeicons/core-free-icons";
 
+import { Icon } from "@/components/ui/icon";
 import type { Provider } from "@/lib/service-app/services";
 import { cn } from "@/lib/utils";
 
@@ -72,9 +73,10 @@ export function ProviderCard({
               className="text-muted-foreground mt-0.5 flex items-center gap-1 text-sm tabular-nums"
               aria-label={`Rated ${provider.rating.toFixed(1)} out of 5`}
             >
-              <Star
-                className="size-3.5 fill-current"
-                strokeWidth={0}
+              <Icon
+                icon={StarIcon}
+                size={14}
+                className="text-lime"
                 aria-hidden="true"
               />
               {provider.rating.toFixed(1)}

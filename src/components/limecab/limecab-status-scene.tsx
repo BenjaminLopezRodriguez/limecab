@@ -1,17 +1,19 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { MessageCircle, Phone } from "lucide-react";
+import { CallIcon, Message01Icon } from "@hugeicons/core-free-icons";
 
 import { ProviderCard } from "@/components/service-app/provider-card";
 import { ServiceStatusPanel } from "@/components/service-app/service-status";
 import { PrimaryAction } from "@/components/service-app/task-scene";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 import { DetailButton } from "@/components/limecab/limecab-parts";
 import type { DetailKind } from "@/components/limecab/limecab-interrupts";
 import type { Pickup, RideProduct, Trip } from "@/lib/limecab/domain";
+import { courierOrderLabel } from "@/lib/limecab/courier";
 import type { Location } from "@/lib/service-app/services";
-import type { ServiceStatus } from "@/lib/service-app/status";
+import type { ServiceStatus, StatusLabels } from "@/lib/service-app/status";
 import { cn } from "@/lib/utils";
 
 /** States where the rider is still waiting at a curb for a specific car. */
@@ -34,6 +36,7 @@ export function LimeCabStatusScene({
   failure,
   cancelError,
   cancellable,
+  labels = { provider: "driver", service: "ride" },
   onOpenDetail,
   onBackToQuote,
   onCancel,
@@ -50,6 +53,7 @@ export function LimeCabStatusScene({
   /** The server refused the cancellation. The ride is still running. */
   cancelError?: string | null;
   cancellable: boolean;
+  labels?: StatusLabels;
   onOpenDetail: (kind: DetailKind) => void;
   onBackToQuote: () => void;
   onCancel: () => void;
@@ -59,7 +63,7 @@ export function LimeCabStatusScene({
   return (
     <ServiceStatusPanel
       status={status}
-      labels={{ provider: "driver", service: "ride" }}
+      labels={labels}
       subtitle={
         product && destination
           ? `${product.name} · ${destinationLine}`
@@ -71,8 +75,39 @@ export function LimeCabStatusScene({
           {curbside && trip ? (
             <PickupPin
               pin={trip.pickupPin}
+              title={
+                trip.courier
+                  ? `${courierOrderLabel(trip.id)} · Pickup`
+                  : undefined
+              }
               meetAt={pickup.meetingPoint ?? pickupLine}
+              detail={
+                trip.courier
+                  ? `${trip.courier.packageCount === 1 ? "1 package" : `${trip.courier.packageCount} packages`} · show this to your courier`
+                  : undefined
+              }
+              provider={labels.provider}
             />
+          ) : null}
+
+          {status.state === "active" && trip?.courier ? (
+            trip.courier.proof === "hand" && trip.courier.deliveryPin ? (
+              <PickupPin
+                pin={trip.courier.deliveryPin}
+                title={`${courierOrderLabel(trip.id)} · Recipient PIN`}
+                detail={`Give this to ${trip.courier.recipientName}`}
+                provider="recipient"
+              />
+            ) : (
+              <p className="bg-muted/60 rounded-2xl px-4 py-3 text-sm leading-relaxed">
+                In transit to {trip.courier.recipientName}
+                {trip.courier.proof === "door"
+                  ? " · leave at door"
+                  : trip.courier.proof === "signature"
+                    ? " · signature required"
+                    : ""}
+              </p>
+            )
           ) : null}
 
           {showDriver && trip ? (
@@ -92,13 +127,13 @@ export function LimeCabStatusScene({
                     label={`Message ${trip.driver.name}`}
                     onPress={() => onOpenDetail("contact")}
                   >
-                    <MessageCircle strokeWidth={1.7} />
+                    <Icon icon={Message01Icon} size={18} />
                   </IconAction>
                   <IconAction
                     label={`Call ${trip.driver.name}`}
                     onPress={() => onOpenDetail("contact")}
                   >
-                    <Phone strokeWidth={1.7} />
+                    <Icon icon={CallIcon} size={18} />
                   </IconAction>
                 </div>
               }
@@ -136,7 +171,7 @@ export function LimeCabStatusScene({
               className="text-muted-foreground h-11 w-full rounded-xl text-sm font-normal"
               onClick={onCancel}
             >
-              Cancel ride
+              Cancel {labels.service}
             </Button>
           ) : null}
         </div>
@@ -201,7 +236,7 @@ function RouteRailRow({
         className={cn(
           "size-2.5 shrink-0",
           kind === "pickup"
-            ? "bg-primary rounded-full"
+            ? "bg-lime rounded-full"
             : "bg-foreground rounded-[3px]",
         )}
       />
@@ -240,16 +275,30 @@ function IconAction({
  * It is the largest thing on the screen for the few seconds it matters,
  * because the rider is looking at a phone at arm's length beside a road.
  */
-function PickupPin({ pin, meetAt }: { pin: string; meetAt: string }) {
+function PickupPin({
+  pin,
+  meetAt,
+  provider,
+  title,
+  detail,
+}: {
+  pin: string;
+  meetAt?: string;
+  provider: string;
+  title?: string;
+  detail?: string;
+}) {
   return (
     <div className="bg-accent text-accent-foreground rounded-2xl px-4 py-3">
       <p className="text-[11px] tracking-[0.12em] uppercase opacity-70">
-        Give your driver this code
+        {title ?? `Give your ${provider} this code`}
       </p>
       <p className="mt-1.5 text-[40px] leading-none font-semibold tracking-[0.14em] tabular-nums">
         {pin}
       </p>
-      <p className="mt-2.5 text-sm opacity-80">Meet at {meetAt}</p>
+      <p className="mt-2.5 text-sm opacity-80">
+        {detail ?? (meetAt ? `Meet at ${meetAt}` : null)}
+      </p>
     </div>
   );
 }

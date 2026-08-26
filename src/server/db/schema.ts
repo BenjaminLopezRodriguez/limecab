@@ -154,6 +154,15 @@ export const trips = createTable(
     arrivalMinutes: d.integer().notNull(),
     pickupPin: d.varchar({ length: 8 }).notNull(),
 
+    /** Courier extras. Null on a ride — LimeCab still owns the same trip row. */
+    recipientName: d.varchar({ length: 80 }),
+    recipientPhone: d.varchar({ length: 20 }),
+    packageCount: d.integer().default(1).notNull(),
+    deliveryProof: d.varchar({ length: 16 }),
+    deliveryPin: d.varchar({ length: 8 }),
+    pickupVerifiedAt: d.timestamp({ withTimezone: true }),
+    deliveryVerifiedAt: d.timestamp({ withTimezone: true }),
+
     driverId: d.varchar({ length: 255 }).references(() => drivers.id),
 
     requestIdempotencyKey: d.varchar({ length: 255 }),

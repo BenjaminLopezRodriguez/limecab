@@ -19,9 +19,11 @@ export {
   MapAdapterProvider,
   placeholderMapAdapter,
 } from "@/components/service-app/service-map";
+export { createMapboxAdapter } from "@/components/service-app/mapbox-adapter";
 export { LocationTrigger } from "@/components/service-app/location-trigger";
 export { LocationSearch } from "@/components/service-app/location-search";
 export { LocationSearchScene } from "@/components/service-app/location-search-scene";
+export { LocationPinScene } from "@/components/service-app/location-pin-scene";
 export { SavedPlaces } from "@/components/service-app/saved-places";
 export { ServiceGrid } from "@/components/service-app/service-grid";
 export { QuotePanel } from "@/components/service-app/quote-panel";

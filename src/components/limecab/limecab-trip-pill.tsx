@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Car } from "lucide-react";
+import { Car01Icon, Package01Icon } from "@hugeicons/core-free-icons";
 
+import { Icon } from "@/components/ui/icon";
+import { isCourierProduct } from "@/lib/limecab/courier";
 import { isTerminalStatus, isTripStatus } from "@/server/limecab/state";
 import { api } from "@/trpc/react";
 import { cn } from "@/lib/utils";
@@ -26,11 +28,18 @@ const MARGIN = 12;
 /** Past this much movement, the gesture is a drag and not a tap. */
 const DRAG_SLOP = 6;
 
-const STATUS_LINE: Record<string, string> = {
+const RIDE_STATUS_LINE: Record<string, string> = {
   requested: "Finding your driver",
   matched: "Driver assigned",
   arriving: "Your driver is arriving",
   in_progress: "On the way",
+};
+
+const COURIER_STATUS_LINE: Record<string, string> = {
+  requested: "Finding a courier",
+  matched: "Courier assigned",
+  arriving: "Your courier is arriving",
+  in_progress: "Package on the way",
 };
 
 export function LimeCabTripPill() {
@@ -113,7 +122,9 @@ export function LimeCabTripPill() {
     return null;
   }
 
-  const line = STATUS_LINE[ride.status] ?? "Ride in progress";
+  const courier = isCourierProduct(ride.productId);
+  const lines = courier ? COURIER_STATUS_LINE : RIDE_STATUS_LINE;
+  const line = lines[ride.status] ?? (courier ? "Delivery in progress" : "Ride in progress");
   const detail = ride.driver
     ? `${ride.driver.vehicleColor} ${ride.driver.vehicleMake} · ${ride.driver.vehiclePlate}`
     : `Arriving in ~${ride.arrivalMinutes} min`;
@@ -140,14 +151,14 @@ export function LimeCabTripPill() {
         // Default berth: above the floating tab capsule, out of the thumb path.
         !pos && "right-4 bottom-28",
       )}
-      aria-label={`${line}. ${detail}. Back to your ride.`}
+      aria-label={`${line}. ${detail}. Back to your ${courier ? "delivery" : "ride"}.`}
     >
       <span
         aria-hidden="true"
-        className="bg-primary text-primary-foreground relative flex size-9 shrink-0 items-center justify-center rounded-full"
+        className="bg-lime text-lime-foreground relative flex size-9 shrink-0 items-center justify-center rounded-full"
       >
-        <Car className="size-[1.15rem]" strokeWidth={2} />
-        <span className="bg-primary absolute inset-0 animate-ping rounded-full opacity-40 motion-reduce:hidden" />
+        <Icon icon={courier ? Package01Icon : Car01Icon} size={18} />
+        <span className="bg-lime absolute inset-0 animate-ping rounded-full opacity-40 motion-reduce:hidden" />
       </span>
       <span className="min-w-0 text-left">
         <span className="block text-[13px] leading-tight font-semibold tracking-tight">

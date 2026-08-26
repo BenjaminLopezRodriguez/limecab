@@ -43,8 +43,16 @@ export type MapViewProps = {
   callout?: string | null;
   /** Corner caption, usually the current address. */
   label?: string | null;
+  /** Short name drawn in the center pin when the map is locating. */
+  pinLabel?: string | null;
+  /** True while the pin's reverse-geocode is in flight. */
+  pinLocating?: boolean;
   zoom?: number;
   className?: string;
+  /** When true the canvas accepts pan and pinch. */
+  interactive?: boolean;
+  /** Fired when the user finishes a pan or pinch. */
+  onCameraChange?: (center: MapPoint) => void;
 };
 
 export interface MapAdapter {
@@ -58,7 +66,7 @@ export function zoomForMode(mode: MapMode): number {
     case "home":
       return 14;
     case "select_location":
-      return 16;
+      return 14;
     case "route_preview":
     case "active_route":
       return 13;
@@ -120,4 +128,78 @@ export function projectPoint(
     x: Math.min(192, Math.max(8, 100 + eastM * scale)),
     y: Math.min(192, Math.max(8, 100 - northM * scale)),
   };
+}
+
+/**
+ * Moves the camera so the map content follows a drag in viewBox units.
+ * Positive `dx` (finger east) shifts the centre west, matching a real map.
+ */
+export function panCenter(
+  center: MapPoint,
+  dxViewBox: number,
+  dyViewBox: number,
+  metersPerViewBoxUnit: number,
+): MapPoint {
+  const cos = Math.max(
+    0.01,
+    Math.cos((center.latitude * Math.PI) / 180),
+  );
+  return {
+    latitude: center.latitude + (dyViewBox * metersPerViewBoxUnit) / 111_320,
+    longitude:
+      center.longitude - (dxViewBox * metersPerViewBoxUnit) / (111_320 * cos),
+  };
+}
+
+/** Mapbox (and GeoJSON) store vertices as [longitude, latitude]. */
+export function pointsFromLineString(geometry: {
+  coordinates: ReadonlyArray<readonly number[]>;
+}): MapPoint[] {
+  return geometry.coordinates.flatMap((pair) => {
+    const longitude = pair[0];
+    const latitude = pair[1];
+    if (longitude === undefined || latitude === undefined) return [];
+    return [{ latitude, longitude }];
+  });
+}
+
+/**
+ * Walk `t` along a path by distance, not vertex count, so a long straight
+ * block and a wiggly interchange both animate at a steady speed.
+ */
+export function pointAlongPath(path: readonly MapPoint[], t: number): MapPoint {
+  const first = path[0];
+  if (!first) {
+    throw new Error("pointAlongPath requires at least one point");
+  }
+  if (path.length === 1) return first;
+  const clamped = Math.min(1, Math.max(0, t));
+  const lengths: number[] = [];
+  let total = 0;
+  for (let i = 1; i < path.length; i++) {
+    const prev = path[i - 1]!;
+    const next = path[i]!;
+    const { northM, eastM } = offsetMeters(prev, next);
+    const length = Math.hypot(northM, eastM);
+    lengths.push(length);
+    total += length;
+  }
+  if (total === 0) return first;
+  let remaining = clamped * total;
+  for (let i = 1; i < path.length; i++) {
+    const prev = path[i - 1]!;
+    const next = path[i]!;
+    const length = lengths[i - 1]!;
+    if (remaining <= length) {
+      const u = length === 0 ? 1 : remaining / length;
+      const kind = next.kind ?? prev.kind;
+      return {
+        latitude: prev.latitude + (next.latitude - prev.latitude) * u,
+        longitude: prev.longitude + (next.longitude - prev.longitude) * u,
+        ...(kind ? { kind } : {}),
+      };
+    }
+    remaining -= length;
+  }
+  return path[path.length - 1]!;
 }

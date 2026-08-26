@@ -6,12 +6,16 @@ import {
   useEffect,
   useRef,
   useState,
+  type KeyboardEvent,
+  type PointerEvent,
   type ReactNode,
+  type WheelEvent,
 } from "react";
-
+import { LocationPinMarker } from "@/components/service-app/location-pin-marker";
 import { SpatialEtaMarker } from "@/components/service-app/spatial-eta-marker";
 import {
   fitMetersPerUnit,
+  panCenter,
   projectPoint,
   zoomForMode,
   type MapAdapter,
@@ -179,10 +183,9 @@ function midpoint(a: MapPoint, b: MapPoint): MapPoint {
 }
 
 /**
- * Vendor-free canvas. Draws a synthetic street texture plus the points and
- * route it is given, positioned relative to `center`, with a treatment per
- * `MapMode`. Every scene, layout, and transition works against this before a
- * map provider exists.
+ * No-token fallback. Draws points and the route relative to `center` with a
+ * treatment per `MapMode`. Not a stand-in street map — LimeCab uses Mapbox
+ * when `NEXT_PUBLIC_MAPBOX_TOKEN` is set.
  */
 export const placeholderMapAdapter: MapAdapter = {
   render(props) {
@@ -218,6 +221,18 @@ function useVisibleHalfExtent(ref: { current: HTMLElement | null }) {
   return half;
 }
 
+function metersForZoom(zoom: number) {
+  return Math.max(1.5, 6 * 2 ** (16 - zoom));
+}
+
+function pinchDistance(
+  pointers: Map<number, { x: number; y: number }>,
+): number {
+  const [a, b] = [...pointers.values()];
+  if (!a || !b) return 0;
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
 function PlaceholderCanvas({
   mode,
   center,
@@ -225,10 +240,22 @@ function PlaceholderCanvas({
   route = [],
   callout,
   label,
+  pinLabel,
+  pinLocating = false,
+  zoom,
+  interactive = false,
+  onCameraChange,
   className,
 }: MapViewProps) {
   const frameRef = useRef<HTMLDivElement>(null);
   const halfExtent = useVisibleHalfExtent(frameRef);
+  const resolvedZoom = zoom ?? zoomForMode(mode);
+  const { frame: camera, meters: liveMeters, handlers } = useMapGestures({
+    enabled: interactive,
+    center,
+    zoom: resolvedZoom,
+    onCameraChange,
+  });
 
   {
     const treatment = MODE_TREATMENT[mode] ?? FALLBACK_TREATMENT;
@@ -247,24 +274,29 @@ function PlaceholderCanvas({
     // it is the two ends of the trip. Centring on one end alone pins the other
     // to the edge and calls it a preview.
     const frame =
-      mode === "provider_arrival" && providerPoint && originPoint
-        ? midpoint(providerPoint, originPoint)
-        : (mode === "route_preview" ||
-              mode === "active_route" ||
-              mode === "results") &&
-            originPoint &&
-            destinationPoint
-          ? midpoint(originPoint, destinationPoint)
-          : (center ?? null);
+      interactive && camera
+        ? camera
+        : mode === "provider_arrival" && providerPoint && originPoint
+          ? midpoint(providerPoint, originPoint)
+          : (mode === "route_preview" ||
+                mode === "active_route" ||
+                mode === "results") &&
+              originPoint &&
+              destinationPoint
+            ? midpoint(originPoint, destinationPoint)
+            : (camera ?? center ?? null);
 
     // One scale for points and route, fitted to whatever is on screen — a
-    // preview that crops the destination is not a preview.
+    // preview that crops the destination is not a preview. While the user is
+    // placing a pin the scale is theirs to pinch, not fitted to other points.
     const framed = frame
       ? [...points, ...(treatment.route !== "none" ? route : [])]
       : [];
-    const metersPerUnit = frame
-      ? fitMetersPerUnit(frame, framed, { margin: halfExtent })
-      : 6;
+    const metersPerUnit = interactive
+      ? liveMeters
+      : frame
+        ? fitMetersPerUnit(frame, framed, { margin: halfExtent })
+        : 6;
 
     const projected = frame
       ? points.map((point) => ({
@@ -295,8 +327,18 @@ function PlaceholderCanvas({
     return (
       <div
         ref={frameRef}
+        {...handlers}
+        role={interactive ? "application" : undefined}
+        tabIndex={interactive ? 0 : undefined}
+        aria-label={
+          interactive
+            ? "Map. Drag or use arrow keys to move the pin."
+            : undefined
+        }
         className={cn(
           "bg-muted text-foreground relative overflow-hidden",
+          interactive &&
+            "cursor-grab touch-none focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none active:cursor-grabbing",
           className,
         )}
       >
@@ -384,7 +426,7 @@ function PlaceholderCanvas({
             </g>
           ) : null}
 
-          {treatment.crosshair ? (
+          {treatment.crosshair && !interactive ? (
             <g stroke="currentColor" strokeOpacity="0.35" strokeWidth="1">
               <line x1="100" y1="72" x2="100" y2="90" />
               <line x1="100" y1="110" x2="100" y2="128" />
@@ -429,7 +471,7 @@ function PlaceholderCanvas({
             );
           })}
 
-          {frame && projected.length === 0 && !treatment.coverage ? (
+          {frame && projected.length === 0 && !treatment.coverage && !treatment.crosshair ? (
             <g>
               <circle cx="100" cy="100" r="20" fill="currentColor" fillOpacity="0.1" />
               <circle cx="100" cy="100" r="5.5" fill="currentColor" />
@@ -437,6 +479,10 @@ function PlaceholderCanvas({
             </g>
           ) : null}
         </svg>
+
+        {treatment.crosshair && interactive ? (
+          <LocationPinMarker name={pinLabel ?? null} locating={pinLocating} />
+        ) : null}
 
         {label ? (
           <p className="bg-background/80 text-muted-foreground absolute top-3 left-4 max-w-[70%] truncate rounded-full px-2 py-0.5 text-xs">
@@ -465,4 +511,152 @@ function PlaceholderCanvas({
       </div>
     );
   }
+}
+
+function useMapGestures({
+  enabled,
+  center,
+  zoom,
+  onCameraChange,
+}: {
+  enabled: boolean;
+  center: MapPoint | null | undefined;
+  zoom: number;
+  onCameraChange?: (center: MapPoint) => void;
+}) {
+  const [camera, setCamera] = useState<MapPoint | null>(center ?? null);
+  const [meters, setMeters] = useState(() => metersForZoom(zoom));
+  const cameraRef = useRef(camera);
+  const metersRef = useRef(meters);
+  cameraRef.current = camera;
+  metersRef.current = meters;
+
+  const dragging = useRef(false);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const gesture = useRef<{
+    camera: MapPoint;
+    meters: number;
+    origin: { x: number; y: number };
+    pinch: number | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!dragging.current && center) setCamera(center);
+  }, [center]);
+
+  useEffect(() => {
+    if (!dragging.current) setMeters(metersForZoom(zoom));
+  }, [zoom]);
+
+  const frame = camera ?? center ?? null;
+  if (!enabled) {
+    return { frame: center ?? null, meters: metersForZoom(zoom), handlers: {} };
+  }
+
+  const finish = () => {
+    dragging.current = false;
+    gesture.current = null;
+    const next = cameraRef.current;
+    if (next) onCameraChange?.(next);
+  };
+
+  const handlers = {
+    onPointerDown: (event: PointerEvent<HTMLDivElement>) => {
+      if (event.button !== 0 && event.pointerType === "mouse") return;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      pointers.current.set(event.pointerId, {
+        x: event.clientX,
+        y: event.clientY,
+      });
+      const origin = pointers.current.values().next().value;
+      const here = cameraRef.current;
+      if (!origin || !here) return;
+      dragging.current = true;
+      gesture.current = {
+        camera: here,
+        meters: metersRef.current,
+        origin,
+        pinch:
+          pointers.current.size === 2
+            ? pinchDistance(pointers.current)
+            : null,
+      };
+    },
+    onPointerMove: (event: PointerEvent<HTMLDivElement>) => {
+      if (!dragging.current || !gesture.current) return;
+      if (!pointers.current.has(event.pointerId)) return;
+      pointers.current.set(event.pointerId, {
+        x: event.clientX,
+        y: event.clientY,
+      });
+      const box = event.currentTarget.getBoundingClientRect();
+      const scale = Math.max(box.width / 200, box.height / 200);
+
+      if (pointers.current.size >= 2) {
+        const dist = pinchDistance(pointers.current);
+        const start = gesture.current.pinch ?? dist;
+        if (start > 0) {
+          setMeters(
+            Math.min(80, Math.max(1.5, gesture.current.meters / (dist / start))),
+          );
+        }
+        return;
+      }
+
+      const { origin } = gesture.current;
+      setCamera(
+        panCenter(
+          gesture.current.camera,
+          (event.clientX - origin.x) / scale,
+          (event.clientY - origin.y) / scale,
+          gesture.current.meters,
+        ),
+      );
+    },
+    onPointerUp: (event: PointerEvent<HTMLDivElement>) => {
+      pointers.current.delete(event.pointerId);
+      if (pointers.current.size > 0) {
+        const remaining = pointers.current.values().next().value;
+        const here = cameraRef.current;
+        if (remaining && here) {
+          gesture.current = {
+            camera: here,
+            meters: metersRef.current,
+            origin: remaining,
+            pinch: null,
+          };
+        }
+        return;
+      }
+      finish();
+    },
+    onPointerCancel: (event: PointerEvent<HTMLDivElement>) => {
+      pointers.current.delete(event.pointerId);
+      if (pointers.current.size === 0) finish();
+    },
+    onWheel: (event: WheelEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const factor = event.deltaY > 0 ? 1.12 : 1 / 1.12;
+      setMeters((current) => Math.min(80, Math.max(1.5, current * factor)));
+    },
+    onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => {
+      const here = cameraRef.current;
+      if (!here) return;
+      const step = 14;
+      const move: Record<string, [number, number]> = {
+        ArrowLeft: [step, 0],
+        ArrowRight: [-step, 0],
+        ArrowUp: [0, step],
+        ArrowDown: [0, -step],
+      };
+      const delta = move[event.key];
+      if (!delta) return;
+      event.preventDefault();
+      const next = panCenter(here, delta[0], delta[1], metersRef.current);
+      setCamera(next);
+      onCameraChange?.(next);
+    },
+  };
+
+  return { frame, meters, handlers };
 }

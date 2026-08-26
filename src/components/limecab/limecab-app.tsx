@@ -1,9 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { useAdaptiveSurface } from "@/components/service-app/adaptive-surface";
+import { LocationPinScene } from "@/components/service-app/location-pin-scene";
 import { LocationSearchScene } from "@/components/service-app/location-search-scene";
+import { createMapboxAdapter } from "@/components/service-app/mapbox-adapter";
 import { ServiceAppShell } from "@/components/service-app/service-app-shell";
 import { ServiceMap } from "@/components/service-app/service-map";
 import { ServiceSheet } from "@/components/service-app/service-sheet";
@@ -14,6 +17,7 @@ import {
 } from "@/components/service-app/surface-manager";
 import { Button } from "@/components/ui/button";
 import { LimeCabCompleteScene } from "@/components/limecab/limecab-complete-scene";
+import { LimeCabConfigureScene } from "@/components/limecab/limecab-configure-scene";
 import { LimeCabHomeScene } from "@/components/limecab/limecab-home-scene";
 import {
   LimeCabCancelSurfaces,
@@ -31,7 +35,21 @@ import {
   type LimeCabAction,
   type LimeCabSurfaceId,
 } from "@/components/limecab/surfaces";
-import type { Pickup, RideProduct, Trip } from "@/lib/limecab/domain";
+import {
+  clockTime,
+  type Pickup,
+  type RideProduct,
+  type Trip,
+} from "@/lib/limecab/domain";
+import {
+  COURIER_OPTIONS,
+  courierDraftFromOptions,
+  courierDraftReady,
+  courierMeetingPoint,
+  courierProductFromOptions,
+  findBookableProduct,
+  isCourierProduct,
+} from "@/lib/limecab/courier";
 import {
   AVAILABLE_PROMO,
   CURRENT_LOCATION,
@@ -44,7 +62,24 @@ import {
   lerpPoint,
   quoteFor,
 } from "@/lib/limecab/mock";
+import {
+  fetchDrivingRoute,
+  fetchReverseGeocode,
+} from "@/lib/service-app/directions";
 import type { MapPoint } from "@/lib/service-app/map-adapter";
+import { pointAlongPath } from "@/lib/service-app/map-adapter";
+import {
+  addStop,
+  applyRouteChoice,
+  nextEmptyField,
+  removeStop,
+  type SearchField,
+} from "@/lib/service-app/route-draft";
+import {
+  defaultOptionValues,
+  summarizeOptions,
+  type ServiceOptionValues,
+} from "@/lib/service-app/options";
 import {
   formatMoney,
   splitAddress,
@@ -58,6 +93,7 @@ import {
   type ServiceAppState,
 } from "@/lib/service-app/state";
 import type { ServiceStatus } from "@/lib/service-app/status";
+import { env } from "@/env";
 import { api, type RouterOutputs } from "@/trpc/react";
 
 /**
@@ -70,6 +106,26 @@ import { api, type RouterOutputs } from "@/trpc/react";
  */
 
 type TripRow = RouterOutputs["trip"]["get"];
+type RideSearchTarget = "pickup" | "destination" | `stop:${number}`;
+
+function fieldFromTarget(target: RideSearchTarget): SearchField {
+  return target === "pickup" ? "origin" : target;
+}
+
+function targetFromField(field: SearchField): RideSearchTarget {
+  return field === "origin" ? "pickup" : field;
+}
+
+function searchTitle(
+  target: RideSearchTarget,
+  courier: boolean,
+): string {
+  if (target === "pickup") return courier ? "Pick up package" : "Pickup";
+  if (target.startsWith("stop:")) {
+    return `Stop ${Number(target.slice("stop:".length)) + 1}`;
+  }
+  return courier ? "Deliver to?" : "Where to?";
+}
 type TripStatus = TripRow["status"];
 
 /**
@@ -143,6 +199,18 @@ function toClientTrip(row: TripRow): Trip | null {
     tripMinutes: row.tripMinutes,
     arrivalMinutes: row.arrivalMinutes,
     pickupPin: row.pickupPin,
+    courier:
+      row.recipientName && row.deliveryProof
+        ? {
+            recipientName: row.recipientName,
+            recipientPhone: row.recipientPhone ?? "",
+            packageCount: row.packageCount,
+            proof: row.deliveryProof as "hand" | "door" | "signature",
+            deliveryPin: row.deliveryPin,
+            pickupVerifiedAt: row.pickupVerifiedAt,
+            deliveryVerifiedAt: row.deliveryVerifiedAt,
+          }
+        : undefined,
   };
 }
 
@@ -151,6 +219,10 @@ function errorMessage(error: unknown): string {
     ? error.message
     : "Something went wrong. Nothing was dispatched.";
 }
+
+const mapAdapter = env.NEXT_PUBLIC_MAPBOX_TOKEN
+  ? createMapboxAdapter(env.NEXT_PUBLIC_MAPBOX_TOKEN)
+  : undefined;
 
 /** The tail of the en-route phase, where the question becomes "which car?". */
 const ARRIVED_AT = 0.82;
@@ -193,20 +265,34 @@ function LimeCabFlow({
   minimized: boolean;
 }) {
   const surfaces = useSurfaceManager<LimeCabSurfaceId, LimeCabAction>();
+  const searchParams = useSearchParams();
+  const wantCourier = searchParams.get("service") === "courier";
 
   const [state, setState] = useState<ServiceAppState>("home");
+  const [vertical, setVertical] = useState<"ride" | "courier">(
+    wantCourier ? "courier" : "ride",
+  );
   const [pickup, setPickup] = useState(CURRENT_LOCATION);
   const [destination, setDestination] = useState<Location | null>(null);
-  const [searchTarget, setSearchTarget] = useState<"pickup" | "destination">(
-    "destination",
-  );
+  const [stops, setStops] = useState<Location[]>([]);
+  const [searchTarget, setSearchTarget] =
+    useState<RideSearchTarget>("destination");
+  /** Home map tap vs search "choose on map" — drives Back and confirm. */
+  const [pinEntry, setPinEntry] = useState<"home" | "search">("search");
+  const [pin, setPin] = useState<MapPoint | null>(null);
+  const [pinAddress, setPinAddress] = useState<string | null>(null);
+  const [pinShortName, setPinShortName] = useState<string | null>(null);
+  const [pinLocating, setPinLocating] = useState(false);
+  const [drivenRoute, setDrivenRoute] = useState<MapPoint[] | null>(null);
   const [productId, setProductId] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [phaseStart, setPhaseStart] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
 
-  const product = RIDE_PRODUCTS.find((entry) => entry.id === productId) ?? null;
+  const product =
+    findBookableProduct(productId ?? "", RIDE_PRODUCTS) ?? null;
   const available = product?.status === "available";
+  const courier = vertical === "courier";
 
   // ---- the server is the truth -------------------------------------------
   const [tripId, setTripId] = useState<string | null>(null);
@@ -253,6 +339,7 @@ function LimeCabFlow({
       longitude: live.destinationLongitude ?? undefined,
     });
     setProductId(live.productId);
+    if (isCourierProduct(live.productId)) setVertical("courier");
     setState(SCENE_FOR_STATUS[live.status]);
   }, [activeTrip.data, activeTrip.isSuccess]);
 
@@ -262,6 +349,12 @@ function LimeCabFlow({
       destination: Location;
       productId: string;
       idempotencyKey: string;
+      courier?: {
+        recipientName: string;
+        recipientPhone: string;
+        packageCount: number;
+        proof: "hand" | "door" | "signature";
+      };
     }) => {
       const created = await requestTrip.mutateAsync({
         pickup: {
@@ -277,6 +370,7 @@ function LimeCabFlow({
         },
         productId: input.productId,
         idempotencyKey: input.idempotencyKey,
+        courier: input.courier,
       });
       setTripId(created.id);
     },
@@ -312,20 +406,40 @@ function LimeCabFlow({
     setNow(Date.now());
   }, [state]);
 
+  useEffect(() => {
+    if (isCommitted(state)) return;
+    if (wantCourier) {
+      setVertical("courier");
+      setProductId((id) => (isCourierProduct(id) ? id : "courier-small"));
+    }
+  }, [wantCourier, state]);
+
+  useEffect(() => {
+    if (wantCourier || isCommitted(state) || state !== "home") return;
+    setVertical("ride");
+    setProductId((id) => (isCourierProduct(id) ? null : id));
+  }, [wantCourier, state]);
+
   const go = useCallback(
     (
       event: ServiceAppEvent,
-      overrides?: Partial<{ hasLocation: boolean; hasService: boolean }>,
+      overrides?: Partial<{
+        hasLocation: boolean;
+        hasService: boolean;
+        pinEntry: "home" | "search";
+      }>,
     ) =>
       setState((current) =>
         reduceServiceAppState(current, event, {
           hasLocation: Boolean(destination),
-          hasService: Boolean(available),
-          needsConfigure: false,
+          hasService: courier || Boolean(available),
+          needsConfigure: courier,
+          needsServiceSelect: !courier,
+          pinEntry,
           ...overrides,
         }),
       ),
-    [available, destination],
+    [available, courier, destination, pinEntry],
   );
 
   const duration = PHASE_HINT_MS[state] ?? 0;
@@ -353,6 +467,22 @@ function LimeCabFlow({
     [pickup],
   );
 
+  useEffect(() => {
+    if (!destinationPoint) {
+      setDrivenRoute(null);
+      return;
+    }
+    const ac = new AbortController();
+    void fetchDrivingRoute(pickupPoint, destinationPoint, ac.signal)
+      .then(setDrivenRoute)
+      .catch(() => {
+        if (!ac.signal.aborted) {
+          setDrivenRoute([pickupPoint, destinationPoint]);
+        }
+      });
+    return () => ac.abort();
+  }, [destinationPoint, pickupPoint]);
+
   const driverPoint = useMemo<MapPoint | null>(() => {
     if (state === "assigned") {
       return {
@@ -367,13 +497,17 @@ function LimeCabFlow({
       };
     }
     if ((state === "active" || state === "completing") && destinationPoint) {
+      const path =
+        drivenRoute && drivenRoute.length > 1
+          ? drivenRoute
+          : [pickupPoint, destinationPoint];
       return {
-        ...lerpPoint(pickupPoint, destinationPoint, state === "active" ? t : 1),
+        ...pointAlongPath(path, state === "active" ? t : 1),
         kind: "provider",
       };
     }
     return null;
-  }, [destinationPoint, pickupPoint, state, t]);
+  }, [destinationPoint, drivenRoute, pickupPoint, state, t]);
 
   const points = useMemo<MapPoint[]>(() => {
     const list: MapPoint[] = [pickupPoint];
@@ -433,18 +567,25 @@ function LimeCabFlow({
       case "complete":
         return {
           state: "complete",
-          summary: "Thanks for riding with LimeCab.",
+          summary: courier
+            ? "Thanks for sending with LimeCab."
+            : "Thanks for riding with LimeCab.",
         };
       default:
         return { state: "pending" };
     }
-  }, [arrived, destination, failure, state, t, trip]);
+  }, [arrived, courier, destination, failure, state, t, trip]);
 
   const mapPosture = surfaces.layout.map?.presentation ?? "bounded";
+  const pinning = state === "location_pin";
   const center =
-    state === "home" || !destinationPoint ? pickupPoint : destinationPoint;
+    pinning && pin
+      ? pin
+      : state === "home" || !destinationPoint
+        ? pickupPoint
+        : destinationPoint;
 
-  const openSearch = useRef<(target: "pickup" | "destination") => void>(
+  const openSearch = useRef<(target: RideSearchTarget) => void>(
     () => undefined,
   );
   openSearch.current = (target) => {
@@ -455,30 +596,104 @@ function LimeCabFlow({
     go("open_search");
   };
 
+  const openPin = (
+    target: RideSearchTarget = searchTarget,
+    entry: "home" | "search" = "search",
+  ) => {
+    setSearchTarget(target);
+    setPinEntry(entry);
+    const stopIndex = target.startsWith("stop:")
+      ? Number(target.slice("stop:".length))
+      : null;
+    const seed =
+      target === "pickup"
+        ? pickup
+        : stopIndex !== null
+          ? (stops[stopIndex] ?? pickup)
+          : (destination ?? pickup);
+    setPin({
+      latitude: seed.latitude ?? CURRENT_LOCATION.latitude!,
+      longitude: seed.longitude ?? CURRENT_LOCATION.longitude!,
+    });
+    setPinAddress(seed.address || pickup.address);
+    setPinShortName(splitAddress(seed.address || pickup.address).line);
+    setPinLocating(false);
+    surfaces.perform("chooseOnMap");
+    go("choose_on_map", { pinEntry: entry });
+  };
+
+  useEffect(() => {
+    if (!pinning || !pin) return;
+    let cancelled = false;
+    setPinLocating(true);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          let resolved: { address: string; shortName?: string } | undefined;
+          try {
+            resolved = await fetchReverseGeocode(pin.latitude, pin.longitude);
+          } catch {
+            resolved = await geocodeAdapter.reverse?.(
+              pin.latitude,
+              pin.longitude,
+            );
+          }
+          if (!cancelled) {
+            setPinAddress(resolved?.address ?? "Pinned location");
+            setPinShortName(
+              resolved?.shortName ??
+                splitAddress(resolved?.address ?? "").line ??
+                "Pinned location",
+            );
+          }
+        } catch {
+          if (!cancelled) setPinAddress("Pinned location");
+        } finally {
+          if (!cancelled) setPinLocating(false);
+        }
+      })();
+    }, 280);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [pin, pinning]);
+
   return (
     <ServiceAppShell
       layout={state === "home" ? "home" : "task"}
-      onMapPress={() => openSearch.current("destination")}
+      onMapPress={() => openPin("pickup", "home")}
       map={
         minimized ? null : (
-        <ManagedSurface<LimeCabSurfaceId> id="map">
-          <ServiceMap
-            mode={LIMECAB_MAP_MODE[mapPosture] ?? "home"}
-            center={center}
-            points={points}
-            route={
-              destinationPoint && state !== "home"
-                ? [pickupPoint, destinationPoint]
-                : undefined
-            }
-            label={
-              state === "home"
-                ? splitAddress(pickup.address).line
-                : (destination?.address ?? pickup.address)
-            }
-            callout={status.state === "failed" ? null : serviceCallout(status)}
-          />
-        </ManagedSurface>
+          <ManagedSurface<LimeCabSurfaceId> id="map">
+            <ServiceMap
+              adapter={mapAdapter}
+              mode={LIMECAB_MAP_MODE[mapPosture] ?? "home"}
+              center={center}
+              interactive={surfaces.layout.map?.interaction === "active"}
+              onCameraChange={pinning ? setPin : undefined}
+              points={pinning ? [] : points}
+              route={
+                pinning || !destinationPoint || state === "home"
+                  ? undefined
+                  : (drivenRoute ?? [pickupPoint, destinationPoint])
+              }
+              pinLabel={pinning ? pinShortName : undefined}
+              pinLocating={pinning && pinLocating}
+              label={
+                pinning
+                  ? null
+                  : state === "home"
+                    ? splitAddress(pickup.address).line
+                    : (destination?.address ?? pickup.address)
+              }
+              callout={
+                pinning || status.state === "failed"
+                  ? null
+                  : serviceCallout(status)
+              }
+            />
+          </ManagedSurface>
         )
       }
     >
@@ -490,10 +705,19 @@ function LimeCabFlow({
         setPickup={setPickup}
         destination={destination}
         setDestination={setDestination}
+        stops={stops}
+        setStops={setStops}
         searchTarget={searchTarget}
+        pinEntry={pinEntry}
+        setPinEntry={setPinEntry}
         openSearch={(target) => openSearch.current(target)}
+        onChooseOnMap={() => openPin(searchTarget, "search")}
+        pin={pin}
+        pinAddress={pinAddress}
+        pinLocating={pinLocating}
         product={product}
         setProductId={setProductId}
+        courier={courier}
         trip={trip}
         serverStatus={serverStatus}
         startTrip={startTrip}
@@ -527,10 +751,19 @@ function LimeCabSurfaces({
   setPickup,
   destination,
   setDestination,
+  stops,
+  setStops,
   searchTarget,
+  pinEntry,
+  setPinEntry,
   openSearch,
+  onChooseOnMap,
+  pin,
+  pinAddress,
+  pinLocating,
   product,
   setProductId,
+  courier,
   trip,
   serverStatus,
   startTrip,
@@ -547,16 +780,29 @@ function LimeCabSurfaces({
   setState: (next: ServiceAppState) => void;
   go: (
     event: ServiceAppEvent,
-    overrides?: Partial<{ hasLocation: boolean; hasService: boolean }>,
+    overrides?: Partial<{
+      hasLocation: boolean;
+      hasService: boolean;
+      pinEntry: "home" | "search";
+    }>,
   ) => void;
   pickup: Pickup;
   setPickup: (next: Pickup) => void;
   destination: Location | null;
   setDestination: (next: Location | null) => void;
-  searchTarget: "pickup" | "destination";
-  openSearch: (target: "pickup" | "destination") => void;
+  stops: Location[];
+  setStops: (next: Location[]) => void;
+  searchTarget: RideSearchTarget;
+  pinEntry: "home" | "search";
+  setPinEntry: (next: "home" | "search") => void;
+  openSearch: (target: RideSearchTarget) => void;
+  onChooseOnMap: () => void;
+  pin: MapPoint | null;
+  pinAddress: string | null;
+  pinLocating: boolean;
   product: RideProduct | null;
   setProductId: (next: string | null) => void;
+  courier: boolean;
   trip: Trip | null;
   serverStatus: TripStatus | null;
   startTrip: (input: {
@@ -564,6 +810,12 @@ function LimeCabSurfaces({
     destination: Location;
     productId: string;
     idempotencyKey: string;
+    courier?: {
+      recipientName: string;
+      recipientPhone: string;
+      packageCount: number;
+      proof: "hand" | "door" | "signature";
+    };
   }) => Promise<void>;
   cancelTrip: () => Promise<void>;
   clearTrip: () => void;
@@ -588,6 +840,9 @@ function LimeCabSurfaces({
   const [tipCents, setTipCents] = useState<number | null>(null);
   const [quoteReady, setQuoteReady] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [courierValues, setCourierValues] = useState<ServiceOptionValues>(() =>
+    defaultOptionValues(COURIER_OPTIONS),
+  );
 
   /**
    * One key per request attempt. A double tap sends the same key twice and the
@@ -629,6 +884,9 @@ function LimeCabSurfaces({
   const quote = useMemo(() => {
     if (!product || !destination) return null;
     const { fare, miles, minutes } = quoteFor(product, pickup, destination);
+    const optionLines = courier
+      ? summarizeOptions(COURIER_OPTIONS, courierValues)
+      : [];
     return {
       fare,
       minutes,
@@ -645,10 +903,11 @@ function LimeCabSurfaces({
             value: formatMoney(fare.timeCents),
           },
           { label: "Booking fee", value: formatMoney(fare.bookingCents) },
+          ...optionLines,
         ],
       },
     };
-  }, [destination, pickup, product]);
+  }, [courier, courierValues, destination, pickup, product]);
 
   /** What the rider is actually charged, after any credit. */
   const payableCents = Math.max(
@@ -657,14 +916,34 @@ function LimeCabSurfaces({
   );
 
   const chooseLocation = (result: Location) => {
-    if (searchTarget === "pickup") {
-      setPickup({ ...pickup, ...result, followsDevice: false });
-      go("cancel_search");
+    setSearchError(null);
+    const { draft, next } = applyRouteChoice(
+      { origin: pickup, destination, stops },
+      fieldFromTarget(searchTarget),
+      result,
+    );
+    setPickup({
+      ...pickup,
+      ...draft.origin,
+      followsDevice: searchTarget === "pickup" ? false : pickup.followsDevice,
+    });
+    setDestination(draft.destination);
+    setStops(draft.stops);
+
+    // Home map card: adjusting pickup returns to home, does not open search.
+    if (pinEntry === "home" && searchTarget === "pickup") {
+      setPinEntry("search");
+      setState("home");
       return;
     }
-    setDestination(result);
-    surfaces.perform("destinationSelected");
-    go("select_location", { hasLocation: true });
+
+    if (next === "complete") {
+      surfaces.perform("destinationSelected");
+      go("select_location", { hasLocation: true });
+      return;
+    }
+
+    openSearch(targetFromField(next));
   };
 
   const chooseRide = (next: RideProduct) => {
@@ -698,13 +977,28 @@ function LimeCabSurfaces({
           from: "quote",
           to: "matching",
           interim: "map",
-          task: () =>
-            startTrip({
-              pickup,
+          task: () => {
+            const draft = courierDraftFromOptions(courierValues);
+            return startTrip({
+              pickup: courier
+                ? {
+                    ...pickup,
+                    meetingPoint: courierMeetingPoint(courierValues),
+                  }
+                : pickup,
               destination,
               productId: product.id,
               idempotencyKey: key,
-            }),
+              courier: courier
+                ? {
+                    recipientName: draft.recipientName,
+                    recipientPhone: draft.recipientPhone,
+                    packageCount: draft.quantity,
+                    proof: draft.proof,
+                  }
+                : undefined,
+            });
+          },
         });
         // Truthful: the request is accepted, so "matching" is what is
         // happening. No driver exists until the server sends one.
@@ -730,8 +1024,10 @@ function LimeCabSurfaces({
     setCancelError(null);
     clearTrip();
     idempotencyKey.current = null;
-    setProductId(null);
+    setProductId(courier ? "courier-small" : null);
+    setCourierValues(defaultOptionValues(COURIER_OPTIONS));
     setDestination(null);
+    setStops([]);
     setRating(null);
     setTipCents(null);
     setPromoApplied(false);
@@ -826,9 +1122,9 @@ function LimeCabSurfaces({
 
       {visible === "home" ? (
         <LimeCabHomeScene
-          pickup={pickup}
-          pickupLine={pickupLine}
           destination={destination}
+          title={courier ? "Where is it going?" : undefined}
+          destinationHint={courier ? "Where is it going?" : "Where to?"}
           onSearch={openSearch}
           onChooseLocation={chooseLocation}
         />
@@ -837,7 +1133,13 @@ function LimeCabSurfaces({
       {visible !== "home" && visible !== "location_search" ? (
         <ManagedSurface<LimeCabSurfaceId> id="primary">
           <ServiceSheet
-            label="Your ride"
+            label={
+              visible === "location_pin"
+                ? "Location"
+                : courier
+                  ? "Your delivery"
+                  : "Your ride"
+            }
             presentation={sheetPresentation(
               surfaces.layout.primary?.presentation ?? "sheet",
             )}
@@ -850,6 +1152,31 @@ function LimeCabSurfaces({
               >
                 Back
               </Button>
+            ) : null}
+
+            {visible === "location_pin" ? (
+              <LocationPinScene
+                title={question.question}
+                address={pinAddress}
+                locating={pinLocating}
+                confirmLabel={
+                  searchTarget === "pickup"
+                    ? "Set pickup"
+                    : searchTarget.startsWith("stop:")
+                      ? "Set stop"
+                      : courier
+                        ? "Set drop-off"
+                        : "Set destination"
+                }
+                onConfirm={() => {
+                  if (!pin || !pinAddress) return;
+                  chooseLocation({
+                    address: pinAddress,
+                    latitude: pin.latitude,
+                    longitude: pin.longitude,
+                  });
+                }}
+              />
             ) : null}
 
             {visible === "service_select" ? (
@@ -865,6 +1192,25 @@ function LimeCabSurfaces({
                 onEditPickup={() => openSearch("pickup")}
                 onEditDestination={() => openSearch("destination")}
                 onOpenPayment={() => openDetail("payment")}
+              />
+            ) : null}
+
+            {visible === "configure" ? (
+              <LimeCabConfigureScene
+                values={courierValues}
+                ready={courierDraftReady(
+                  courierDraftFromOptions(courierValues),
+                )}
+                onChange={(id, value) => {
+                  setCourierValues((current) => {
+                    const next = { ...current, [id]: value };
+                    if (id === "size") {
+                      setProductId(courierProductFromOptions(next).id);
+                    }
+                    return next;
+                  });
+                }}
+                onContinue={() => go("configure_done")}
               />
             ) : null}
 
@@ -887,11 +1233,26 @@ function LimeCabSurfaces({
                 }
                 pickupLine={pickupLine}
                 destinationLine={destinationLine}
+                pickupLabel={courier ? "Pick up" : "Pickup"}
+                destinationLabel={courier ? "Drop-off" : "Destination"}
                 payment={payment}
                 promoApplied={promoApplied}
                 busy={surface.progress.locked}
                 error={surface.progress.error}
                 signedIn={signedIn}
+                pricingLabel={
+                  courier ? "Pricing your delivery" : "Pricing your ride"
+                }
+                etaLine={
+                  courier
+                    ? `Pickup in ~${product.etaMinutes} min · Deliver by ${clockTime(product.etaMinutes + quote.minutes)}`
+                    : undefined
+                }
+                signInLabel={
+                  courier
+                    ? "Sign in to send a delivery"
+                    : "Sign in to request a ride"
+                }
                 onEditPickup={() => openSearch("pickup")}
                 onOpenDetail={openDetail}
                 onConfirm={
@@ -917,6 +1278,11 @@ function LimeCabSurfaces({
                 failure={failure}
                 cancelError={cancelError}
                 cancellable={cancellable}
+                labels={
+                  courier
+                    ? { provider: "courier", service: "delivery" }
+                    : { provider: "driver", service: "ride" }
+                }
                 onOpenDetail={openDetail}
                 onBackToQuote={backToQuote}
                 onCancel={() => {
@@ -938,6 +1304,9 @@ function LimeCabSurfaces({
                 onTip={setTipCents}
                 onDone={reset}
                 onOpenDetail={openDetail}
+                headline={courier ? "Package delivered" : "You've arrived"}
+                totalLabel={courier ? "Delivery total" : "Trip total"}
+                providerNoun={courier ? "your courier" : "your driver"}
               />
             ) : null}
           </ServiceSheet>
@@ -949,15 +1318,39 @@ function LimeCabSurfaces({
           open={state === "location_search"}
           adapter={geocodeAdapter}
           places={SAVED_PLACES}
-          title={searchTarget === "pickup" ? "Pickup" : "Where to?"}
+          title={searchTitle(searchTarget, courier)}
           route={{
             origin: pickupLine,
             destination: destination?.address ?? "",
-            active: searchTarget === "pickup" ? "origin" : "destination",
-            onSwitch: (field) =>
-              openSearch(field === "origin" ? "pickup" : "destination"),
+            stops: stops.map((stop) => splitAddress(stop.address).line),
+            active: fieldFromTarget(searchTarget),
+            onSwitch: (field) => openSearch(targetFromField(field)),
+            onAddStop: () => {
+              const added = addStop({ origin: pickup, destination, stops });
+              if (!added) return;
+              setStops(added.draft.stops);
+              openSearch(targetFromField(added.next));
+            },
+            onRemoveStop: (index) => {
+              const nextDraft = removeStop(
+                { origin: pickup, destination, stops },
+                index,
+              );
+              setStops(nextDraft.stops);
+              if (searchTarget === `stop:${index}`) {
+                const next =
+                  nextEmptyField(nextDraft) ?? ("destination" as const);
+                openSearch(targetFromField(next));
+                return;
+              }
+              if (searchTarget.startsWith("stop:")) {
+                const current = Number(searchTarget.slice("stop:".length));
+                if (current > index) openSearch(`stop:${current - 1}`);
+              }
+            },
           }}
           onSelect={chooseLocation}
+          onChooseOnMap={onChooseOnMap}
           onDismiss={() => {
             setSearchError(null);
             go("cancel_search");

@@ -90,6 +90,16 @@ export type Trip = {
    * the car is the one part of a ride the app cannot verify for you.
    */
   pickupPin: string;
+  /** Present on courier trips. Possession and proof live here, not in status. */
+  courier?: {
+    recipientName: string;
+    recipientPhone: string;
+    packageCount: number;
+    proof: "hand" | "door" | "signature";
+    deliveryPin: string | null;
+    pickupVerifiedAt: Date | null;
+    deliveryVerifiedAt: Date | null;
+  };
 };
 
 /** Wall-clock time a rider can compare against their calendar. */

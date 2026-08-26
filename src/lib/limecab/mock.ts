@@ -12,6 +12,7 @@ import {
 } from "@/lib/service-app/geocode-adapter";
 import type { MapPoint } from "@/lib/service-app/map-adapter";
 import type { Location, Place } from "@/lib/service-app/services";
+import { COURIER_SERVICE } from "@/lib/limecab/courier";
 import {
   distanceMiles,
   estimateFare,
@@ -190,12 +191,7 @@ export const LIMECAB_SERVICES = [
     description: "Book ahead",
     status: "coming_soon" as const,
   },
-  {
-    id: "courier",
-    title: "Courier",
-    description: "Send a package",
-    status: "coming_soon" as const,
-  },
+  COURIER_SERVICE,
   {
     id: "assist",
     title: "Assist",
@@ -243,7 +239,58 @@ export const geocodeAdapter: GeocodeAdapter = {
     },
   ]),
   async reverse(latitude, longitude) {
-    return { ...CURRENT_LOCATION, latitude, longitude };
+    const dropped: Location = {
+      address: "Pinned location",
+      latitude,
+      longitude,
+    };
+    const candidates: Location[] = [
+      CURRENT_LOCATION,
+      ...SAVED_PLACES.flatMap((place) => {
+        if (place.latitude == null || place.longitude == null) return [];
+        return [
+          {
+            address: place.address,
+            latitude: place.latitude,
+            longitude: place.longitude,
+          },
+        ];
+      }),
+      {
+        address: "LAX Terminal 4, Los Angeles",
+        latitude: 33.9416,
+        longitude: -118.4085,
+      },
+      {
+        address: "Griffith Observatory, Los Angeles",
+        latitude: 34.1184,
+        longitude: -118.3004,
+      },
+      {
+        address: "Santa Monica Pier, Santa Monica",
+        latitude: 34.0094,
+        longitude: -118.4973,
+      },
+      {
+        address: "Dodger Stadium, Los Angeles",
+        latitude: 34.0739,
+        longitude: -118.24,
+      },
+    ];
+    let nearest: Location | null = null;
+    let nearestMiles = Infinity;
+    for (const candidate of candidates) {
+      if (candidate.latitude == null || candidate.longitude == null) continue;
+      const miles = distanceMiles(dropped, candidate);
+      if (miles < nearestMiles) {
+        nearestMiles = miles;
+        nearest = candidate;
+      }
+    }
+    if (nearest && nearestMiles < 0.25) {
+      return { address: nearest.address, latitude, longitude };
+    }
+    return dropped;
   },
 };
 
