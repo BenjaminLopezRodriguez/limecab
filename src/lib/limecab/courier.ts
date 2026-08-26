@@ -195,7 +195,7 @@ export function courierStartAllowed(
   submitted: string | undefined,
   pickupPin: string,
 ): CustodyGate {
-  if (!submitted || submitted.trim() !== pickupPin) {
+  if (submitted?.trim() !== pickupPin) {
     return { ok: false, message: "Scan the pickup code to take possession." };
   }
   return { ok: true };
