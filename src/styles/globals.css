@@ -152,3 +152,17 @@
       system-ui, sans-serif;
   }
 }
+
+/**
+ * The task map is full bleed under the sheet, so Mapbox's own attribution and
+ * logo would sit behind the Confirm button. Lift them into the visible gap
+ * using the sheet's published rung — the same known fraction the camera
+ * padding uses, so nothing here measures the drawer either.
+ */
+@media (max-width: 767px) {
+  [data-service-app-shell] .mapboxgl-ctrl-bottom-left,
+  [data-service-app-shell] .mapboxgl-ctrl-bottom-right {
+    bottom: calc(var(--sheet-snap, 0) * 100dvh);
+    transition: bottom 300ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}

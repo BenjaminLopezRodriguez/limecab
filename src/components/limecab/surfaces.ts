@@ -64,7 +64,8 @@ export const limeCabSurfaces = createSurfaceManager({
     },
     interrupt: {
       role: "interrupt",
-      presentations: ["compact-interrupt"],
+      // Payment is an interruption that happens to want the whole screen.
+      presentations: ["compact-interrupt", "fullscreen"],
       initial: { emphasis: "hidden", presentation: null, interaction: "inert" },
     },
   },
@@ -171,6 +172,47 @@ export const limeCabSurfaces = createSurfaceManager({
         },
       },
     },
+    /**
+     * Choosing how to pay. Still an interruption — the ride sheet is suspended
+     * and comes back with the choice made — but a list plus "add a method" is
+     * a prepared environment, not a yes/no drawer, so it takes the screen.
+     */
+    openPayment: {
+      intent: "interrupt",
+      surfaces: {
+        primary: { emphasis: "suspended" },
+        map: { emphasis: "background", interaction: "passive" },
+        interrupt: {
+          emphasis: "interrupt",
+          presentation: "fullscreen",
+          interaction: "active",
+        },
+      },
+    },
+    /**
+     * Back on a committed ride. Not a step backwards and not a cancellation:
+     * the ride keeps running, the sheet stands down to a pill, and Home comes
+     * back. A surface emphasis change, nothing else.
+     */
+    minimizeRide: {
+      intent: "collapse",
+      surfaces: {
+        map: {
+          emphasis: "background",
+          presentation: "bounded",
+          interaction: "passive",
+        },
+        primary: { emphasis: "hidden", interaction: "inert" },
+        search: { emphasis: "hidden" },
+      },
+    },
+    /** The pill, tapped. The scene's own recipe puts the map back. */
+    restoreRide: {
+      intent: "expand",
+      surfaces: {
+        primary: { emphasis: "primary", interaction: "active" },
+      },
+    },
     /** "Keep ride" — the captured layout returns exactly as it was. */
     resumeRide: {
       intent: "return",
@@ -237,9 +279,11 @@ export const LIMECAB_SCENE_SURFACES: Record<
     map: { emphasis: "background", presentation: "tracking" },
     primary: { emphasis: "primary", presentation: "expanded" },
   },
+  // Not peek: the driver card is the answer to "how is this going", and a
+  // 22% strip cannot hold it. The canvas still owns most of the screen.
   active: {
     map: { emphasis: "background", presentation: "trip" },
-    primary: { emphasis: "primary", presentation: "peek" },
+    primary: { emphasis: "primary", presentation: "sheet" },
   },
   completing: {
     map: { emphasis: "background", presentation: "trip" },

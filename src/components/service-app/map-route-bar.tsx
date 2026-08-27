@@ -26,6 +26,8 @@ export function MapRouteBar({
     <div
       className={cn(
         "bg-card ring-border absolute top-3 right-3 left-3 z-10 flex h-11 items-center rounded-full shadow-[0_4px_16px_rgba(26,24,20,0.12)] ring-1",
+        // The canvas runs under the task panel on desktop; the bar must not.
+        "md:right-[25rem]",
         onBack ? "pr-3 pl-0.5" : "px-3",
         className,
       )}

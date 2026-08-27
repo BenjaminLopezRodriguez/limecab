@@ -1,8 +1,25 @@
 "use client";
 
-/** Sheet ↔ map contract: overlay insets as CSS vars, plus a resize ping. */
+/**
+ * Sheet ↔ map contract.
+ *
+ * The sheet publishes *which snap it is on* — a known fraction — and the canvas
+ * turns that into camera padding. Nothing here measures a translating drawer,
+ * so a snap change costs one event instead of a resize storm, and the map box
+ * itself never moves: the sheet floats over a full-bleed canvas.
+ */
 
 const EVENT = "limecab:overlay";
+
+/** Destination bar (h-11 at top-3) plus breathing room. */
+const TOP = 72;
+const GUTTER = 32;
+/** Desktop task panel: w-[min(100%,24rem)] inside a p-6 frame. */
+const PANEL = 24 * 16 + 48;
+
+function shell() {
+  return document.querySelector<HTMLElement>("[data-service-app-shell]");
+}
 
 function overlayChanged() {
   window.dispatchEvent(new Event(EVENT));
@@ -13,49 +30,23 @@ export function onOverlayChange(fn: () => void) {
   return () => window.removeEventListener(EVENT, fn);
 }
 
-export function publishMapOverlay(node: HTMLElement | null): () => void {
-  const shell = document.querySelector<HTMLElement>("[data-service-app-shell]");
+/**
+ * The sheet's rung, as a fraction of the viewport, or null when no sheet is
+ * over the canvas. Returns its own cleanup.
+ */
+export function publishSheetSnap(fraction: number | null): () => void {
+  const node = shell();
   const clear = () => {
-    if (!shell) return;
-    shell.style.setProperty("--map-overlay-bottom", "0px");
-    shell.style.setProperty("--map-overlay-end", "0px");
+    node?.style.setProperty("--sheet-snap", "0");
     overlayChanged();
   };
-  if (!shell || !node) {
+  if (!node || fraction === null) {
     clear();
     return clear;
   }
-
-  const apply = () => {
-    const box = node.getBoundingClientRect();
-    const mobile = window.matchMedia("(max-width: 767px)").matches;
-    if (mobile) {
-      const visible = Math.max(
-        0,
-        Math.min(box.height, window.innerHeight - box.top),
-      );
-      const capped = Math.min(visible, Math.round(window.innerHeight * 0.6));
-      shell.style.setProperty(
-        "--map-overlay-bottom",
-        `${Math.round(capped)}px`,
-      );
-      shell.style.setProperty("--map-overlay-end", "0px");
-    } else {
-      shell.style.setProperty("--map-overlay-bottom", "0px");
-      shell.style.setProperty("--map-overlay-end", `${Math.round(box.width)}px`);
-    }
-    overlayChanged();
-  };
-
-  apply();
-  const observer = new ResizeObserver(apply);
-  observer.observe(node);
-  window.addEventListener("resize", apply);
-  return () => {
-    observer.disconnect();
-    window.removeEventListener("resize", apply);
-    clear();
-  };
+  node.style.setProperty("--sheet-snap", String(fraction));
+  overlayChanged();
+  return clear;
 }
 
 export function readMapPadding(): {
@@ -64,12 +55,19 @@ export function readMapPadding(): {
   left: number;
   right: number;
 } {
+  const node = shell();
+  const snap = node
+    ? Number.parseFloat(
+        getComputedStyle(node).getPropertyValue("--sheet-snap"),
+      ) || 0
+    : 0;
+  const mobile = window.matchMedia("(max-width: 767px)").matches;
   return {
-    top: 72,
-    left: 32,
-    // The map container is already inset by the sheet; this is inner margin
-    // so pins and the car sit in the middle of that remaining frame.
-    bottom: 48,
-    right: 32,
+    top: TOP,
+    left: GUTTER,
+    // The canvas runs under the sheet; padding — not a smaller map — keeps the
+    // car and the route in the gap between the destination bar and the sheet.
+    bottom: mobile ? Math.round(window.innerHeight * snap) + GUTTER : GUTTER,
+    right: !mobile && snap > 0 ? PANEL : GUTTER,
   };
 }

@@ -1,7 +1,9 @@
 # Handoff: surfaces, sheet actions, ride minimize, map, payments
 
-For the next Claude (or Cursor) session. Fix the UX; do not repeat the
-measurement / portal stack described below.
+**Status: all five sections implemented and verified in the browser on
+2026-08-27. Working tree is uncommitted.** This file is now a *state* doc, not
+a work order. Read "Where it stands" before touching anything, and do not
+re-derive the sections under "Do not redo" — they cost a session each.
 
 Read first: `.claude/skills/surface-orchestration/SKILL.md`,
 `.claude/skills/adaptive-surfaces/SKILL.md`,
@@ -10,16 +12,17 @@ Do not choreograph drawers, map insets, and footers with independent setters.
 
 ---
 
-## Target composition (mobile task)
+## Target composition (mobile task) — achieved
 
 Z-order, top to bottom of the *screen*:
 
 ```
 [ destination bar ]          overlay, top of canvas, does not shrink the map
+[ recenter control ]         overlay, in the gap, pre-commit only
 [ map  — full bleed ]        canvas UNDER the sheet (sheet covers the lower map)
 [ sheet                      overlay, thumb zone
     [ main sheet content ]   scrolls
-    [ action band ]          constrained, optional, pinned to visible sheet bottom
+    [ action band ]          sticky, optional, at the visible sheet bottom
 ]
 ```
 
@@ -32,165 +35,193 @@ Home stays a sibling column (rounded map *card* + launcher). This target is
 
 ---
 
-## What was attempted (do not redo)
+## Where it stands
 
-A sequence of local fixes fought the Base UI snap drawer (`height: 100dvh`,
-translated down so only 40%/60% is on screen).
+### 1. Coordinator jank — DONE
 
-1. **Sheet height from content** — comparison/status scenes measured their
-   body and sprang to ~full screen, swallowing the map. Replaced with a
-   fixed ladder: peek 22% / sheet 40% / expanded 60%. Taller work is a
-   `TaskScene` overlay. Keep this ladder.
+The measurement/portal stack is deleted, not patched.
 
-2. **Map inset to “sit above the sheet”** —
-   `bottom-[var(--map-overlay-bottom)]` on the map slot, fed by
-   `publishMapOverlay()` measuring the drawer’s visible height. This made
-   Mapbox `resize()` + `fitBounds` on every snap, every SheetActions mount,
-   and every rAF overlay ping. Jank. The rider now wants the inverse: map
-   *under* the sheet, padding only.
+- `map-overlay.ts` rewritten. `publishMapOverlay()` (getBoundingClientRect +
+  ResizeObserver on a translating drawer) is **gone**. Now
+  `publishSheetSnap(fraction | null)` writes `--sheet-snap` on
+  `[data-service-app-shell]` and fires one `limecab:overlay` event per snap
+  change. `readMapPadding()` derives camera padding from that fraction.
+- Task map slot is `absolute inset-0 md:inset-6` in `service-app-shell.tsx`.
+  `--map-overlay-bottom` / `--map-overlay-end` no longer exist. The map box
+  never moves when the sheet snaps or when the action band mounts.
+- `ServiceSheet` body height is an inline
+  `calc(<snap> * 100dvh - 13px)` on mobile (13px = h-3 handle + 1px popup
+  border). No ResizeObserver, no `getBoundingClientRect`, no portal, no
+  `SheetActionsAnchorContext`.
+- `SheetActions` is now a plain footer in normal flow:
+  `sticky bottom-0 mt-auto shrink-0 max-h-[9.5rem]`. It sits at the bottom of
+  a short sheet and sticks there once the body scrolls.
 
-3. **Don’t curve the map** — task map is square (`rounded-none`). Home map
-   card may stay `rounded-3xl`. Keep that.
+### 2. Minimize a live ride — DONE
 
-4. **SheetActions portal** — confirm / payment ribbon portal into an
-   absolute host at the bottom of a JS-measured “visible slice”
-   (`getBoundingClientRect` of the transformed popup minus handle). First
-   paint: host null. Snap drawers: footer landed at y≈967 on an 844 screen
-   (below the fold) because the flex column filled 100dvh. Progressive
-   disclosure then mounts the portal, overlay height changes, map resizes
-   again. Coordinator load-up feels like the sheet and the button arriving
-   on different frames.
+- `minimizeRide` (`intent: "collapse"`) and `restoreRide` (`intent: "expand"`)
+  added to `surfaces.ts`. No new `ServiceAppState`.
+- `rideMinimized` boolean lives in `LimeCabFlow`. It is a *surface emphasis*
+  flag, not a scene — the reducer never hears about it.
+- The scene→recipe effect early-returns while minimized, so the server
+  advancing `matched → arriving` cannot pop the sheet back up. Un-minimizing
+  re-applies the scene recipe, which is what restores the map posture.
+- Destination-bar Back: revises while `canReviseRoute`, minimizes once
+  committed, absent on `complete`. It never cancels and never unwinds.
+- Pill: `LimeCabTripPill` takes an optional `onRestore`. With it, tap restores
+  in place; without it (shell, off Home) it still `router.push("/")`.
+- Shell callback changed `onSceneChange(state)` → `onTaskChange(inTask)`;
+  a minimized ride is not a task, so chrome and tabs come back.
+- **Rename:** `LimeCabApp`'s old `minimized` prop is now `standby` ("another
+  tab owns the screen"). Two different things were called minimized.
 
-5. **Progressive disclosure (keep the idea, drop the machinery)** —
-   Choose a ride: no confirm until a tier is tapped; then a short band
-   (payment ribbon + Confirm). Courier “See price” waits until the form is
-   ready. Quote / pin / done still show their action immediately. Cap:
-   ribbon + one primary, `max-h-[9.5rem]`. Keep this product rule.
+Three guards exist because Home's launcher is live while minimized and the
+reducer does *not* guard `select_location` against committed states: the
+launcher, the home map tap, and `chooseLocation` all restore the ride instead
+of dead-ending or re-routing a committed trip. If you ever add another Home
+entry point, guard it too.
 
-6. **Follow-cam + road-following polyline** — working. Don’t regress.
-   Directions must send `Referer` (`mapbox-request.ts`). Flat mercator,
-   `pitch={0}`.
+### 3. Recenter / "I'm here" — DONE
 
-7. **Trip pill** — already exists off Home (`LimeCabTripPill`,
-   `minimized={!onHome}` in `limecab-shell.tsx`). Clicking it `router.push("/")`.
-   There is **no** way to minimize while staying on `/`. MapRouteBar back is
-   hidden once the request is committed (`canReviseRoute` is only
-   service_select / configure / quote). `backServiceAppState` is a no-op on
-   matching/assigned/active by design (leaving a live request is cancel, not
-   back).
+`RecenterPickupButton` in `limecab-app.tsx`, on the canvas, positioned
+`bottom-[calc(var(--sheet-snap,0)*100dvh+1rem)] md:bottom-6`. Geolocation +
+`fetchReverseGeocode`, sets pickup with `followsDevice: true`. Does not open
+search. Hidden on `isCommitted(state)` — follow-cam owns the camera there.
+
+### 4. Payments as a full overlay — DONE
+
+- `AdaptiveSurface.Interrupt` gained a `presentation="fullscreen"` branch that
+  renders `TaskScene` + `TaskSceneHeader`. Suspend/restore is unchanged, so it
+  is still an interruption; only the rung changed.
+- `LimeCabPaymentSurface` in `limecab-interrupts.tsx`: method list, constrained
+  "Add payment method" at the bottom (honest-empty note on tap).
+- The `payment` branch is removed from `LimeCabDetailSurface`, along with its
+  `paymentId` / `onSelectPayment` props. `openDetail("payment")` performs
+  `openPayment`; everything else still performs `openDetails`.
+
+### 5. Other UX — DONE
+
+- Mapbox attribution/logo lifted above the sheet via `--sheet-snap` in
+  `globals.css` (mobile only; desktop leaves it bottom-right).
+- `active` moved off `peek` to `sheet` in `LIMECAB_SCENE_SURFACES` — a 22%
+  strip could not hold the driver card.
+- Destination bar gets `md:right-[25rem]` so the full-bleed canvas does not
+  run it under the desktop task panel.
+- Cancel is still `interruptCancel`. Minimize is separate. Not merged.
+
+---
+
+## Two bugs found in the browser, not in the doc
+
+Both are load-bearing. Do not "simplify" them back.
+
+1. **`--drawer-snap-point-offset` does not inherit.** Base UI registers it as a
+   non-inheriting property, so a descendant reads `0px` even though
+   `getComputedStyle(popup)` returns the real value. It cannot be forwarded
+   through an alias custom property either — inner `var()`s resolve at the use
+   site. Also, the popup is **not** `100dvh`: `--drawer-content-max-height` caps
+   it at `calc(100dvh - 6rem)`. Any CSS that tries to compute the visible slice
+   from the popup's own box is wrong twice over. Size from the known snap
+   fraction, which is exactly what section 1 does.
+2. **The action band squashed to 23px.** It is a flex item in the scrolling
+   column and carries `overflow-y-auto`, which resolves its `min-height: auto`
+   to 0. `shrink-0` is what keeps it at its natural height when the body
+   overflows. Reproduce by opening `complete` on desktop without it.
 
 ---
 
-## Work to do
+## Do not redo (from the previous session, still true)
 
-### 1. Kill coordinator jank (P0)
-
-Stop measuring and stop portaling.
-
-- Map slot in task layout: `absolute inset-0` (under the sheet). No
-  `--map-overlay-bottom` driving the map *box*.
-- Drive Mapbox padding from the **known snap fractions** (and destination-bar
-  height), published as CSS vars or constants — not from
-  `getBoundingClientRect` of a translating drawer.
-- Sheet body: one flex column sized to the snap (CSS
-  `h-[calc(var(--snap)*100dvh)]` or the drawer’s own snap height). Scroll
-  region `flex-1`; action band `shrink-0` in normal flow. If the snap drawer
-  must stay 100dvh+translate, pin the action band with
-  `position: sticky; bottom: var(--drawer-snap-point-offset, 0px)` inside the
-  **visible** scrollport — still no portal, no JS height on a wrapper.
-- `SheetActions` is just that footer. Omit it until there is something to
-  confirm (progressive disclosure). When it appears, it must not resize the
-  map container.
-- One named action per user gesture (`surfaces.perform(...)`). Scene reducer
-  still owns the step; SurfaceManager owns posture; the sheet does not
-  subscribe to overlay pings to size itself.
-
-Files: `service-sheet.tsx`, `service-app-shell.tsx`, `map-overlay.ts`,
-`mapbox-canvas.tsx` (`readMapPadding`), `surfaces.ts`.
-
-### 2. Minimize a live ride from Home (P0)
-
-When the rider is in matching / assigned / en route / active / completing:
-
-- **Always show Back** on the destination bar (and/or a chrome control).
-- Back does **not** `go("back")` and does **not** cancel.
-- Back is `surfaces.perform("minimizeRide")`: keep the ride mounted, hide
-  the sheet (and task chrome), restore Home launcher + tab bar, collapse
-  the live ride to `LimeCabTripPill`.
-- Pill tap is `surfaces.perform("restoreRide")` (or existing `/` navigation
-  when they left via Activity). Same scene, same trip, sheet returns.
-- Classify: this is **not** an interruption (parent is not a question they
-  return to mid-field) and **not** progression. It is a surface emphasis
-  change: primary sheet → hidden/peek-as-pill, map → home bounded, chrome
-  returns. Add `minimizeRide` / `restoreRide` to `surfaces.ts`. Do not add a
-  new `ServiceAppState`.
-
-`limecab-shell.tsx` already treats `scene !== "home"` as `inTask` and hides
-tabs. Minimized-on-Home must look like Home (tabs + launcher) with the pill
-over it. Today `minimized` is only `!onHome`.
-
-### 3. Recenter / “I’m here” (P1)
-
-A control on the **map overlay**, between the destination bar and the sheet
-(not inside the sheet). Recenter the pickup on the device location (the
-same path home map tap / geolocation already uses). Do not open search.
-Name it (`recenterPickup` / `chooseOnMap` only if they are actually
-re-pinning). Keep it out of the sheet action band.
-
-### 4. Payments as a full overlay (P1)
-
-Today payment is `openDetails` → `compact-interrupt` (`LimeCabDetailSurface`,
-a short list of mock methods, no add action).
-
-Target: a **fullscreen overlay** (`TaskScene` / search-class surface), not a
-compact interrupt.
-
-- Lists current methods.
-- Constrained action at the bottom: **Add payment method**.
-- Selecting a method returns (`intent: "return"`) to the suspended ride
-  sheet with the choice intact.
-- Adding a card can be honest-empty in this build (profile copy already
-  says it isn’t live) but the affordance must exist.
-
-Do not reuse compact-interrupt for this. Search already proves the
-fullscreen overlay pattern.
-
-### 5. Other UX Claude should fix while in here
-
-- **Mapbox logo / attribution overlapping the sheet** — if the map is full
-  bleed under the sheet, attribution sits under the sheet; move it or pad
-  so it isn’t on the Confirm button.
-- **Home → task map morph** — avoid a frame where the sheet is empty and
-  the action host is empty:hidden, then content pops. Prepare the next
-  scene before the snap (scene-preparation).
-- **Peek during `active`** is so short the driver card is unusable; either
-  keep peek as status-only (tap sheet / pill to expand) or don’t put the
-  card in peek.
-- **Cancel vs minimize** — Cancel stays an interruption
-  (`interruptCancel`). Minimize is the new Back on live rides. Don’t merge
-  them.
-- **Quote payment row vs ride-select ribbon** — quote still has Payment +
-  Promo in the scrolling body; ride-select discloses a ribbon. After the
-  payment overlay exists, the ribbon is only a summary that opens that
-  overlay.
-- **Verify in the browser** at 390×844: choose a ride (band appears, stays
-  on screen), confirm, live ride Back → Home + pill, pill restores sheet,
-  map visible in the gap, recenter, open payments overlay, add-payment
-  action visible. Desktop: sheet is a card, map still under/beside it,
-  same actions.
+1. **Sheet height from content** — comparison/status scenes measured their body
+   and sprang to full screen, swallowing the map. The fixed ladder
+   (peek 22% / sheet 40% / expanded 60%) stays. Taller work is a `TaskScene`.
+2. **Map inset to "sit above the sheet"** — caused `resize()` + `fitBounds` on
+   every snap, every mount, every rAF ping. The map now sits *under* the sheet
+   with padding only. Do not reintroduce an inset.
+3. **Don't curve the task map.** `rounded-none`. Home map card keeps
+   `rounded-3xl`.
+4. **No `SheetActions` portal.** First paint had a null host; snap drawers put
+   the footer below the fold. Normal flow + sticky solves it.
+5. **Progressive disclosure is a product rule, not machinery.** No confirm
+   until a tier is tapped; courier "See price" waits for a ready form; quote /
+   pin / done show their action immediately. Cap: ribbon + one primary.
+6. **Follow-cam + road-following polyline work.** Directions must send
+   `Referer` (`mapbox-request.ts`). Flat mercator, `pitch={0}`.
 
 ---
+
+## Verified on 2026-08-27
+
+Dev server on **:3001**, Playwright, 390×844 and 1280×860.
+
+Walked: pick destination → tier select (band appears only after a tier is
+tapped, lands fully on screen) → payment ribbon → fullscreen overlay → select
+method → returns to the suspended sheet with the choice intact → confirm →
+request → live ride → destination-bar Back → Home + launcher + tabs + pill,
+ride still running → pill tap → same trip, sheet back, car in the gap →
+complete → Done. Desktop: sheet is a floating card, map under/beside it, bar
+inset from the panel, band pinned in the card.
+
+`npx tsc --noEmit` clean. `next lint` clean (4 pre-existing warnings in
+`src/server/**`). `npm test` 77/77.
+
+Console is free of SurfaceManager invariant warnings. Remaining noise is
+pre-existing: mapbox worker `si` errors, and one react-map-gl
+`Error: layer id changed` from the `limecab-route` ↔ `limecab-route-muted`
+swap on a single `<Source>`. That one is a real (small) latent bug if anyone
+wants it: give the muted layer the same id, or key the Source.
+
+---
+
+## Known-not-mine, still open
+
+- **`src/lib/limecab/mock.ts` is dirty**: `lime-pool` flipped
+  `coming_soon` → `available`. The tree was clean at session start and this
+  session never wrote that file. Left alone deliberately — decide whether to
+  keep or revert before committing.
+- **`npm run build` fails** with `PageNotFoundError` on `/api/map/places`,
+  `/driver/profile/*`, `/api/trpc/[trpc]`. It fails identically on a stashed
+  (pre-change) tree, so it predates this work and is not a surfaces problem.
+  Dev server runs fine. Someone should chase this before shipping.
+- **Directions 403 in local dev**: the Mapbox token is URL-restricted and the
+  dev server came up on :3001. Routes fall back to a straight line, so the
+  road-following polyline could not be re-verified this session. That code is
+  untouched. Run on :3000 to see real geometry.
+
+---
+
+## Picking back up
+
+Nothing here is half-finished. The likely next moves, in the order I'd take
+them:
+
+1. Decide on `mock.ts`, then commit the working tree. Suggested message:
+   "Put the map under the sheet and give a live ride a minimize".
+2. Fix the build (`PageNotFoundError`) — unrelated to surfaces, blocks deploy.
+3. Verify on :3000 with a valid token that follow-cam and the road polyline
+   still look right against the new camera padding
+   (`readMapPadding` is the only thing that changed under them).
+4. Optional polish, all small:
+   - Scenes that wrap `SheetActions` in their own `<div>` (quote, pin,
+     configure) don't get the `mt-auto` push, so their band sits under the
+     content rather than at the sheet's bottom edge on a short scene. Fix by
+     letting those wrappers stretch, not by reintroducing a portal.
+   - Home → task morph still has no explicit scene-preparation step. The empty
+     frame is much less visible now that the band no longer mounts late, but it
+     was never addressed directly.
+   - The react-map-gl layer-id warning above.
 
 ## Invariants (do not violate)
 
-- One question per scene. Confirm is not a second question; it is the
-  answer to the current one, disclosed when the choice exists.
-- Interruptions suspend; they do not unmount. Payment overlay is an
+- One question per scene. Confirm is not a second question; it is the answer to
+  the current one, disclosed when the choice exists.
+- Interruptions suspend; they do not unmount. The payment overlay is an
   interrupt that happens to be fullscreen.
-- Committed ride state is not unwound by Back. Minimize hides; cancel
-  confirms.
+- Committed ride state is not unwound by Back. Minimize hides; cancel confirms.
 - Task map is not rounded. Sheet may have `rounded-t-3xl`.
 - No globe: mercator, pitch 0.
+- Nothing measures the drawer. The snap fraction is the contract between the
+  sheet and the map.
 - No `--token` on Vercel CLI. Prod: `vercel deploy --prod -y --no-wait`.
 
 ## Key files
@@ -198,12 +229,15 @@ fullscreen overlay pattern.
 | Concern | File |
 |---|---|
 | Scene machine / Back | `src/lib/service-app/state.ts` |
-| Surface recipes | `src/components/limecab/surfaces.ts` |
-| Ride flow | `src/components/limecab/limecab-app.tsx` |
-| Shell / pill / tabs | `src/components/limecab/limecab-shell.tsx`, `limecab-trip-pill.tsx` |
-| Sheet + actions | `src/components/service-app/service-sheet.tsx` |
-| Map slot | `src/components/service-app/service-app-shell.tsx` |
-| Overlay CSS vars | `src/components/service-app/map-overlay.ts` |
+| Surface recipes + `minimizeRide` / `restoreRide` / `openPayment` | `src/components/limecab/surfaces.ts` |
+| Ride flow, minimize state, recenter | `src/components/limecab/limecab-app.tsx` |
+| Shell / `onTaskChange` / tabs | `src/components/limecab/limecab-shell.tsx` |
+| Pill / `onRestore` | `src/components/limecab/limecab-trip-pill.tsx` |
+| Sheet + `SheetActions` | `src/components/service-app/service-sheet.tsx` |
+| Map slot (full bleed) | `src/components/service-app/service-app-shell.tsx` |
+| Snap → padding contract | `src/components/service-app/map-overlay.ts` |
 | Destination bar | `src/components/service-app/map-route-bar.tsx` |
-| Payment interrupt | `src/components/limecab/limecab-interrupts.tsx` |
+| Fullscreen interrupt branch | `src/components/service-app/adaptive-surface.tsx` |
+| Payment overlay / detail surfaces | `src/components/limecab/limecab-interrupts.tsx` |
 | Ride select band | `src/components/limecab/limecab-ride-select-scene.tsx` |
+| Attribution lift | `src/styles/globals.css` |

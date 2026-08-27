@@ -95,8 +95,6 @@ export function LimeCabDetailSurface({
   pickupLine,
   destinationLine,
   payment,
-  paymentId,
-  onSelectPayment,
   promoApplied,
   onTogglePromo,
   discountCents,
@@ -114,8 +112,6 @@ export function LimeCabDetailSurface({
   pickupLine: string;
   destinationLine: string;
   payment: PaymentMethod;
-  paymentId: string;
-  onSelectPayment: (id: string) => void;
   promoApplied: boolean;
   onTogglePromo: () => void;
   discountCents: number;
@@ -184,45 +180,6 @@ export function LimeCabDetailSurface({
         />
       ) : null}
 
-      {detail === "payment" ? (
-        <ul className="divide-border ring-border divide-y rounded-2xl ring-1">
-          {PAYMENT_METHODS.map((method) => (
-            <li key={method.id}>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={method.id === paymentId}
-                onClick={() => onSelectPayment(method.id)}
-                className="focus-visible:ring-ring active:bg-accent flex min-h-14 w-full items-center gap-3 px-4 text-left first:rounded-t-2xl last:rounded-b-2xl focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
-              >
-                <Icon
-                  icon={CreditCardIcon}
-                  size={16}
-                  className="text-muted-foreground shrink-0"
-                  aria-hidden="true"
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[15px] font-medium tracking-tight">
-                    {method.label}
-                  </span>
-                  <span className="text-muted-foreground block truncate text-sm">
-                    {method.detail}
-                  </span>
-                </span>
-                {method.id === paymentId ? (
-                  <Icon
-                    icon={Tick02Icon}
-                    size={20}
-                    className="text-lime shrink-0"
-                    aria-hidden="true"
-                  />
-                ) : null}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
       {detail === "promo" ? (
         <div className="flex flex-col gap-3">
           <p className="text-muted-foreground text-sm leading-relaxed">
@@ -266,6 +223,99 @@ export function LimeCabDetailSurface({
       >
         Close
       </Button>
+    </AdaptiveSurface.Interrupt>
+  );
+}
+
+/**
+ * Choosing how to pay — a full overlay, not a compact drawer.
+ *
+ * It is still an interruption: the ride sheet is suspended behind it and comes
+ * back with the choice intact. It takes the screen because the question has a
+ * list, a selection, and an "add one" affordance, which is a prepared
+ * environment rather than a yes/no.
+ */
+export function LimeCabPaymentSurface({
+  open,
+  paymentId,
+  onSelect,
+  onClose,
+}: {
+  open: boolean;
+  paymentId: string;
+  onSelect: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [adding, setAdding] = useState(false);
+
+  useEffect(() => {
+    if (!open) setAdding(false);
+  }, [open]);
+
+  return (
+    <AdaptiveSurface.Interrupt
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      id="payment"
+      presentation="fullscreen"
+      label="Payment method"
+      description="Choose how you pay for this ride, or add a method."
+    >
+      <ul
+        role="radiogroup"
+        aria-label="Payment methods"
+        className="divide-border ring-border divide-y rounded-2xl ring-1"
+      >
+        {PAYMENT_METHODS.map((method) => (
+          <li key={method.id}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={method.id === paymentId}
+              onClick={() => onSelect(method.id)}
+              className="focus-visible:ring-ring active:bg-accent flex min-h-14 w-full items-center gap-3 px-4 text-left first:rounded-t-2xl last:rounded-b-2xl focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
+            >
+              <Icon
+                icon={CreditCardIcon}
+                size={16}
+                className="text-muted-foreground shrink-0"
+                aria-hidden="true"
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[15px] font-medium tracking-tight">
+                  {method.label}
+                </span>
+                <span className="text-muted-foreground block truncate text-sm">
+                  {method.detail}
+                </span>
+              </span>
+              {method.id === paymentId ? (
+                <Icon
+                  icon={Tick02Icon}
+                  size={20}
+                  className="text-lime shrink-0"
+                  aria-hidden="true"
+                />
+              ) : null}
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      {/* Honest-empty: the affordance is real, the processor is not. */}
+      <div className="mt-auto flex flex-col gap-3 pt-6">
+        {adding ? (
+          <p role="status" className="text-muted-foreground text-sm leading-relaxed">
+            Adding a card needs a payment processor, which this build
+            doesn&apos;t have. Nothing was saved.
+          </p>
+        ) : null}
+        <PrimaryAction variant="outline" onClick={() => setAdding(true)}>
+          Add payment method
+        </PrimaryAction>
+      </div>
     </AdaptiveSurface.Interrupt>
   );
 }

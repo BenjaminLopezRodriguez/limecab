@@ -1,16 +1,6 @@
 "use client";
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useState, type ReactNode } from "react";
 
 import {
   useOptionalAdaptiveSurface,
@@ -22,10 +12,7 @@ import {
   DrawerDescription,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import {
-  onOverlayChange,
-  publishMapOverlay,
-} from "@/components/service-app/map-overlay";
+import { publishSheetSnap } from "@/components/service-app/map-overlay";
 import { useServiceAppMobile } from "@/hooks/use-service-app-mobile";
 import { cn } from "@/lib/utils";
 
@@ -47,11 +34,12 @@ import { cn } from "@/lib/utils";
  *   expanded   — 60%
  * Anything taller is a window overlay (`TaskScene`), not another snap.
  *
- * Confirm, a payment ribbon, and similar thumb-zone controls belong in
- * `SheetActions`. They are optional progressive disclosure: a scene may omit
- * them until the rider has made the choice they confirm. When present they
- * anchor to the visible bottom of the sheet, over the scrolling body, in a
- * short constrained band.
+ * A snap drawer is 100dvh tall and translated down, so only its top slice is
+ * on screen. The body is sized to that slice *in CSS*, from the drawer's own
+ * `--drawer-snap-point-offset` — no `getBoundingClientRect`, no ResizeObserver,
+ * and no portal. `SheetActions` is then an ordinary sticky footer inside the
+ * scrollport, which is why it can appear and disappear (progressive
+ * disclosure) without ever resizing the map.
  */
 type SheetPresentation = Exclude<SurfacePresentation, "compact-interrupt">;
 
@@ -75,16 +63,14 @@ const DESKTOP_MAX: Record<SheetPresentation, string> = {
   fullscreen: "md:max-h-[60dvh]",
 };
 
-const SheetActionsAnchorContext = createContext<{
-  host: HTMLElement | null;
-  anchored: boolean;
-}>({ host: null, anchored: false });
+/** Swipe handle (h-3) plus the popup's top border. */
+const SHEET_CHROME_PX = 13;
 
 /**
  * Constrained thumb-zone for a scene: one primary action, optionally a
- * payment ribbon. Omit the component until there is something to confirm —
- * it then anchors to the visible bottom of the sheet. Cap is a ribbon + a
- * button, not a second sheet.
+ * payment ribbon. Omit the component until there is something to confirm — it
+ * then sits at the bottom of the visible sheet (`mt-auto`) and sticks there
+ * once the body scrolls. Cap is a ribbon + a button, not a second sheet.
  */
 export function SheetActions({
   children,
@@ -93,11 +79,13 @@ export function SheetActions({
   children: ReactNode;
   className?: string;
 }) {
-  const { host, anchored } = useContext(SheetActionsAnchorContext);
-  const body = (
+  return (
     <div
       className={cn(
-        "flex flex-col gap-1",
+        // `shrink-0`: it is a flex item in the scrolling column, and its own
+        // `overflow-y-auto` would otherwise let it be squashed to nothing.
+        "bg-card/95 border-border sticky bottom-0 z-10 -mx-5 mt-auto flex max-h-[9.5rem] shrink-0 flex-col gap-1 overflow-y-auto border-t px-5 pt-2.5 backdrop-blur-sm md:-mx-6 md:px-6",
+        "pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-3",
         "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-200",
         className,
       )}
@@ -105,15 +93,6 @@ export function SheetActions({
       {children}
     </div>
   );
-  if (anchored && !host) return null;
-  if (!host) {
-    return (
-      <div className="bg-card border-border sticky bottom-0 z-10 -mx-5 mt-3 border-t px-5 pt-2.5 pb-1 md:-mx-6 md:px-6">
-        {body}
-      </div>
-    );
-  }
-  return createPortal(body, host);
 }
 
 export function ServiceSheet({
@@ -137,132 +116,54 @@ export function ServiceSheet({
   const busy = surface?.progress.locked ? true : undefined;
   const rung = SNAP_FOR[presentation];
   const [snap, setSnap] = useState<string | number | null>(rung);
-  const [actionsHost, setActionsHost] = useState<HTMLElement | null>(null);
-  const frameRef = useRef<HTMLDivElement | null>(null);
-  const overlayNode = useRef<HTMLElement | null>(null);
-  const overlayRef = useCallback((node: HTMLElement | null) => {
-    overlayNode.current = node;
-  }, []);
 
   useEffect(() => {
     setSnap(rung);
   }, [rung]);
 
+  // The map gets the rung, not the drawer's geometry. One event per snap.
   useEffect(() => {
-    if (!sheetOpen) return;
-    let stop: (() => void) | undefined;
-    const frame = window.requestAnimationFrame(() => {
-      const node = isMobile
-        ? document.querySelector<HTMLElement>("[data-map-overlay='primary']")
-        : overlayNode.current;
-      stop = publishMapOverlay(node);
-    });
-    return () => {
-      window.cancelAnimationFrame(frame);
-      stop?.();
-    };
-  }, [isMobile, sheetOpen, snap, rung]);
+    if (!sheetOpen) return publishSheetSnap(null);
+    return publishSheetSnap(typeof snap === "number" ? snap : rung);
+  }, [rung, sheetOpen, snap]);
 
-  // Snap drawers are taller than the visible slice. Size the frame to what
-  // actually intersects the viewport so the action band can pin to it.
-  useLayoutEffect(() => {
-    const frame = frameRef.current;
-    if (!frame || !isMobile || !sheetOpen) return;
-
-    const apply = () => {
-      const popup = document.querySelector<HTMLElement>(
-        "[data-map-overlay='primary']",
-      );
-      if (!popup) return;
-      const box = popup.getBoundingClientRect();
-      const handle = popup.querySelector<HTMLElement>(
-        "[data-slot='drawer-swipe-handle']",
-      );
-      const handleH = handle?.getBoundingClientRect().height ?? 0;
-      const visible = Math.max(
-        0,
-        Math.min(box.bottom, window.innerHeight) - Math.max(box.top, 0) - handleH,
-      );
-      frame.style.height = `${Math.round(visible)}px`;
-    };
-
-    apply();
-    const popup = document.querySelector("[data-map-overlay='primary']");
-    const observer = popup ? new ResizeObserver(apply) : null;
-    if (popup) observer?.observe(popup);
-    const stop = onOverlayChange(apply);
-    window.addEventListener("resize", apply);
-    return () => {
-      observer?.disconnect();
-      stop();
-      window.removeEventListener("resize", apply);
-      frame.style.height = "";
-    };
-  }, [isMobile, sheetOpen, snap, rung]);
-
-  useLayoutEffect(() => {
-    const host = actionsHost;
-    const scroll = frameRef.current?.querySelector<HTMLElement>(
-      "[data-sheet-scroll]",
-    );
-    if (!host || !scroll) return;
-    const apply = () => {
-      scroll.style.paddingBottom = host.offsetHeight
-        ? `${host.offsetHeight}px`
-        : "";
-    };
-    apply();
-    const observer = new ResizeObserver(apply);
-    observer.observe(host);
-    return () => {
-      observer.disconnect();
-      scroll.style.paddingBottom = "";
-    };
-  }, [actionsHost]);
+  /**
+   * The rung the drawer is on, as a fraction of the viewport — the same number
+   * the map gets. The drawer is taller than the screen and translated down, so
+   * this *is* the height of the slice on screen: sizing the body from the known
+   * fraction is exact, and needs no geometry from the translating popup.
+   */
+  const fraction = typeof snap === "number" ? snap : rung;
 
   const body = (
-    <SheetActionsAnchorContext.Provider
-      value={{ host: actionsHost, anchored: true }}
+    <div
+      style={
+        isMobile
+          ? { height: `calc(${fraction} * 100dvh - ${SHEET_CHROME_PX}px)` }
+          : undefined
+      }
+      className={cn(
+        "flex flex-col overflow-hidden",
+        !isMobile && "min-h-0 flex-1",
+      )}
     >
       <div
-        ref={frameRef}
+        ref={surface?.registerPanel}
+        data-sheet-scroll=""
         className={cn(
-          "relative flex min-h-0 flex-col overflow-hidden",
-          !isMobile && "min-h-0 flex-1",
+          "flex min-h-0 flex-1 flex-col overflow-y-auto",
+          isMobile ? "px-5 pt-1" : "px-6 pt-6",
         )}
+        aria-busy={busy}
       >
-        <div
-          ref={surface?.registerPanel}
-          data-sheet-scroll=""
-          className={cn(
-            "min-h-0 flex-1 overflow-y-auto",
-            isMobile ? "px-5 pt-1" : "px-6 pt-6",
-          )}
-          aria-busy={busy}
-        >
-          {children}
-        </div>
-        <div
-          ref={setActionsHost}
-          data-sheet-actions=""
-          className={cn(
-            "bg-card/95 absolute inset-x-0 bottom-0 z-10 overflow-y-auto border-t backdrop-blur-sm empty:hidden",
-            "border-border shadow-[0_-8px_24px_rgba(26,24,20,0.06)]",
-            // Ribbon + confirm. Not a third of the sheet.
-            "max-h-[9.5rem]",
-            isMobile
-              ? "px-5 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
-              : "px-6 pt-3 pb-6",
-          )}
-        />
+        {children}
       </div>
-    </SheetActionsAnchorContext.Provider>
+    </div>
   );
 
   if (!isMobile) {
     return (
       <div
-        ref={overlayRef}
         className={cn(
           "bg-card text-card-foreground border-border flex min-h-0 flex-col overflow-hidden rounded-3xl border shadow-lg",
           DESKTOP_MAX[presentation],
@@ -288,7 +189,6 @@ export function ServiceSheet({
     >
       <DrawerContent
         data-presentation={presentation}
-        data-map-overlay="primary"
         className={cn(
           interrupted && "opacity-55 brightness-95",
           className,

@@ -25,6 +25,10 @@ import {
   DrawerDescription,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import {
+  TaskScene,
+  TaskSceneHeader,
+} from "@/components/service-app/task-scene";
 import { useServiceAppMobile } from "@/hooks/use-service-app-mobile";
 import { cn } from "@/lib/utils";
 import {
@@ -439,6 +443,28 @@ function AdaptiveSurfaceInterrupt({
     if (locked && !next) return;
     onOpenChange(next);
   };
+
+  // A question that needs a list, a form, or an "add one" affordance is a
+  // prepared environment, not a drawer. Same suspend/restore either way.
+  if (presentation === "fullscreen") {
+    return (
+      <TaskScene
+        open={open}
+        title={label}
+        description={description ?? label}
+        onDismiss={() => handleOpenChange(false)}
+      >
+        <TaskSceneHeader
+          title={label}
+          onBack={() => handleOpenChange(false)}
+          backLabel="Back"
+        />
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] md:mx-auto md:w-full md:max-w-lg md:px-6">
+          {children}
+        </div>
+      </TaskScene>
+    );
+  }
 
   if (surface.isMobile) {
     return (

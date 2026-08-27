@@ -16,7 +16,8 @@ import { cn } from "@/lib/utils";
  * map is a sibling, not a canvas clipped by an overlay.
  *
  * `layout="task"` keeps the map as the full canvas with the sheet floating
- * over it from the thumb zone.
+ * over it from the thumb zone. The canvas runs *under* the sheet — it is never
+ * inset to sit above it, because that resizes Mapbox on every snap.
  *
  * On a desktop `layout="home"` becomes a two-column launcher: controls left,
  * a large map right. Same state, different composition.
@@ -149,8 +150,10 @@ function MapSlot({
         home
           ? // Home: a map region on the same paper, not a leftover behind a sheet.
             "relative h-[min(34dvh,20rem)] shrink-0 p-4 pb-2 md:col-start-2 md:row-start-1 md:h-full md:min-h-0 md:flex-1 md:p-6 md:pl-0"
-          : // Task: the map lives in the remaining frame above/beside the sheet.
-            "absolute top-0 right-0 left-0 bottom-[var(--map-overlay-bottom,0px)] transition-[bottom,right] duration-450 ease-[cubic-bezier(0.22,1,0.36,1)] md:top-6 md:left-6 md:bottom-6 md:right-[max(1.5rem,calc(var(--map-overlay-end,0px)+1.5rem))]",
+          : // Task: the map is the background, full bleed. The sheet floats
+            // over it; camera padding — not a resized box — keeps the route in
+            // the gap. Nothing here moves when the sheet snaps.
+            "absolute inset-0 md:inset-6",
       )}
     >
       <div

@@ -42,7 +42,16 @@ const COURIER_STATUS_LINE: Record<string, string> = {
   in_progress: "Package on the way",
 };
 
-export function LimeCabTripPill() {
+export function LimeCabTripPill({
+  onRestore,
+}: {
+  /**
+   * Minimized on the ride screen itself: the ride is still mounted, so the pill
+   * restores its sheet in place. Off Home there is nothing to restore to, and
+   * the pill navigates instead.
+   */
+  onRestore?: () => void;
+} = {}) {
   const router = useRouter();
   const ref = useRef<HTMLButtonElement>(null);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
@@ -139,6 +148,10 @@ export function LimeCabTripPill() {
       onPointerCancel={endDrag}
       onClick={() => {
         if (drag.current?.moved) return;
+        if (onRestore) {
+          onRestore();
+          return;
+        }
         router.push("/");
       }}
       style={

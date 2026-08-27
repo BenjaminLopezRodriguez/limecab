@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
+import { Gps01Icon } from "@hugeicons/core-free-icons";
+
 import { useAdaptiveSurface } from "@/components/service-app/adaptive-surface";
 import { LocationPinScene } from "@/components/service-app/location-pin-scene";
 import { LocationSearchScene } from "@/components/service-app/location-search-scene";
@@ -17,15 +19,18 @@ import {
   useSurfaceManager,
 } from "@/components/service-app/surface-manager";
 import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
 import { LimeCabCompleteScene } from "@/components/limecab/limecab-complete-scene";
 import { LimeCabConfigureScene } from "@/components/limecab/limecab-configure-scene";
 import { LimeCabHomeScene } from "@/components/limecab/limecab-home-scene";
 import {
   LimeCabCancelSurfaces,
   LimeCabDetailSurface,
+  LimeCabPaymentSurface,
   LimeCabUnavailableSurface,
   type DetailKind,
 } from "@/components/limecab/limecab-interrupts";
+import { LimeCabTripPill } from "@/components/limecab/limecab-trip-pill";
 import { LimeCabQuoteScene } from "@/components/limecab/limecab-quote-scene";
 import { LimeCabRideSelectScene } from "@/components/limecab/limecab-ride-select-scene";
 import { LimeCabStatusScene } from "@/components/limecab/limecab-status-scene";
@@ -93,6 +98,7 @@ import {
   type ServiceAppState,
 } from "@/lib/service-app/state";
 import type { ServiceStatus } from "@/lib/service-app/status";
+import { cn } from "@/lib/utils";
 import { env } from "@/env";
 import { api, type RouterOutputs } from "@/trpc/react";
 
@@ -227,12 +233,15 @@ const mapAdapter = env.NEXT_PUBLIC_MAPBOX_TOKEN
 const ARRIVED_AT = 0.82;
 
 export function LimeCabApp({
-  onSceneChange,
+  onTaskChange,
   signedIn = false,
-  minimized = false,
+  standby = false,
 }: {
-  /** The shell hides its chrome once the rider is inside a task. */
-  onSceneChange?: (state: ServiceAppState) => void;
+  /**
+   * The shell hides its chrome while the ride owns the screen. A minimized
+   * live ride is *not* a task: Home, its launcher, and the tabs come back.
+   */
+  onTaskChange?: (inTask: boolean) => void;
   /** Signed-out riders browse and quote; only booking is gated. */
   signedIn?: boolean;
   /**
@@ -241,27 +250,27 @@ export function LimeCabApp({
    * while the state machine, the polling and the surface recipes keep running
    * underneath, so coming back restores the exact scene they left.
    */
-  minimized?: boolean;
+  standby?: boolean;
 }) {
   return (
     <SurfaceManagerProvider manager={limeCabSurfaces}>
       <LimeCabFlow
-        onSceneChange={onSceneChange}
+        onTaskChange={onTaskChange}
         signedIn={signedIn}
-        minimized={minimized}
+        standby={standby}
       />
     </SurfaceManagerProvider>
   );
 }
 
 function LimeCabFlow({
-  onSceneChange,
+  onTaskChange,
   signedIn,
-  minimized,
+  standby,
 }: {
-  onSceneChange?: (state: ServiceAppState) => void;
+  onTaskChange?: (inTask: boolean) => void;
   signedIn: boolean;
-  minimized: boolean;
+  standby: boolean;
 }) {
   const surfaces = useSurfaceManager<LimeCabSurfaceId, LimeCabAction>();
   const searchParams = useSearchParams();
@@ -286,6 +295,14 @@ function LimeCabFlow({
   const [approachRoute, setApproachRoute] = useState<MapPoint[] | null>(null);
   const [productId, setProductId] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  /**
+   * A committed ride, stood down to the pill while the rider is still on `/`.
+   * Not a scene and not a step: the request keeps running and the reducer never
+   * hears about it. It is where the *surfaces* sit, so it lives here and not in
+   * `ServiceAppState`.
+   */
+  const [rideMinimized, setRideMinimized] = useState(false);
+  const [recentering, setRecentering] = useState(false);
   const [phaseStart, setPhaseStart] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
 
@@ -383,13 +400,22 @@ function LimeCabFlow({
   const clearTrip = useCallback(() => setTripId(null), []);
 
   // The scene says which step; the recipe says how the surfaces sit around it.
+  // While the ride is minimized, `minimizeRide` owns the posture instead —
+  // the server advancing matched → arriving must not pop the sheet back up.
   useEffect(() => {
+    if (rideMinimized) return;
     surfaces.apply("progress", LIMECAB_SCENE_SURFACES[state]);
-  }, [state, surfaces]);
+  }, [rideMinimized, state, surfaces]);
 
   useEffect(() => {
-    onSceneChange?.(state);
-  }, [onSceneChange, state]);
+    onTaskChange?.(state !== "home" && !rideMinimized);
+  }, [onTaskChange, rideMinimized, state]);
+
+  // Nothing live to stand down: a cancelled, completed, or never-started ride
+  // must not leave the next scene's sheet hidden behind a stale pill.
+  useEffect(() => {
+    if (!isCommitted(state) || state === "complete") setRideMinimized(false);
+  }, [state]);
 
   // One clock drives every estimate and the car's position. While the
   // vehicle is moving, tick every frame so the follow-cam can slide the
@@ -656,11 +682,17 @@ function LimeCabFlow({
     state === "service_select" ||
     state === "configure" ||
     state === "quote";
+  /** A committed request that is still running: minimizable, not revisable. */
+  const liveRide = isCommitted(state) && state !== "complete";
 
   const openSearch = useRef<(target: RideSearchTarget) => void>(
     () => undefined,
   );
   openSearch.current = (target) => {
+    // A live ride is minimized behind Home. The launcher is not an invitation
+    // to book a second one — the reducer refuses that — so it is the way back
+    // to the ride already running.
+    if (rideMinimized) return restoreRide();
     setSearchTarget(target);
     surfaces.perform(
       target === "pickup" ? "openPickupSearch" : "openDestinationSearch",
@@ -731,12 +763,58 @@ function LimeCabFlow({
     };
   }, [pin, pinning]);
 
+  /**
+   * Back on a live ride. Not `go("back")` and not a cancellation: one named
+   * action stands the sheet down to the pill and hands Home back.
+   */
+  const minimizeRide = () => {
+    surfaces.perform("minimizeRide");
+    setRideMinimized(true);
+  };
+
+  /** The pill, tapped. The scene recipe re-seats the map on the same frame. */
+  const restoreRide = () => {
+    surfaces.perform("restoreRide");
+    setRideMinimized(false);
+  };
+
+  /**
+   * "I'm here" — put the pickup back on the device, without opening search.
+   * Same geolocation path the search scene and the home map tap already use.
+   */
+  const recenterPickup = () => {
+    if (recentering || typeof navigator === "undefined" || !navigator.geolocation) {
+      return;
+    }
+    setRecentering(true);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        const { latitude, longitude } = coords;
+        void fetchReverseGeocode(latitude, longitude)
+          .catch(() => undefined)
+          .then((resolved) => {
+            setPickup({
+              address: resolved?.address ?? "Current location",
+              latitude,
+              longitude,
+              followsDevice: true,
+            });
+            setRecentering(false);
+          });
+      },
+      () => setRecentering(false),
+      { enableHighAccuracy: true, timeout: 8000 },
+    );
+  };
+
   return (
     <ServiceAppShell
-      layout={state === "home" ? "home" : "task"}
-      onMapPress={() => openPin("pickup", "home")}
+      layout={state === "home" || rideMinimized ? "home" : "task"}
+      onMapPress={
+        rideMinimized ? restoreRide : () => openPin("pickup", "home")
+      }
       map={
-        minimized ? null : (
+        standby ? null : (
           <ManagedSurface<LimeCabSurfaceId> id="map">
             <div className="relative size-full">
               <ServiceMap
@@ -761,18 +839,40 @@ function LimeCabFlow({
                 }
               />
               {!pinning &&
+              !rideMinimized &&
               state !== "home" &&
               state !== "location_search" &&
               destination ? (
                 <MapRouteBar
                   origin={pickupLine}
                   destination={destinationLine}
-                  onBack={canReviseRoute ? () => go("back") : undefined}
+                  // Back revises while the request is still a draft; once it is
+                  // committed, Back minimizes. It never unwinds and never
+                  // cancels — cancelling has its own confirmation.
+                  onBack={
+                    canReviseRoute
+                      ? () => go("back")
+                      : liveRide
+                        ? minimizeRide
+                        : undefined
+                  }
                   onEdit={
                     canReviseRoute
                       ? () => openSearch.current("destination")
                       : undefined
                   }
+                />
+              ) : null}
+
+              {/* Between the destination bar and the sheet, on the canvas —
+                  not in the sheet's action band, which answers the scene. */}
+              {!pinning &&
+              !rideMinimized &&
+              state !== "home" &&
+              !isCommitted(state) ? (
+                <RecenterPickupButton
+                  busy={recentering}
+                  onPress={recenterPickup}
                 />
               ) : null}
             </div>
@@ -807,13 +907,48 @@ function LimeCabFlow({
         cancelTrip={cancelTrip}
         clearTrip={clearTrip}
         signedIn={signedIn}
-        minimized={minimized}
+        standby={standby}
+        rideMinimized={rideMinimized}
+        onRestoreRide={restoreRide}
         failure={failure}
         setFailure={setFailure}
         status={status}
         estimate={estimate}
       />
     </ServiceAppShell>
+  );
+}
+
+/**
+ * "I'm here". A canvas control, deliberately not a sheet action: the sheet
+ * answers the scene's question, and where the rider is standing is not it.
+ */
+function RecenterPickupButton({
+  busy,
+  onPress,
+}: {
+  busy: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onPress}
+      disabled={busy}
+      aria-label="Recenter pickup on my location"
+      className={cn(
+        "bg-card ring-border focus-visible:ring-ring absolute right-3 z-10 inline-flex size-11 items-center justify-center rounded-full shadow-[0_4px_16px_rgba(26,24,20,0.12)] ring-1 touch-manipulation focus-visible:ring-2 focus-visible:outline-none disabled:opacity-60",
+        // Sits in the gap the sheet leaves. The rung is a known fraction, so
+        // this is one CSS expression and not another measured overlay.
+        "bottom-[calc(var(--sheet-snap,0)*100dvh+1rem)] md:bottom-6",
+      )}
+    >
+      <Icon
+        icon={Gps01Icon}
+        size={20}
+        className={busy ? "animate-pulse" : undefined}
+      />
+    </button>
   );
 }
 
@@ -856,7 +991,9 @@ function LimeCabSurfaces({
   cancelTrip,
   clearTrip,
   signedIn,
-  minimized,
+  standby,
+  rideMinimized,
+  onRestoreRide,
   failure,
   setFailure,
   status,
@@ -906,7 +1043,10 @@ function LimeCabSurfaces({
   cancelTrip: () => Promise<void>;
   clearTrip: () => void;
   signedIn: boolean;
-  minimized: boolean;
+  standby: boolean;
+  /** A live ride stood down to the pill while the rider uses Home. */
+  rideMinimized: boolean;
+  onRestoreRide: () => void;
   failure: string | null;
   setFailure: (next: string | null) => void;
   status: ServiceStatus;
@@ -1002,6 +1142,9 @@ function LimeCabSurfaces({
   );
 
   const chooseLocation = (result: Location) => {
+    // Same reason as the launcher: a saved place cannot re-route a committed
+    // ride, and the reducer's `select_location` has no committed guard.
+    if (rideMinimized) return onRestoreRide();
     setSearchError(null);
     const { draft, next } = applyRouteChoice(
       { origin: pickup, destination, stops },
@@ -1141,7 +1284,9 @@ function LimeCabSurfaces({
   }, [serverStatus]);
 
   const openDetail = (kind: DetailKind) => {
-    surfaces.perform("openDetails");
+    // Payment is the same kind of interruption, at a different rung: a list
+    // with an "add one" affordance is a prepared environment, not a drawer.
+    surfaces.perform(kind === "payment" ? "openPayment" : "openDetails");
     setDetail(kind);
   };
 
@@ -1181,11 +1326,11 @@ function LimeCabSurfaces({
    * question they have long since walked away from.
    */
   useEffect(() => {
-    if (!minimized) return;
+    if (!standby) return;
     setDetail(null);
     setCancelStage(null);
     setUnavailable(null);
-  }, [minimized]);
+  }, [standby]);
 
   const live = isCommitted(visible) && visible !== "complete" && !failure;
   const cancellable =
@@ -1202,7 +1347,7 @@ function LimeCabSurfaces({
   // Every surface below portals to `document.body`; nothing but returning
   // nothing actually removes them from another tab's screen. The hooks above
   // all keep running, so the scene the rider left is still here.
-  if (minimized) return null;
+  if (standby) return null;
 
   return (
     <>
@@ -1210,7 +1355,7 @@ function LimeCabSurfaces({
         {question.question} {question.action}.
       </div>
 
-      {visible === "home" ? (
+      {visible === "home" || rideMinimized ? (
         <LimeCabHomeScene
           destination={destination}
           title={courier ? "Where is it going?" : undefined}
@@ -1220,7 +1365,9 @@ function LimeCabSurfaces({
         />
       ) : null}
 
-      {visible !== "home" && visible !== "location_search" ? (
+      {/* The drawer portals to `document.body`; only not rendering it takes
+          it off a minimized rider's screen. */}
+      {visible !== "home" && visible !== "location_search" && !rideMinimized ? (
         <ManagedSurface<LimeCabSurfaceId> id="primary">
           <ServiceSheet
             label={
@@ -1452,8 +1599,22 @@ function LimeCabSurfaces({
         onDismiss={() => closeInterrupt(() => setUnavailable(null))}
       />
 
+      {/* Minimized on Home: the ride is the pill, and tapping it is the only
+          way back. Off Home the shell renders its own. */}
+      {rideMinimized ? <LimeCabTripPill onRestore={onRestoreRide} /> : null}
+
+      <LimeCabPaymentSurface
+        open={detail === "payment"}
+        paymentId={paymentId}
+        onSelect={(id) => {
+          setPaymentId(id);
+          closeInterrupt(() => setDetail(null));
+        }}
+        onClose={() => closeInterrupt(() => setDetail(null))}
+      />
+
       <LimeCabDetailSurface
-        detail={detail}
+        detail={detail === "payment" ? null : detail}
         onClose={() => closeInterrupt(() => setDetail(null))}
         quote={quote}
         product={product}
@@ -1462,11 +1623,6 @@ function LimeCabSurfaces({
         pickupLine={pickupLine}
         destinationLine={destinationLine}
         payment={payment}
-        paymentId={paymentId}
-        onSelectPayment={(id) => {
-          setPaymentId(id);
-          closeInterrupt(() => setDetail(null));
-        }}
         promoApplied={promoApplied}
         onTogglePromo={() => {
           setPromoApplied(!promoApplied);

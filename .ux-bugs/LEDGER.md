@@ -89,3 +89,16 @@ Open work for the next session: `.ux-bugs/HANDOFF-surfaces.md`.
 | M2 | recenter-control | map overlay | P1 | open |
 | I8 | payment-not-full-overlay | limecab-interrupts.tsx | P1 | open |
 
+## 2026-08-27 — Driver app handoff (open)
+
+Open work: `.ux-bugs/HANDOFF-driver.md`. Rebuild driver home as a map-first
+Uber-shaped duty session. Do not polish the inbox list.
+
+| ID | Slug | File | Severity | Status |
+|----|------|------|----------|--------|
+| D1 | driver-is-inbox-not-map | src/app/driver/page.tsx | P0 | open |
+| D2 | offers-are-a-list | driver-offer-card.tsx | P0 | open |
+| D3 | accept-navigates-away | src/app/driver/trips/[tripId]/page.tsx | P0 | open |
+| D4 | no-driver-scene-machine | (missing driver-app.tsx) | P0 | open |
+| D5 | no-offer-sound-countdown-ring | driver-offer-card.tsx | P1 | open |
+

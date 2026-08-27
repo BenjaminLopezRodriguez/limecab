@@ -73,7 +73,7 @@ export const RIDE_PRODUCTS: RideProduct[] = [
     seats: 2,
     etaMinutes: 9,
     priceCents: 72,
-    status: "coming_soon",
+    status: "available",
   },
 ];
 

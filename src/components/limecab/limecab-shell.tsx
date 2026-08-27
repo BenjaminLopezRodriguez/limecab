@@ -13,7 +13,6 @@ import {
 import { LimeCabApp } from "@/components/limecab/limecab-app";
 import { LimeCabTripPill } from "@/components/limecab/limecab-trip-pill";
 import { Icon } from "@/components/ui/icon";
-import type { ServiceAppState } from "@/lib/service-app/state";
 import { cn } from "@/lib/utils";
 
 /**
@@ -45,11 +44,12 @@ export function LimeCabShell({
   signedIn?: boolean;
 }) {
   const pathname = usePathname();
-  const [scene, setScene] = useState<ServiceAppState>("home");
+  const [inTask, setInTask] = useState(false);
 
-  // Stable identity: the ride flow reports its scene from an effect.
-  const onSceneChange = useCallback((next: ServiceAppState) => {
-    setScene(next);
+  // Stable identity: the ride flow reports from an effect. A minimized live
+  // ride is not a task — Home, the launcher and the tabs all come back.
+  const onTaskChange = useCallback((next: boolean) => {
+    setInTask(next);
   }, []);
 
   // The driver app is its own product with its own chrome.
@@ -64,7 +64,6 @@ export function LimeCabShell({
   }
 
   const onHome = pathname === "/";
-  const inTask = scene !== "home";
   const showChrome = !onHome || !inTask;
 
   return (
@@ -105,11 +104,11 @@ export function LimeCabShell({
       <div className={cn(!onHome && "hidden")}>
         <Suspense fallback={null}>
           <LimeCabApp
-            onSceneChange={onSceneChange}
+            onTaskChange={onTaskChange}
             signedIn={signedIn}
             // Off Home the ride is the pill, so render no surfaces at all: the
             // sheet portals to <body> and would otherwise escape `hidden`.
-            minimized={!onHome}
+            standby={!onHome}
           />
         </Suspense>
       </div>
