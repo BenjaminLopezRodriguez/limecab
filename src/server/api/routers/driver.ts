@@ -53,6 +53,11 @@ function takeFromCompleted(
   return { todayCents, weekCents };
 }
 
+function firstName(name: string | null | undefined): string | null {
+  const first = name?.trim().split(/\s+/)[0];
+  return first ?? null;
+}
+
 type AppDb = typeof import("@/server/db").db;
 
 async function completedForDriver(database: AppDb, driverId: string) {
@@ -148,7 +153,7 @@ export const driverRouter = createTRPCRouter({
           }
         : null;
 
-    const [openAll, active, completed] = await Promise.all([
+    const [openAll, activeRows, completed] = await Promise.all([
       ctx.db.query.trips.findMany({
         where: and(eq(trips.status, "requested"), isNull(trips.driverId)),
         orderBy: [desc(trips.requestedAt)],
@@ -159,12 +164,22 @@ export const driverRouter = createTRPCRouter({
           notInArray(trips.status, [...TERMINAL_TRIP_STATUSES]),
         ),
         orderBy: [desc(trips.requestedAt)],
+        // The driver has to know who they are looking for at the curb.
+        with: { user: { columns: { name: true, phone: true } } },
       }),
       completedForDriver(ctx.db, driver.id),
     ]);
 
     const open = openAll.filter((trip) => offerHeadsToward(trip, heading));
     const take = takeFromCompleted(completed);
+
+    // First name only: it is what a driver reads at a glance, and the rest is
+    // not theirs to have.
+    const active = activeRows.map(({ user, ...trip }) => ({
+      ...trip,
+      riderName: firstName(user?.name),
+      riderPhone: user?.phone ?? null,
+    }));
 
     return {
       driver,

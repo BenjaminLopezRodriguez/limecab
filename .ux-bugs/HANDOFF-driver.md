@@ -621,3 +621,92 @@ or disable sim. A real accept always wins (`simulate-driver.ts`).
 
 If any step still looks like a list titled “New rides”, the job is
 not done.
+
+---
+
+# Status — built 2026-08-27
+
+The rebuild in this handoff is **done and verified**. `/driver` is a duty
+session on a map; it is no longer an inbox. Read this section first if you
+are picking the work back up.
+
+## What shipped
+
+| Concern | File |
+|---|---|
+| Driver scene machine (UI) | `src/lib/limecab/driver-state.ts` (+ `.test.ts`) |
+| Surface recipes | `src/components/limecab/driver-surfaces.ts` |
+| Map-first shell, polling, offer detection | `src/components/limecab/driver-app.tsx` |
+| Duty peek / offer / job / fare scenes | `src/components/limecab/driver-scenes.tsx` |
+| `/driver` full-bleed vs. padded profile routes | `src/components/limecab/driver-chrome.tsx` |
+| Register form + product switch | `src/app/driver/page.tsx` |
+| Session gate only | `src/app/driver/layout.tsx` |
+| Old job document → `redirect("/driver")` | `src/app/driver/trips/[tripId]/page.tsx` |
+| Rider first name + phone on active trips | `src/server/api/routers/driver.ts` (`inbox`) |
+
+`src/components/limecab/driver-offer-card.tsx` is **deleted**. The tRPC router
+and `src/server/limecab/state.ts` are unchanged apart from the `users` join.
+
+## Decisions this handoff left open
+
+- **The offer is an interruption of `online`, not a scene.** The handoff
+  allowed either; this is the "preferred" branch. So `DriverAppState` is
+  `offline | online | to_pickup | at_pickup | on_trip | complete` — there is
+  no `offer` member, and declining is `{ intent: "return" }` rather than a
+  backwards transition. The ride being offered is app data (`offeredId`).
+- **The scene is derived from the server, corrected not commanded.** One
+  effect reconciles `scene` against `inbox.active[0].status` (and `available`
+  when there is no job), which is what makes a mid-job refresh land on the
+  job. User actions still go through `reduceDriverAppState`. The `complete`
+  scene is exempt — a completed trip has already left `active`, so the fare
+  splash holds its own copy of the row.
+- **Failures are owned locally** (`failure` state in `DriverSurfaces`), not
+  read off `surface.progress.error`. The progress machine keeps its error
+  until the *next* transition starts, so a refused accept would otherwise
+  print "That ride is no longer available." on the next ride's card. The
+  progress machine still owns the lock, the choreography and the reversal.
+- **Accept clears `offeredId` explicitly** (`onOfferTaken`). Without it
+  `hunting` stays false forever and no second offer is ever shown. If you
+  refactor the offer plumbing, keep a test on this.
+
+## Deliberately not built
+
+- **Idle map panning + recenter.** `ServiceMap`'s `interactive` also draws the
+  kit's centre pin crosshair (`mapbox-canvas.tsx`), which is a rider
+  affordance and wrong for a driver. The canvas instead auto-follows the
+  device fix, which makes a recenter control redundant. To add panning, give
+  `MapViewProps` a flag that separates "pannable" from "placing a pin", then
+  add the recenter control back — the two go together.
+- **Cancel this job.** There is no driver cancel path on the server. Not
+  faked, per the handoff's truthfulness rule. Needs a router mutation first.
+- **Geofencing Arrive**, turn-by-turn, masked phone numbers. "Open in Maps"
+  (a `google.com/maps/dir` link) is the honest navigation escape hatch.
+- The courier branch (pickup code, delivery proof) is **implemented but only
+  type-checked** — it was never exercised against a real courier trip.
+
+## Gotchas that cost time
+
+- **`pnpm build` fails while `next dev` is running** against the same
+  `.next`: it reports `Cannot find module for page` for unrelated routes.
+  Not a code error. Build with a separate `distDir` or stop the dev server.
+  If you do use a temporary `distDir`, Next rewrites `tsconfig.json` —
+  `git checkout -- tsconfig.json` afterwards.
+- **The Mapbox token is URL-restricted.** On any origin that is not in its
+  allowlist (e.g. a dev server that fell back to port 3001, or a new
+  deployment domain) both the tiles and `/api/map/directions` 403. The map
+  goes blank and the route line disappears; nothing is wrong with the app.
+- **Simulation steals `requested` trips** in non-prod, but only when a rider
+  polls `trip.get`. Inserting a trip row straight into the DB and never
+  opening it as a rider is the quickest way to test the offer surface.
+
+## Verified at 390×844 (and 1280 desktop)
+
+All thirteen steps of the checklist above, against a live database: offline
+peek → GO → offer interrupt → Accept (no navigation, URL stays `/driver`) →
+PIN → Start ride → Complete → fare splash → auto-return online with today's
+take updated. Plus timeout-dismiss restoring the peek intact, explicit
+Decline, accept CONFLICT returning to the peek with an inline reason, mid-job
+refresh, the heading interrupt, the register form, and the desktop side card
+with the offer as a centred dialog. Console clean — no errors and no
+`[SurfaceManager]` invariant warnings. `typecheck`, `lint`, 82 tests and a
+production build all pass.
