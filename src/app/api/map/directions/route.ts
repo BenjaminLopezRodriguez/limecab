@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { pointsFromLineString } from "@/lib/service-app/map-adapter";
-import { mapboxToken } from "@/server/limecab/mapbox";
+import { mapboxFetch, mapboxToken } from "@/server/limecab/mapbox";
 
 /**
  * Driving geometry for the ride canvas. Token stays on the server.
@@ -31,7 +31,7 @@ export async function GET(request: Request) {
   endpoint.searchParams.set("overview", "full");
   endpoint.searchParams.set("access_token", token);
 
-  const res = await fetch(endpoint, { cache: "no-store" });
+  const res = await mapboxFetch(endpoint, request);
   if (!res.ok) {
     const status = res.status === 403 ? 403 : 502;
     const message =

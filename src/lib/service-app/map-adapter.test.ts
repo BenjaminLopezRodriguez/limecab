@@ -2,10 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  bearingDegrees,
   panCenter,
   pointAlongPath,
   pointsFromLineString,
   projectPoint,
+  tracksProvider,
   type MapPoint,
 } from "./map-adapter.ts";
 
@@ -43,9 +45,12 @@ test("pointsFromLineString reads Mapbox GeoJSON order (lng, lat)", () => {
 
 test("pointAlongPath at 0 and 1 is the ends of the path", () => {
   const path = [downtown, east, north];
-  assert.deepEqual(pointAlongPath(path, 0), downtown);
-  assert.equal(pointAlongPath(path, 1).latitude, north.latitude);
-  assert.equal(pointAlongPath(path, 1).longitude, north.longitude);
+  const start = pointAlongPath(path, 0);
+  const end = pointAlongPath(path, 1);
+  assert.equal(start.latitude, downtown.latitude);
+  assert.equal(start.longitude, downtown.longitude);
+  assert.equal(end.latitude, north.latitude);
+  assert.equal(end.longitude, north.longitude);
 });
 
 test("pointAlongPath at 0.5 sits between the ends", () => {
@@ -53,4 +58,16 @@ test("pointAlongPath at 0.5 sits between the ends", () => {
   const mid = pointAlongPath(path, 0.5);
   assert.ok(mid.longitude > downtown.longitude);
   assert.ok(mid.longitude < east.longitude);
+});
+
+test("bearingDegrees points east along a same-latitude pair", () => {
+  const heading = bearingDegrees(downtown, east);
+  assert.ok(heading > 80 && heading < 100);
+});
+
+test("tracksProvider is the live vehicle modes, not the preview", () => {
+  assert.equal(tracksProvider("provider_arrival"), true);
+  assert.equal(tracksProvider("active_route"), true);
+  assert.equal(tracksProvider("route_preview"), false);
+  assert.equal(tracksProvider("results"), false);
 });

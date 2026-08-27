@@ -132,9 +132,71 @@ export const LAST_TRIP: Place = SAVED_PLACES.find((p) => p.id === "pasadena")!;
 export const RIDER = {
   name: "Ava",
   fullName: "Ava Moreno",
+  phone: "(323) 555-0148",
   since: "Member since 2024",
   rating: 4.91,
   ridesTaken: 128,
+};
+
+/** Account settings the profile screens disclose. Display and device-local. */
+export const RIDER_PREFERENCES = {
+  quietRide: true,
+  extraStops: false,
+  waitOnArrival: true,
+  defaultProductName: "Lime",
+};
+
+export const RIDER_SAFETY = {
+  shareTrip: true,
+  pickupPin: true,
+  trustedContact: "Jordan M. ···· 0194",
+};
+
+export const RIDER_NOTIFICATIONS = {
+  tripUpdates: true,
+  driverMessages: true,
+  promotions: false,
+  emailReceipts: true,
+};
+
+export const DRIVER_DOCUMENTS = [
+  {
+    id: "license",
+    label: "Driver’s license",
+    detail: "Expires Nov 2028",
+    status: "Verified",
+  },
+  {
+    id: "insurance",
+    label: "Insurance",
+    detail: "Commercial policy",
+    status: "Verified",
+  },
+  {
+    id: "registration",
+    label: "Vehicle registration",
+    detail: "California",
+    status: "Verified",
+  },
+  {
+    id: "background",
+    label: "Background check",
+    detail: "Cleared 2024",
+    status: "Cleared",
+  },
+] as const;
+
+export const DRIVER_PAYOUT = {
+  schedule: "Weekly on Friday",
+  method: "Bank ···· 4821",
+  instant: false,
+};
+
+export const DRIVER_PREFERENCES = {
+  navigationVoice: true,
+  acceptXl: true,
+  longTrips: false,
+  courierJobs: true,
 };
 
 /** Completed trips, newest first. A trips table replaces this. */
@@ -297,7 +359,12 @@ export const geocodeAdapter: GeocodeAdapter = {
 export const PAYMENT_METHODS: PaymentMethod[] = [
   { id: "visa", label: "Personal", detail: "Visa ···· 4412", kind: "card" },
   { id: "amex", label: "Work", detail: "Amex ···· 1008", kind: "card" },
-  { id: "wallet", label: "LimeCab Cash", detail: "$12.00 balance", kind: "wallet" },
+  {
+    id: "wallet",
+    label: "LimeCab Cash",
+    detail: "$12.00 balance",
+    kind: "wallet",
+  },
 ];
 
 export const AVAILABLE_PROMO: Promo = {
@@ -324,13 +391,25 @@ export const DRIVER_POOL: Driver[] = [
     rating: 4.89,
     vehicle: { make: "Kia", model: "Niro", color: "White", plate: "6PLT884" },
   },
+  {
+    id: "rio",
+    name: "Rio",
+    rating: 4.97,
+    vehicle: { make: "Toyota", model: "Camry", color: "Black", plate: "7LIME22" },
+  },
+  {
+    id: "jules",
+    name: "Jules",
+    rating: 4.91,
+    vehicle: { make: "Chevy", model: "Bolt", color: "Silver", plate: "4CAB901" },
+  },
 ];
 
 /** Idle drivers shown as ambient context while matching. */
 export const NEARBY_DRIVERS: MapPoint[] = [
-  { latitude: 34.0546, longitude: -118.2489, kind: "marker" },
-  { latitude: 34.0462, longitude: -118.2612, kind: "marker" },
-  { latitude: 34.0578, longitude: -118.2603, kind: "marker" },
+  { latitude: 34.0546, longitude: -118.2489, kind: "marker", heading: 42 },
+  { latitude: 34.0462, longitude: -118.2612, kind: "marker", heading: 198 },
+  { latitude: 34.0578, longitude: -118.2603, kind: "marker", heading: 311 },
 ];
 
 export function estimateTrip(pickup: Location, destination: Location) {

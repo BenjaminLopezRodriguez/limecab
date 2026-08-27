@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 
 import { PrimaryAction } from "@/components/service-app/task-scene";
+import { SheetActions } from "@/components/service-app/service-sheet";
 import { Separator } from "@/components/ui/separator";
 import { formatMoney, splitAddress, type Quote } from "@/lib/service-app/services";
 
@@ -78,19 +79,16 @@ export function QuotePanel({
         </div>
       ) : null}
 
-      <PrimaryAction
-        className="mt-5"
-        disabled={busy || disabled}
-        onClick={onConfirm}
-      >
-        {error ? "Try again" : (confirmLabel ?? `Request · ${total}`)}
-      </PrimaryAction>
-
-      {footnote ? (
-        <p className="text-muted-foreground mt-3 text-center text-xs leading-relaxed">
-          {footnote}
-        </p>
-      ) : null}
+      <SheetActions>
+        <PrimaryAction disabled={busy || disabled} onClick={onConfirm}>
+          {error ? "Try again" : (confirmLabel ?? `Request · ${total}`)}
+        </PrimaryAction>
+        {footnote ? (
+          <p className="text-muted-foreground text-center text-xs leading-relaxed">
+            {footnote}
+          </p>
+        ) : null}
+      </SheetActions>
     </div>
   );
 }

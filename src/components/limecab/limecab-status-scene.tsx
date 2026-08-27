@@ -5,6 +5,7 @@ import { CallIcon, Message01Icon } from "@hugeicons/core-free-icons";
 
 import { ProviderCard } from "@/components/service-app/provider-card";
 import { ServiceStatusPanel } from "@/components/service-app/service-status";
+import { SheetActions } from "@/components/service-app/service-sheet";
 import { PrimaryAction } from "@/components/service-app/task-scene";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -59,112 +60,121 @@ export function LimeCabStatusScene({
   onCancel: () => void;
 }) {
   const curbside = CURBSIDE.has(status.state);
+  const pin = curbside && trip;
+  const courierLive = status.state === "active" && trip?.courier;
+  const hasDetails = Boolean(pin) || Boolean(courierLive) || Boolean(showDriver && trip);
+  const hasFooter = Boolean(failure) || Boolean(cancelError) || cancellable;
 
   return (
-    <ServiceStatusPanel
-      status={status}
-      labels={labels}
-      subtitle={
-        product && destination
-          ? `${product.name} · ${destinationLine}`
-          : undefined
-      }
-      actions={
-        <div className="flex flex-col gap-3">
-          {/* The rider's half of the verification the driver is also shown. */}
-          {curbside && trip ? (
-            <PickupPin
-              pin={trip.pickupPin}
-              title={
-                trip.courier
-                  ? `${courierOrderLabel(trip.id)} · Pickup`
-                  : undefined
-              }
-              meetAt={pickup.meetingPoint ?? pickupLine}
-              detail={
-                trip.courier
-                  ? `${trip.courier.packageCount === 1 ? "1 package" : `${trip.courier.packageCount} packages`} · show this to your courier`
-                  : undefined
-              }
-              provider={labels.provider}
-            />
-          ) : null}
+    <>
+      <ServiceStatusPanel
+        status={status}
+        labels={labels}
+        subtitle={
+          product && destination
+            ? `${product.name} · ${destinationLine}`
+            : undefined
+        }
+        actions={
+          hasDetails ? (
+            <div className="flex flex-col gap-3">
+              {/* The rider's half of the verification the driver is also shown. */}
+              {pin ? (
+                <PickupPin
+                  pin={pin.pickupPin}
+                  title={
+                    pin.courier
+                      ? `${courierOrderLabel(pin.id)} · Pickup`
+                      : undefined
+                  }
+                  meetAt={pickup.meetingPoint ?? pickupLine}
+                  detail={
+                    pin.courier
+                      ? `${pin.courier.packageCount === 1 ? "1 package" : `${pin.courier.packageCount} packages`} · show this to your courier`
+                      : undefined
+                  }
+                  provider={labels.provider}
+                />
+              ) : null}
 
-          {status.state === "active" && trip?.courier ? (
-            trip.courier.proof === "hand" && trip.courier.deliveryPin ? (
-              <PickupPin
-                pin={trip.courier.deliveryPin}
-                title={`${courierOrderLabel(trip.id)} · Recipient PIN`}
-                detail={`Give this to ${trip.courier.recipientName}`}
-                provider="recipient"
-              />
-            ) : (
-              <p className="bg-muted/60 rounded-2xl px-4 py-3 text-sm leading-relaxed">
-                In transit to {trip.courier.recipientName}
-                {trip.courier.proof === "door"
-                  ? " · leave at door"
-                  : trip.courier.proof === "signature"
-                    ? " · signature required"
-                    : ""}
-              </p>
-            )
-          ) : null}
+              {courierLive ? (
+                courierLive.proof === "hand" && courierLive.deliveryPin ? (
+                  <PickupPin
+                    pin={courierLive.deliveryPin}
+                    title={`${courierOrderLabel(trip?.id ?? "")} · Recipient PIN`}
+                    detail={`Give this to ${courierLive.recipientName}`}
+                    provider="recipient"
+                  />
+                ) : (
+                  <p className="bg-muted/60 rounded-2xl px-4 py-3 text-sm leading-relaxed">
+                    In transit to {courierLive.recipientName}
+                    {courierLive.proof === "door"
+                      ? " · leave at door"
+                      : courierLive.proof === "signature"
+                        ? " · signature required"
+                        : ""}
+                  </p>
+                )
+              ) : null}
 
-          {showDriver && trip ? (
-            <ProviderCard
-              provider={{
-                id: trip.driver.id,
-                name: trip.driver.name,
-                // The car, not the trim level: colour, make, model — what the
-                // rider actually scans a street for.
-                detail: `${trip.driver.vehicle.color} ${trip.driver.vehicle.make} ${trip.driver.vehicle.model}`,
-                rating: trip.driver.rating,
-              }}
-              badge={<Plate value={trip.driver.vehicle.plate} />}
-              actions={
-                <div className="flex gap-2">
-                  <IconAction
-                    label={`Message ${trip.driver.name}`}
-                    onPress={() => onOpenDetail("contact")}
-                  >
-                    <Icon icon={Message01Icon} size={18} />
-                  </IconAction>
-                  <IconAction
-                    label={`Call ${trip.driver.name}`}
-                    onPress={() => onOpenDetail("contact")}
-                  >
-                    <Icon icon={CallIcon} size={18} />
-                  </IconAction>
+              {showDriver && trip ? (
+                <ProviderCard
+                  provider={{
+                    id: trip.driver.id,
+                    name: trip.driver.name,
+                    // The car, not the trim level: colour, make, model — what the
+                    // rider actually scans a street for.
+                    detail: `${trip.driver.vehicle.color} ${trip.driver.vehicle.make} ${trip.driver.vehicle.model}`,
+                    rating: trip.driver.rating,
+                  }}
+                  badge={<Plate value={trip.driver.vehicle.plate} />}
+                  actions={
+                    <div className="flex gap-2">
+                      <IconAction
+                        label={`Message ${trip.driver.name}`}
+                        onPress={() => onOpenDetail("contact")}
+                      >
+                        <Icon icon={Message01Icon} size={18} />
+                      </IconAction>
+                      <IconAction
+                        label={`Call ${trip.driver.name}`}
+                        onPress={() => onOpenDetail("contact")}
+                      >
+                        <Icon icon={CallIcon} size={18} />
+                      </IconAction>
+                    </div>
+                  }
+                  // The hero already answers "when"; the card answers "who".
+                  eta={status.state === "arriving" ? "Here now" : null}
+                />
+              ) : null}
+
+              {showDriver && trip ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <DetailButton onPress={() => onOpenDetail("trip")}>
+                    Trip details
+                  </DetailButton>
+                  <DetailButton onPress={() => onOpenDetail("safety")}>
+                    Safety
+                  </DetailButton>
                 </div>
-              }
-              // The hero already answers "when"; the card answers "who".
-              eta={status.state === "arriving" ? "Here now" : null}
-            />
-          ) : null}
-
-          {showDriver && trip ? (
-            <div className="grid grid-cols-2 gap-2">
-              <DetailButton onPress={() => onOpenDetail("trip")}>
-                Trip details
-              </DetailButton>
-              <DetailButton onPress={() => onOpenDetail("safety")}>
-                Safety
-              </DetailButton>
+              ) : null}
             </div>
-          ) : null}
-
+          ) : undefined
+        }
+      />
+      {hasFooter ? (
+        <SheetActions>
           {failure ? (
             <PrimaryAction onClick={onBackToQuote}>
               Back to the quote
             </PrimaryAction>
           ) : null}
-
           {cancelError ? (
             <p role="alert" className="text-destructive text-sm leading-relaxed">
               {cancelError}
             </p>
           ) : null}
-
           {cancellable ? (
             <Button
               variant="ghost"
@@ -174,9 +184,9 @@ export function LimeCabStatusScene({
               Cancel {labels.service}
             </Button>
           ) : null}
-        </div>
-      }
-    />
+        </SheetActions>
+      ) : null}
+    </>
   );
 }
 

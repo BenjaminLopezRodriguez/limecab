@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 56" fill="none">
+  <!-- Top-down sedan, nose pointing up so CSS rotate() is degrees from north. -->
+  <rect x="7" y="3" width="18" height="50" rx="7" fill="#1c1a16"/>
+  <rect x="8.5" y="5" width="15" height="46" rx="6" fill="#c8f031"/>
+  <rect x="10" y="12" width="12" height="12" rx="2.5" fill="#1c1a16" fill-opacity="0.38"/>
+  <rect x="10" y="32" width="12" height="10" rx="2" fill="#1c1a16" fill-opacity="0.28"/>
+  <rect x="9" y="6.5" width="14" height="3" rx="1.2" fill="#f4f1ea" fill-opacity="0.55"/>
+  <circle cx="10" cy="18" r="1.4" fill="#1c1a16" fill-opacity="0.45"/>
+  <circle cx="22" cy="18" r="1.4" fill="#1c1a16" fill-opacity="0.45"/>
+  <circle cx="10" cy="38" r="1.4" fill="#1c1a16" fill-opacity="0.45"/>
+  <circle cx="22" cy="38" r="1.4" fill="#1c1a16" fill-opacity="0.45"/>
+</svg>

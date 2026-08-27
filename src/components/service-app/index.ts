@@ -8,7 +8,7 @@ export {
   type TransitionIntent,
 } from "@/components/service-app/adaptive-surface";
 export { ServiceAppShell } from "@/components/service-app/service-app-shell";
-export { ServiceSheet } from "@/components/service-app/service-sheet";
+export { ServiceSheet, SheetActions } from "@/components/service-app/service-sheet";
 export {
   TaskScene,
   TaskSceneHeader,
@@ -21,6 +21,7 @@ export {
 } from "@/components/service-app/service-map";
 export { createMapboxAdapter } from "@/components/service-app/mapbox-adapter";
 export { LocationTrigger } from "@/components/service-app/location-trigger";
+export { MapRouteBar } from "@/components/service-app/map-route-bar";
 export { LocationSearch } from "@/components/service-app/location-search";
 export { LocationSearchScene } from "@/components/service-app/location-search-scene";
 export { LocationPinScene } from "@/components/service-app/location-pin-scene";

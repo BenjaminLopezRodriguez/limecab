@@ -11,10 +11,16 @@ export const env = createEnv({
       process.env.NODE_ENV === "production"
         ? z.string()
         : z.string().optional(),
-    AUTH_DISCORD_ID: z.string(),
-    AUTH_DISCORD_SECRET: z.string(),
+    AUTH_DISCORD_ID: z.string().optional(),
+    AUTH_DISCORD_SECRET: z.string().optional(),
+    AUTH_GOOGLE_ID: z.string().optional(),
+    AUTH_GOOGLE_SECRET: z.string().optional(),
+    AUTH_APPLE_ID: z.string().optional(),
+    AUTH_APPLE_SECRET: z.string().optional(),
     DATABASE_URL: z.string().url(),
     MAPBOX_TOKEN: z.string().optional(),
+    /** Mint fake drivers and auto-advance trips. Defaults on outside production. */
+    SIMULATE_DRIVERS: z.enum(["true", "false"]).optional(),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -37,9 +43,14 @@ export const env = createEnv({
     AUTH_SECRET: process.env.AUTH_SECRET,
     AUTH_DISCORD_ID: process.env.AUTH_DISCORD_ID,
     AUTH_DISCORD_SECRET: process.env.AUTH_DISCORD_SECRET,
+    AUTH_GOOGLE_ID: process.env.AUTH_GOOGLE_ID,
+    AUTH_GOOGLE_SECRET: process.env.AUTH_GOOGLE_SECRET,
+    AUTH_APPLE_ID: process.env.AUTH_APPLE_ID,
+    AUTH_APPLE_SECRET: process.env.AUTH_APPLE_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
     MAPBOX_TOKEN: process.env.MAPBOX_TOKEN,
     NEXT_PUBLIC_MAPBOX_TOKEN: process.env.NEXT_PUBLIC_MAPBOX_TOKEN,
+    SIMULATE_DRIVERS: process.env.SIMULATE_DRIVERS,
     NODE_ENV: process.env.NODE_ENV,
   },
   /**

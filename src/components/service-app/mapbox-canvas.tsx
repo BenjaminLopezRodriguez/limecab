@@ -10,8 +10,17 @@ import Map, {
 import "mapbox-gl/dist/mapbox-gl.css";
 
 import { LocationPinMarker } from "@/components/service-app/location-pin-marker";
+import { CarMarker } from "@/components/service-app/car-marker";
+import {
+  onOverlayChange,
+  readMapPadding,
+} from "@/components/service-app/map-overlay";
 import { SpatialEtaMarker } from "@/components/service-app/spatial-eta-marker";
-import { zoomForMode, type MapViewProps } from "@/lib/service-app/map-adapter";
+import {
+  tracksProvider,
+  zoomForMode,
+  type MapViewProps,
+} from "@/lib/service-app/map-adapter";
 import { cn } from "@/lib/utils";
 
 const ROUTE_LIME = "#c8f031";
@@ -77,6 +86,12 @@ export function MapboxCanvas({
 
   const muted = mode === "provider_arrival" || mode === "results";
   const wasInteractive = useRef(false);
+  const tracking = tracksProvider(mode);
+  const follow = tracking
+    ? points.find((point) => point.kind === "provider")
+    : undefined;
+  const followLat = follow?.latitude;
+  const followLng = follow?.longitude;
 
   useEffect(() => {
     const map = mapRef.current;
@@ -84,40 +99,90 @@ export function MapboxCanvas({
 
     const enteredPin = interactive && !wasInteractive.current;
     wasInteractive.current = interactive;
+    let pinJustEntered = enteredPin;
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-    if (interactive) {
-      if (enteredPin) {
-        map.easeTo({
-          center: [start.longitude, start.latitude],
-          zoom: resolvedZoom,
-          duration: 300,
-        });
+    const frame = () => {
+      map.resize();
+      const padding = readMapPadding();
+      map.getMap().setPadding(padding);
+      const duration = reduce ? 0 : pinJustEntered ? 300 : 500;
+
+      if (interactive) {
+        if (pinJustEntered) {
+          pinJustEntered = false;
+          map.easeTo({
+            center: [start.longitude, start.latitude],
+            zoom: resolvedZoom,
+            duration,
+            padding,
+          });
+        }
+        return;
       }
-      return;
-    }
 
-    if (route.length > 1) {
-      const lats = route.map((point) => point.latitude);
-      const lngs = route.map((point) => point.longitude);
-      map.fitBounds(
-        [
-          [Math.min(...lngs), Math.min(...lats)],
-          [Math.max(...lngs), Math.max(...lats)],
-        ],
-        {
-          padding: { top: 48, bottom: 200, left: 48, right: 48 },
-          duration: 500,
-          maxZoom: 15,
-        },
-      );
+      // Follow-cam owns the camera while a vehicle is live.
+      if (tracking) return;
+
+      if (route.length > 1) {
+        const lats = route.map((point) => point.latitude);
+        const lngs = route.map((point) => point.longitude);
+        map.fitBounds(
+          [
+            [Math.min(...lngs), Math.min(...lats)],
+            [Math.max(...lngs), Math.max(...lats)],
+          ],
+          { padding, duration, maxZoom: 15 },
+        );
+        return;
+      }
+
+      map.easeTo({
+        center: [start.longitude, start.latitude],
+        zoom: resolvedZoom,
+        duration: reduce ? 0 : 400,
+        padding,
+      });
+    };
+
+    frame();
+    const observer = new ResizeObserver(frame);
+    observer.observe(map.getContainer());
+    const stopOverlay = onOverlayChange(frame);
+    return () => {
+      observer.disconnect();
+      stopOverlay();
+    };
+  }, [
+    interactive,
+    ready,
+    resolvedZoom,
+    route,
+    start.latitude,
+    start.longitude,
+    tracking,
+  ]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (
+      !map ||
+      !ready ||
+      interactive ||
+      followLat === undefined ||
+      followLng === undefined
+    ) {
       return;
     }
-    map.easeTo({
-      center: [start.longitude, start.latitude],
-      zoom: resolvedZoom,
-      duration: 400,
-    });
-  }, [interactive, ready, resolvedZoom, route, start.latitude, start.longitude]);
+    const gl = map.getMap();
+    gl.setPadding(readMapPadding());
+    gl.setCenter([followLng, followLat]);
+    if (Math.abs(gl.getZoom() - resolvedZoom) > 0.08) {
+      gl.setZoom(resolvedZoom);
+    }
+  }, [followLat, followLng, interactive, ready, resolvedZoom]);
 
   return (
     <div className={cn("bg-muted relative size-full overflow-hidden", className)}>
@@ -129,7 +194,12 @@ export function MapboxCanvas({
           longitude: start.longitude,
           latitude: start.latitude,
           zoom: resolvedZoom,
+          pitch: 0,
+          bearing: 0,
         }}
+        projection="mercator"
+        pitch={0}
+        maxPitch={0}
         style={{ width: "100%", height: "100%" }}
         dragPan={interactive}
         dragRotate={false}
@@ -139,7 +209,10 @@ export function MapboxCanvas({
         touchZoomRotate={interactive}
         keyboard={interactive}
         attributionControl
-        onLoad={() => setReady(true)}
+        onLoad={() => {
+          mapRef.current?.getMap().setProjection("mercator");
+          setReady(true);
+        }}
         onMoveEnd={
           interactive && onCameraChange
             ? (event) =>
@@ -162,17 +235,23 @@ export function MapboxCanvas({
             longitude={point.longitude}
             latitude={point.latitude}
             anchor="center"
+            rotationAlignment="map"
           >
-            <span
-              className={cn(
-                "block size-3 rounded-full ring-2 ring-black/40",
-                point.kind === "provider"
-                  ? "bg-lime size-3.5"
-                  : point.kind === "destination"
+            {point.kind === "provider" || point.kind === "marker" ? (
+              <CarMarker
+                heading={point.heading ?? 0}
+                size={point.kind === "provider" ? "md" : "sm"}
+              />
+            ) : (
+              <span
+                className={cn(
+                  "block size-3 rounded-full ring-2 ring-black/40",
+                  point.kind === "destination"
                     ? "bg-foreground rounded-[3px]"
                     : "bg-lime",
-              )}
-            />
+                )}
+              />
+            )}
           </Marker>
         ))}
       </Map>

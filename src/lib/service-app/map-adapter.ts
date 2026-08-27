@@ -30,6 +30,8 @@ export type MapPoint = {
   longitude: number;
   kind?: MapPointKind;
   label?: string;
+  /** Degrees clockwise from north. Used to aim a vehicle marker. */
+  heading?: number;
 };
 
 export type MapViewProps = {
@@ -68,15 +70,23 @@ export function zoomForMode(mode: MapMode): number {
     case "select_location":
       return 14;
     case "route_preview":
-    case "active_route":
       return 13;
     case "provider_arrival":
-      return 15;
+    case "active_route":
+      return 16;
     case "coverage":
       return 10;
     case "results":
       return 12;
   }
+}
+
+/**
+ * Follow-cam: the vehicle stays put and the map (and path) slide under it.
+ * Preview and receipt still fit the whole route.
+ */
+export function tracksProvider(mode: MapMode): boolean {
+  return mode === "provider_arrival" || mode === "active_route";
 }
 
 /**
@@ -121,12 +131,16 @@ export function projectPoint(
   center: MapPoint,
   point: MapPoint,
   metersPerViewBoxUnit = 6,
+  clamp = true,
 ): { x: number; y: number } {
   const { northM, eastM } = offsetMeters(center, point);
   const scale = 1 / metersPerViewBoxUnit;
+  const x = 100 + eastM * scale;
+  const y = 100 - northM * scale;
+  if (!clamp) return { x, y };
   return {
-    x: Math.min(192, Math.max(8, 100 + eastM * scale)),
-    y: Math.min(192, Math.max(8, 100 - northM * scale)),
+    x: Math.min(192, Math.max(8, x)),
+    y: Math.min(192, Math.max(8, y)),
   };
 }
 
@@ -163,6 +177,17 @@ export function pointsFromLineString(geometry: {
   });
 }
 
+/** Compass bearing from `from` to `to`, degrees clockwise from north. */
+export function bearingDegrees(from: MapPoint, to: MapPoint): number {
+  const φ1 = (from.latitude * Math.PI) / 180;
+  const φ2 = (to.latitude * Math.PI) / 180;
+  const Δλ = ((to.longitude - from.longitude) * Math.PI) / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x =
+    Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return (Math.atan2(y, x) * (180 / Math.PI) + 360) % 360;
+}
+
 /**
  * Walk `t` along a path by distance, not vertex count, so a long straight
  * block and a wiggly interchange both animate at a steady speed.
@@ -196,10 +221,13 @@ export function pointAlongPath(path: readonly MapPoint[], t: number): MapPoint {
       return {
         latitude: prev.latitude + (next.latitude - prev.latitude) * u,
         longitude: prev.longitude + (next.longitude - prev.longitude) * u,
+        heading: bearingDegrees(prev, next),
         ...(kind ? { kind } : {}),
       };
     }
     remaining -= length;
   }
-  return path[path.length - 1]!;
+  const last = path[path.length - 1]!;
+  const before = path[path.length - 2]!;
+  return { ...last, heading: last.heading ?? bearingDegrees(before, last) };
 }

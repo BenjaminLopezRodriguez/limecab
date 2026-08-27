@@ -13,7 +13,8 @@ import {
 } from "@/lib/limecab/courier";
 import { RIDE_PRODUCTS } from "@/lib/limecab/mock";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
-import { trips } from "@/server/db/schema";
+import { trips, supportTickets } from "@/server/db/schema";
+import { maybeSimulateTrip } from "@/server/limecab/simulate-driver";
 import {
   riderMay,
   TERMINAL_TRIP_STATUSES,
@@ -60,6 +61,30 @@ const driverColumns = {
     vehiclePlate: true,
   },
 } as const;
+
+const riderTripWhere = (userId: string, tripId: string) =>
+  and(eq(trips.id, tripId), eq(trips.userId, userId));
+
+async function loadRiderTrip(
+  ctx: { db: typeof import("@/server/db").db; session: { user: { id: string } } },
+  tripId: string,
+) {
+  const trip = await ctx.db.query.trips.findFirst({
+    where: riderTripWhere(ctx.session.user.id, tripId),
+    with: { driver: driverColumns },
+  });
+  if (!trip) return null;
+  const next = await maybeSimulateTrip(ctx.db, trip);
+  if (next.status === trip.status && next.driverId === trip.driverId) {
+    return trip;
+  }
+  return (
+    (await ctx.db.query.trips.findFirst({
+      where: riderTripWhere(ctx.session.user.id, tripId),
+      with: { driver: driverColumns },
+    })) ?? { ...trip, ...next }
+  );
+}
 
 export const tripRouter = createTRPCRouter({
   request: protectedProcedure
@@ -145,14 +170,7 @@ export const tripRouter = createTRPCRouter({
   get: protectedProcedure
     .input(z.object({ id: z.string().min(1).max(255) }))
     .query(async ({ ctx, input }) => {
-      // Scoped by userId in the query itself — another user's id 404s.
-      const trip = await ctx.db.query.trips.findFirst({
-        where: and(
-          eq(trips.id, input.id),
-          eq(trips.userId, ctx.session.user.id),
-        ),
-        with: { driver: driverColumns },
-      });
+      const trip = await loadRiderTrip(ctx, input.id);
       if (!trip) throw new TRPCError({ code: "NOT_FOUND" });
       return trip;
     }),
@@ -167,7 +185,8 @@ export const tripRouter = createTRPCRouter({
       orderBy: [desc(trips.requestedAt)],
       with: { driver: driverColumns },
     });
-    return trip ?? null;
+    if (!trip) return null;
+    return loadRiderTrip(ctx, trip.id);
   }),
 
   cancel: protectedProcedure
@@ -199,5 +218,57 @@ export const tripRouter = createTRPCRouter({
         throw new TRPCError({ code: "CONFLICT", message: "Trip changed." });
       }
       return cancelled;
+    }),
+
+  openTicket: protectedProcedure
+    .input(
+      z.object({
+        tripId: z.string().min(1).max(255),
+        topic: z.enum(["fare", "lost_item", "driver", "other"]),
+        message: z.string().trim().min(8).max(2000),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const trip = await ctx.db.query.trips.findFirst({
+        where: and(
+          eq(trips.id, input.tripId),
+          eq(trips.userId, ctx.session.user.id),
+        ),
+        columns: { id: true },
+      });
+      if (!trip) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const [ticket] = await ctx.db
+        .insert(supportTickets)
+        .values({
+          userId: ctx.session.user.id,
+          tripId: trip.id,
+          topic: input.topic,
+          message: input.message,
+        })
+        .returning();
+      if (!ticket) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      return ticket;
+    }),
+
+  tickets: protectedProcedure
+    .input(z.object({ tripId: z.string().min(1).max(255) }))
+    .query(async ({ ctx, input }) => {
+      const trip = await ctx.db.query.trips.findFirst({
+        where: and(
+          eq(trips.id, input.tripId),
+          eq(trips.userId, ctx.session.user.id),
+        ),
+        columns: { id: true },
+      });
+      if (!trip) throw new TRPCError({ code: "NOT_FOUND" });
+
+      return ctx.db.query.supportTickets.findMany({
+        where: and(
+          eq(supportTickets.tripId, trip.id),
+          eq(supportTickets.userId, ctx.session.user.id),
+        ),
+        orderBy: [desc(supportTickets.createdAt)],
+      });
     }),
 });

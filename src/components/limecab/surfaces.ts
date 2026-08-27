@@ -210,7 +210,7 @@ export const LIMECAB_SCENE_SURFACES: Record<
   },
   service_select: {
     map: { emphasis: "background", presentation: "route" },
-    primary: { emphasis: "primary", presentation: "sheet" },
+    primary: { emphasis: "primary", presentation: "expanded" },
     search: { emphasis: "hidden" },
   },
   // LimeCab has nothing to configure between tier and quote; the scene is
@@ -231,11 +231,11 @@ export const LIMECAB_SCENE_SURFACES: Record<
   },
   assigned: {
     map: { emphasis: "background", presentation: "tracking" },
-    primary: { emphasis: "primary", presentation: "sheet" },
+    primary: { emphasis: "primary", presentation: "expanded" },
   },
   provider_en_route: {
     map: { emphasis: "background", presentation: "tracking" },
-    primary: { emphasis: "primary", presentation: "sheet" },
+    primary: { emphasis: "primary", presentation: "expanded" },
   },
   active: {
     map: { emphasis: "background", presentation: "trip" },

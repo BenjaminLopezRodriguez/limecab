@@ -1,6 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
 
 import {
   useOptionalAdaptiveSurface,
@@ -12,6 +22,10 @@ import {
   DrawerDescription,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import {
+  onOverlayChange,
+  publishMapOverlay,
+} from "@/components/service-app/map-overlay";
 import { useServiceAppMobile } from "@/hooks/use-service-app-mobile";
 import { cn } from "@/lib/utils";
 
@@ -26,64 +40,80 @@ import { cn } from "@/lib/utils";
  *
  * Desktop: a floating card inside `AdaptiveSurface.Panel`, over the canvas.
  *
- * The presentation ladder maps to snap points, not to different components:
- *   peek       — the trigger and little else, draggable up
- *   sheet      — the default task height
- *   expanded   — opens tall for a long scene (comparison, a list)
- *   fullscreen — the surface is the whole task (prefer `TaskScene` instead)
+ * The ladder is fractions of the screen, never the scene's content height —
+ * measuring made comparison and status scenes swallow the map.
+ *   peek       — a status strip; canvas is the subject
+ *   sheet      — 40%
+ *   expanded   — 60%
+ * Anything taller is a window overlay (`TaskScene`), not another snap.
+ *
+ * Confirm, a payment ribbon, and similar thumb-zone controls belong in
+ * `SheetActions`. They are optional progressive disclosure: a scene may omit
+ * them until the rider has made the choice they confirm. When present they
+ * anchor to the visible bottom of the sheet, over the scrolling body, in a
+ * short constrained band.
  */
 type SheetPresentation = Exclude<SurfacePresentation, "compact-interrupt">;
 
-/**
- * One continuous set of snap points across every rung, so the ladder is a
- * single draggable object rather than four different drawers. The rung is a
- * *controlled* snap point: the state machine raises and lowers it, and a drag
- * reports back through `onSnapPointChange`. Swapping an uncontrolled
- * `defaultSnapPoint` per rung silently does nothing after first mount.
- */
-const PEEK = "12.5rem";
-/** Fallback for `sheet` until the scene has been measured. */
-const SHEET_FALLBACK = "20rem";
-const EXPANDED = 0.88;
+const PEEK = 0.22;
+const SHEET = 0.4;
+const EXPANDED = 0.6;
 
-const SNAP_FOR: Record<SheetPresentation, string | number> = {
+const SNAP_FOR: Record<SheetPresentation, number> = {
   peek: PEEK,
-  sheet: SHEET_FALLBACK,
+  sheet: SHEET,
   expanded: EXPANDED,
-  fullscreen: 1,
+  fullscreen: EXPANDED,
 };
 
+const SNAP_POINTS = [PEEK, SHEET, EXPANDED];
+
+const DESKTOP_MAX: Record<SheetPresentation, string> = {
+  peek: "md:max-h-[22dvh]",
+  sheet: "md:max-h-[40dvh]",
+  expanded: "md:max-h-[60dvh]",
+  fullscreen: "md:max-h-[60dvh]",
+};
+
+const SheetActionsAnchorContext = createContext<{
+  host: HTMLElement | null;
+  anchored: boolean;
+}>({ host: null, anchored: false });
+
 /**
- * `sheet` is the height of the scene it is showing.
- *
- * A fixed rung is wrong in both directions: a two-line status wastes half the
- * screen, and a scene with a primary action puts that action under the fold —
- * the surface looks complete while its only button is unreachable. Measuring
- * keeps the map as large as the task allows and the action always on screen.
+ * Constrained thumb-zone for a scene: one primary action, optionally a
+ * payment ribbon. Omit the component until there is something to confirm —
+ * it then anchors to the visible bottom of the sheet. Cap is a ribbon + a
+ * button, not a second sheet.
  */
-function useContentSnap(active: boolean): {
-  snapPoint: string | number;
-  measure: (node: HTMLElement | null) => void;
-} {
-  const [height, setHeight] = useState<number | null>(null);
-  const [node, setNode] = useState<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!node || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(([entry]) => {
-      const box = entry?.contentRect;
-      if (box) setHeight(box.height);
-    });
-    observer.observe(node);
-    setHeight(node.getBoundingClientRect().height);
-    return () => observer.disconnect();
-  }, [node]);
-
-  const measure = useCallback((next: HTMLElement | null) => setNode(next), []);
-
-  if (!active || height === null) return { snapPoint: SHEET_FALLBACK, measure };
-  // Drawer chrome: the swipe handle and the safe-area padding below the scene.
-  return { snapPoint: `${Math.round(height + 56)}px`, measure };
+export function SheetActions({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  const { host, anchored } = useContext(SheetActionsAnchorContext);
+  const body = (
+    <div
+      className={cn(
+        "flex flex-col gap-1",
+        "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-200",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+  if (anchored && !host) return null;
+  if (!host) {
+    return (
+      <div className="bg-card border-border sticky bottom-0 z-10 -mx-5 mt-3 border-t px-5 pt-2.5 pb-1 md:-mx-6 md:px-6">
+        {body}
+      </div>
+    );
+  }
+  return createPortal(body, host);
 }
 
 export function ServiceSheet({
@@ -105,33 +135,141 @@ export function ServiceSheet({
   const interrupted = surface?.interrupted ?? false;
   const sheetOpen = surface?.progress.sheetOpen ?? true;
   const busy = surface?.progress.locked ? true : undefined;
-  const { snapPoint: contentSnap, measure } = useContentSnap(
-    presentation === "sheet",
-  );
-  const rung = presentation === "sheet" ? contentSnap : SNAP_FOR[presentation];
+  const rung = SNAP_FOR[presentation];
   const [snap, setSnap] = useState<string | number | null>(rung);
-  // A measured rung must stay reachable: the ladder is peek → this → tall.
-  const snapPoints = useMemo<(string | number)[]>(
-    () => [PEEK, rung, EXPANDED, 1].filter((v, i, all) => all.indexOf(v) === i),
-    [rung],
-  );
+  const [actionsHost, setActionsHost] = useState<HTMLElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const overlayNode = useRef<HTMLElement | null>(null);
+  const overlayRef = useCallback((node: HTMLElement | null) => {
+    overlayNode.current = node;
+  }, []);
 
-  // The rung follows the scene; a drag then moves it from wherever it is.
   useEffect(() => {
     setSnap(rung);
   }, [rung]);
 
+  useEffect(() => {
+    if (!sheetOpen) return;
+    let stop: (() => void) | undefined;
+    const frame = window.requestAnimationFrame(() => {
+      const node = isMobile
+        ? document.querySelector<HTMLElement>("[data-map-overlay='primary']")
+        : overlayNode.current;
+      stop = publishMapOverlay(node);
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      stop?.();
+    };
+  }, [isMobile, sheetOpen, snap, rung]);
+
+  // Snap drawers are taller than the visible slice. Size the frame to what
+  // actually intersects the viewport so the action band can pin to it.
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    if (!frame || !isMobile || !sheetOpen) return;
+
+    const apply = () => {
+      const popup = document.querySelector<HTMLElement>(
+        "[data-map-overlay='primary']",
+      );
+      if (!popup) return;
+      const box = popup.getBoundingClientRect();
+      const handle = popup.querySelector<HTMLElement>(
+        "[data-slot='drawer-swipe-handle']",
+      );
+      const handleH = handle?.getBoundingClientRect().height ?? 0;
+      const visible = Math.max(
+        0,
+        Math.min(box.bottom, window.innerHeight) - Math.max(box.top, 0) - handleH,
+      );
+      frame.style.height = `${Math.round(visible)}px`;
+    };
+
+    apply();
+    const popup = document.querySelector("[data-map-overlay='primary']");
+    const observer = popup ? new ResizeObserver(apply) : null;
+    if (popup) observer?.observe(popup);
+    const stop = onOverlayChange(apply);
+    window.addEventListener("resize", apply);
+    return () => {
+      observer?.disconnect();
+      stop();
+      window.removeEventListener("resize", apply);
+      frame.style.height = "";
+    };
+  }, [isMobile, sheetOpen, snap, rung]);
+
+  useLayoutEffect(() => {
+    const host = actionsHost;
+    const scroll = frameRef.current?.querySelector<HTMLElement>(
+      "[data-sheet-scroll]",
+    );
+    if (!host || !scroll) return;
+    const apply = () => {
+      scroll.style.paddingBottom = host.offsetHeight
+        ? `${host.offsetHeight}px`
+        : "";
+    };
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(host);
+    return () => {
+      observer.disconnect();
+      scroll.style.paddingBottom = "";
+    };
+  }, [actionsHost]);
+
+  const body = (
+    <SheetActionsAnchorContext.Provider
+      value={{ host: actionsHost, anchored: true }}
+    >
+      <div
+        ref={frameRef}
+        className={cn(
+          "relative flex min-h-0 flex-col overflow-hidden",
+          !isMobile && "min-h-0 flex-1",
+        )}
+      >
+        <div
+          ref={surface?.registerPanel}
+          data-sheet-scroll=""
+          className={cn(
+            "min-h-0 flex-1 overflow-y-auto",
+            isMobile ? "px-5 pt-1" : "px-6 pt-6",
+          )}
+          aria-busy={busy}
+        >
+          {children}
+        </div>
+        <div
+          ref={setActionsHost}
+          data-sheet-actions=""
+          className={cn(
+            "bg-card/95 absolute inset-x-0 bottom-0 z-10 overflow-y-auto border-t backdrop-blur-sm empty:hidden",
+            "border-border shadow-[0_-8px_24px_rgba(26,24,20,0.06)]",
+            // Ribbon + confirm. Not a third of the sheet.
+            "max-h-[9.5rem]",
+            isMobile
+              ? "px-5 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+              : "px-6 pt-3 pb-6",
+          )}
+        />
+      </div>
+    </SheetActionsAnchorContext.Provider>
+  );
+
   if (!isMobile) {
     return (
       <div
+        ref={overlayRef}
         className={cn(
-          "bg-card text-card-foreground border-border max-h-full min-h-0 overflow-y-auto rounded-3xl border shadow-lg",
+          "bg-card text-card-foreground border-border flex min-h-0 flex-col overflow-hidden rounded-3xl border shadow-lg",
+          DESKTOP_MAX[presentation],
           className,
         )}
       >
-        <div ref={surface?.registerPanel} className="p-6" aria-busy={busy}>
-          {children}
-        </div>
+        {body}
       </div>
     );
   }
@@ -144,32 +282,21 @@ export function ServiceSheet({
       disablePointerDismissal
       showSwipeHandle
       swipeDirection="down"
-      snapPoints={snapPoints}
+      snapPoints={SNAP_POINTS}
       snapPoint={snap}
       onSnapPointChange={setSnap}
     >
       <DrawerContent
         data-presentation={presentation}
+        data-map-overlay="primary"
         className={cn(
-          // An interruption recedes the parent instead of unmounting it, so
-          // the suspended scene stays visible behind the compact sheet.
           interrupted && "opacity-55 brightness-95",
           className,
         )}
       >
         <DrawerTitle className="sr-only">{label}</DrawerTitle>
         <DrawerDescription className="sr-only">{description}</DrawerDescription>
-        {/* Scroll container must be a flex item — `h-full` does not resolve
-            inside a content-sized drawer. */}
-        <div
-          ref={surface?.registerPanel}
-          className="min-h-0 flex-1 overflow-y-auto px-5 pt-1 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
-          aria-busy={busy}
-        >
-          {/* Measured here, not on the scroller: the scroller's height is set
-              by the rung, so measuring it feeds the rung back into itself. */}
-          <div ref={measure}>{children}</div>
-        </div>
+        {body}
       </DrawerContent>
     </Drawer>
   );

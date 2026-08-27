@@ -1,0 +1,31 @@
+---
+description: LimeCab task surfaces — map under sheet, constrained actions, live-ride minimize, payment overlay. Read the handoff before changing sheets or the map.
+globs: src/components/{service-app,limecab}/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# LimeCab task surfaces
+
+Before changing the sheet, map slot, SheetActions, trip pill, or payment UI, read `.ux-bugs/HANDOFF-surfaces.md`.
+
+## Layout (task, mobile)
+
+```
+[destination bar] overlay
+[map] full-bleed canvas UNDER the sheet
+[sheet [scrollable content] + [constrained action band]]
+```
+
+Pad the camera for the sheet. Do not shrink the map box with `--map-overlay-bottom`. Do not round the task map.
+
+## Actions
+
+Confirm / payment ribbon: progressive disclosure, ribbon + one primary, pinned to the **visible** sheet bottom. No portal into a JS-measured 100dvh drawer.
+
+## Live ride Back
+
+Not `go("back")` (that is a no-op on committed states). Named actions `minimizeRide` / `restoreRide`: Home + tab bar + `LimeCabTripPill`. Pill restores the sheet. Cancel stays a separate interrupt.
+
+## Payments
+
+Fullscreen overlay (TaskScene-class), not `compact-interrupt`. List methods; bottom action **Add payment method**. Return restores the ride sheet.

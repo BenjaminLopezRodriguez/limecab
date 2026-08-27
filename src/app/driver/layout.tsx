@@ -14,7 +14,7 @@ export default async function DriverLayout({
   children: ReactNode;
 }) {
   const session = await auth();
-  if (!session?.user) redirect("/api/auth/signin");
+  if (!session?.user) redirect("/signin");
 
   return (
     <div className="mx-auto max-w-md px-5 pb-10 text-[16px]">
@@ -24,6 +24,13 @@ export default async function DriverLayout({
           className="focus-visible:ring-ring rounded-lg text-[21px] font-semibold tracking-[-0.03em] focus-visible:ring-2 focus-visible:outline-none"
         >
           LimeCab <span className="text-lime">Driver</span>
+        </Link>
+        <Link
+          href="/driver/profile"
+          aria-label="Your profile"
+          className="bg-accent text-accent-foreground focus-visible:ring-ring flex size-10 items-center justify-center rounded-full text-sm font-semibold tracking-tight focus-visible:ring-2 focus-visible:outline-none"
+        >
+          {(session.user.name ?? "D").charAt(0).toUpperCase()}
         </Link>
       </header>
       {children}

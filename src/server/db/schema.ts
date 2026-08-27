@@ -33,25 +33,39 @@ export const posts = createTable(
   ],
 );
 
-export const users = createTable("user", (d) => ({
-  id: d
-    .varchar({ length: 255 })
-    .notNull()
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  name: d.varchar({ length: 255 }),
-  email: d.varchar({ length: 255 }).notNull(),
-  emailVerified: d
-    .timestamp({
-      mode: "date",
-      withTimezone: true,
-    })
-    .$defaultFn(() => /* @__PURE__ */ new Date()),
-  image: d.varchar({ length: 255 }),
-}));
+export const users = createTable(
+  "user",
+  (d) => ({
+    id: d
+      .varchar({ length: 255 })
+      .notNull()
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    name: d.varchar({ length: 255 }),
+    email: d.varchar({ length: 255 }).notNull(),
+    emailVerified: d
+      .timestamp({
+        mode: "date",
+        withTimezone: true,
+      })
+      .$defaultFn(() => /* @__PURE__ */ new Date()),
+    image: d.varchar({ length: 255 }),
+    phone: d.varchar({ length: 20 }),
+    phoneVerifiedAt: d.timestamp({ withTimezone: true }),
+    identityStatus: d
+      .varchar({ length: 16 })
+      .$type<"unverified" | "pending" | "verified">()
+      .default("unverified")
+      .notNull(),
+    identityLegalName: d.varchar({ length: 128 }),
+    identitySubmittedAt: d.timestamp({ withTimezone: true }),
+  }),
+  (t) => [unique("limecab_user_phone_unique").on(t.phone)],
+);
 
 export const usersRelations = relations(users, ({ many }) => ({
   accounts: many(accounts),
+  supportTickets: many(supportTickets),
 }));
 
 export const accounts = createTable(
@@ -208,6 +222,9 @@ export const drivers = createTable(
     vehicleColor: d.varchar({ length: 32 }).notNull(),
     vehiclePlate: d.varchar({ length: 16 }).notNull(),
     available: d.boolean().default(false).notNull(),
+    headingAddress: d.varchar({ length: 512 }),
+    headingLatitude: d.doublePrecision(),
+    headingLongitude: d.doublePrecision(),
     createdAt: d
       .timestamp({ withTimezone: true })
       .$defaultFn(() => /* @__PURE__ */ new Date())
@@ -219,7 +236,53 @@ export const drivers = createTable(
   ],
 );
 
-export const tripsRelations = relations(trips, ({ one }) => ({
+export const tripsRelations = relations(trips, ({ one, many }) => ({
   user: one(users, { fields: [trips.userId], references: [users.id] }),
   driver: one(drivers, { fields: [trips.driverId], references: [drivers.id] }),
+  supportTickets: many(supportTickets),
+}));
+
+export const supportTickets = createTable(
+  "support_ticket",
+  (d) => ({
+    id: d
+      .varchar({ length: 255 })
+      .notNull()
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: d
+      .varchar({ length: 255 })
+      .notNull()
+      .references(() => users.id),
+    tripId: d
+      .varchar({ length: 255 })
+      .notNull()
+      .references(() => trips.id),
+    topic: d.varchar({ length: 32 }).notNull(),
+    message: d.varchar({ length: 2000 }).notNull(),
+    status: d
+      .varchar({ length: 16 })
+      .$type<"open" | "closed">()
+      .default("open")
+      .notNull(),
+    createdAt: d
+      .timestamp({ withTimezone: true })
+      .$defaultFn(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  }),
+  (t) => [
+    index("limecab_support_user_id_idx").on(t.userId),
+    index("limecab_support_trip_id_idx").on(t.tripId),
+  ],
+);
+
+export const supportTicketsRelations = relations(supportTickets, ({ one }) => ({
+  user: one(users, {
+    fields: [supportTickets.userId],
+    references: [users.id],
+  }),
+  trip: one(trips, {
+    fields: [supportTickets.tripId],
+    references: [trips.id],
+  }),
 }));

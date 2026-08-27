@@ -15,6 +15,20 @@
       "when": 1787766941911,
       "tag": "0001_nifty_revanche",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787769000000,
+      "tag": "0002_support_verify",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787772000000,
+      "tag": "0003_phone_heading",
+      "breakpoints": true
     }
   ]
 }

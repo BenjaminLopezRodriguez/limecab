@@ -66,7 +66,8 @@ function capitalize(value: string) {
 
 /** A clock-style ETA. Used when the user is waiting on someone's arrival. */
 export function formatEta(seconds: number): string {
-  if (seconds <= 30) return "Any moment";
+  if (seconds <= 5) return "Any moment";
+  if (seconds < 60) return `${Math.round(seconds)} sec`;
   const minutes = Math.max(1, Math.round(seconds / 60));
   return `${minutes} min`;
 }
@@ -80,12 +81,14 @@ export function formatTypical(seconds: number): string {
 
 /** A remaining-work estimate. Used while work is visibly in progress. */
 export function formatRemaining(seconds: number): string {
-  if (seconds <= 45) return "Almost done";
+  if (seconds <= 8) return "Almost done";
+  if (seconds < 60) return `${Math.round(seconds)} sec remaining`;
   const minutes = Math.max(1, Math.round(seconds / 60));
   return `~${minutes} min remaining`;
 }
 
 function calloutMinutes(seconds: number) {
+  if (seconds < 60) return `${Math.max(1, Math.round(seconds))}s`;
   return `${Math.max(1, Math.ceil(seconds / 60))} MIN`;
 }
 

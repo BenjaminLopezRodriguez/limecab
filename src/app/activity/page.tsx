@@ -5,31 +5,11 @@ import { redirect } from "next/navigation";
 import { TabPage } from "@/components/limecab/limecab-shell";
 import { Icon } from "@/components/ui/icon";
 import { findBookableProduct, isCourierProduct } from "@/lib/limecab/courier";
+import { formatTripWhen, tripStatusLabel } from "@/lib/limecab/format";
 import { RIDE_PRODUCTS } from "@/lib/limecab/mock";
 import { formatMoney } from "@/lib/service-app/services";
 import { auth } from "@/server/auth";
 import { api } from "@/trpc/server";
-
-/** "Yesterday · 6:42 PM" — no date library, just the platform. */
-function when(date: Date): string {
-  const today = new Date();
-  const days = Math.round(
-    (new Date(today.toDateString()).getTime() -
-      new Date(date.toDateString()).getTime()) /
-      86_400_000,
-  );
-  const time = date.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  if (days === 0) return `Today · ${time}`;
-  if (days === 1) return `Yesterday · ${time}`;
-  const day =
-    days < 7
-      ? date.toLocaleDateString("en-US", { weekday: "short" })
-      : date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  return `${day} · ${time}`;
-}
 
 function productName(id: string): string {
   return findBookableProduct(id, RIDE_PRODUCTS)?.name ?? "Lime";
@@ -37,7 +17,7 @@ function productName(id: string): string {
 
 export default async function ActivityPage() {
   const session = await auth();
-  if (!session?.user) redirect("/api/auth/signin");
+  if (!session?.user) redirect("/signin?callbackUrl=/activity");
 
   const trips = await api.trip.list();
 
@@ -78,46 +58,46 @@ export default async function ActivityPage() {
               return (
               <li
                 key={trip.id}
-                className="bg-card ring-border flex items-center gap-3 rounded-2xl p-3 ring-1"
+                className="bg-card ring-border flex items-center gap-3 rounded-2xl ring-1"
               >
-                <span
-                  aria-hidden="true"
-                  className="bg-muted relative flex size-16 shrink-0 items-center justify-center rounded-xl"
+                <Link
+                  href={`/activity/${trip.id}`}
+                  className="focus-visible:ring-ring active:bg-accent flex min-w-0 flex-1 items-center gap-3 rounded-2xl p-3 focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
                 >
-                  <Icon
-                    icon={courier ? Package01Icon : Car01Icon}
-                    size={28}
-                    className="text-muted-foreground"
-                  />
-                  <Icon
-                    icon={Location01Icon}
-                    size={14}
-                    className="text-foreground absolute right-1.5 bottom-1.5"
-                  />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[15px] font-medium tracking-tight">
-                    {courier && trip.recipientName
-                      ? trip.recipientName
-                      : trip.destinationAddress}
-                  </p>
-                  <p className="text-muted-foreground truncate text-sm tabular-nums">
-                    {when(trip.requestedAt)} · {productName(trip.productId)}
-                    {trip.status === "cancelled" ? " · Cancelled" : null}
-                    {trip.status === "complete" && courier
-                      ? " · Delivered"
-                      : null}
-                    {trip.status !== "cancelled" && trip.status !== "complete"
-                      ? " · In progress"
-                      : null}
-                  </p>
-                  <p className="text-muted-foreground text-sm tabular-nums">
-                    {formatMoney(trip.totalCents)}
-                  </p>
-                </div>
+                  <span
+                    aria-hidden="true"
+                    className="bg-muted relative flex size-16 shrink-0 items-center justify-center rounded-xl"
+                  >
+                    <Icon
+                      icon={courier ? Package01Icon : Car01Icon}
+                      size={28}
+                      className="text-muted-foreground"
+                    />
+                    <Icon
+                      icon={Location01Icon}
+                      size={14}
+                      className="text-foreground absolute right-1.5 bottom-1.5"
+                    />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[15px] font-medium tracking-tight">
+                      {courier && trip.recipientName
+                        ? trip.recipientName
+                        : trip.destinationAddress}
+                    </p>
+                    <p className="text-muted-foreground truncate text-sm tabular-nums">
+                      {formatTripWhen(trip.requestedAt)} · {productName(trip.productId)}
+                      {" · "}
+                      {tripStatusLabel(trip.status, courier)}
+                    </p>
+                    <p className="text-muted-foreground text-sm tabular-nums">
+                      {formatMoney(trip.totalCents)}
+                    </p>
+                  </div>
+                </Link>
                 <Link
                   href={courier ? "/?service=courier" : "/"}
-                  className="ring-border focus-visible:ring-ring active:bg-accent flex min-h-11 shrink-0 items-center rounded-full px-4 text-sm font-medium tracking-tight ring-1 focus-visible:ring-2 focus-visible:outline-none"
+                  className="ring-border focus-visible:ring-ring active:bg-accent mr-3 flex min-h-11 shrink-0 items-center rounded-full px-4 text-sm font-medium tracking-tight ring-1 focus-visible:ring-2 focus-visible:outline-none"
                 >
                   Rebook
                 </Link>

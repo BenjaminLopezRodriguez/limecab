@@ -39,6 +39,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# local pnpm content-addressable store — never upload
+.pnpm-store/
+
 # typescript
 *.tsbuildinfo
 

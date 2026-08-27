@@ -17,6 +17,7 @@ import {
   fitMetersPerUnit,
   panCenter,
   projectPoint,
+  tracksProvider,
   zoomForMode,
   type MapAdapter,
   type MapMode,
@@ -262,25 +263,19 @@ function PlaceholderCanvas({
 
     const providerPoint = points.find((point) => point.kind === "provider");
     const originPoint = points.find((point) => point.kind === "origin");
-
-    // `provider_arrival` frames provider + origin together rather than
-    // centring blindly, so the user can see the gap that is closing.
     const destinationPoint = points.find(
       (point) => point.kind === "destination",
     );
+    const following = tracksProvider(mode) && providerPoint;
 
-    // The frame is chosen per question: while a provider approaches, the pair
-    // that matters is provider + pickup; while a route is previewed or driven,
-    // it is the two ends of the trip. Centring on one end alone pins the other
-    // to the edge and calls it a preview.
+    // Follow-cam keeps the vehicle on the same pixel; preview and receipt
+    // still fit both ends of the trip so the itinerary is readable.
     const frame =
       interactive && camera
         ? camera
-        : mode === "provider_arrival" && providerPoint && originPoint
-          ? midpoint(providerPoint, originPoint)
-          : (mode === "route_preview" ||
-                mode === "active_route" ||
-                mode === "results") &&
+        : following
+          ? providerPoint
+          : (mode === "route_preview" || mode === "results") &&
               originPoint &&
               destinationPoint
             ? midpoint(originPoint, destinationPoint)
@@ -289,8 +284,11 @@ function PlaceholderCanvas({
     // One scale for points and route, fitted to whatever is on screen — a
     // preview that crops the destination is not a preview. While the user is
     // placing a pin the scale is theirs to pinch, not fitted to other points.
+    // Follow-cam uses a street-level scale so the path can slide off-frame.
     const framed = frame
-      ? [...points, ...(treatment.route !== "none" ? route : [])]
+      ? following && providerPoint
+        ? [providerPoint]
+        : [...points, ...(treatment.route !== "none" ? route : [])]
       : [];
     const metersPerUnit = interactive
       ? liveMeters
@@ -301,12 +299,14 @@ function PlaceholderCanvas({
     const projected = frame
       ? points.map((point) => ({
           point,
-          at: projectPoint(frame, point, metersPerUnit),
+          at: projectPoint(frame, point, metersPerUnit, !following),
         }))
       : [];
     const path =
       frame && treatment.route !== "none"
-        ? route.map((point) => projectPoint(frame, point, metersPerUnit))
+        ? route.map((point) =>
+            projectPoint(frame, point, metersPerUnit, !following),
+          )
         : [];
 
     const providerAt = projected.find(
@@ -441,32 +441,60 @@ function PlaceholderCanvas({
             const style = POINT_STYLE[kind] ?? POINT_STYLE.marker;
             const emphasised = treatment.emphasis.includes(kind);
             const dimmed = treatment.dimOthers && !emphasised;
+            const car = kind === "provider" || kind === "marker";
+            const heading = point.heading ?? 0;
+            const carW = kind === "provider" ? 7 : 5;
+            const carH = kind === "provider" ? 12 : 8;
             return (
               <g
                 key={`${point.latitude},${point.longitude},${index}`}
                 opacity={dimmed ? 0.45 : 1}
               >
-                {style.halo && !dimmed ? (
-                  <circle
-                    cx={at.x}
-                    cy={at.y}
-                    r={emphasised ? 14 : 11}
-                    fill={style.fill}
-                    fillOpacity={emphasised ? 0.16 : 0.12}
-                  />
-                ) : null}
-                <circle
-                  cx={at.x}
-                  cy={at.y}
-                  r={emphasised ? 6.4 : dimmed ? 3.8 : 5}
-                  fill={style.fill}
-                />
-                <circle
-                  cx={at.x}
-                  cy={at.y}
-                  r={emphasised ? 2.4 : 1.9}
-                  className="fill-background"
-                />
+                {car ? (
+                  <g transform={`rotate(${heading} ${at.x} ${at.y})`}>
+                    <rect
+                      x={at.x - carW / 2}
+                      y={at.y - carH / 2}
+                      width={carW}
+                      height={carH}
+                      rx={carW / 2.4}
+                      fill={style.fill}
+                    />
+                    <rect
+                      x={at.x - carW / 3.2}
+                      y={at.y - carH / 3.4}
+                      width={carW / 1.6}
+                      height={carH / 3.4}
+                      rx={1}
+                      className="fill-background"
+                      fillOpacity="0.45"
+                    />
+                  </g>
+                ) : (
+                  <>
+                    {style.halo && !dimmed ? (
+                      <circle
+                        cx={at.x}
+                        cy={at.y}
+                        r={emphasised ? 14 : 11}
+                        fill={style.fill}
+                        fillOpacity={emphasised ? 0.16 : 0.12}
+                      />
+                    ) : null}
+                    <circle
+                      cx={at.x}
+                      cy={at.y}
+                      r={emphasised ? 6.4 : dimmed ? 3.8 : 5}
+                      fill={style.fill}
+                    />
+                    <circle
+                      cx={at.x}
+                      cy={at.y}
+                      r={emphasised ? 2.4 : 1.9}
+                      className="fill-background"
+                    />
+                  </>
+                )}
               </g>
             );
           })}

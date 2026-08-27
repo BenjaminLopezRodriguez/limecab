@@ -10,6 +10,7 @@ import {
 } from "@hugeicons/core-free-icons";
 
 import { PrimaryAction } from "@/components/service-app/task-scene";
+import { SheetActions } from "@/components/service-app/service-sheet";
 import { Icon } from "@/components/ui/icon";
 import {
   clockTime,
@@ -39,27 +40,21 @@ type PricedRide = {
 /** The comparison scene: every tier, priced against the same route. */
 export function LimeCabRideSelectScene({
   pickup,
-  pickupLine,
   destination,
-  destinationLine,
   estimate,
   product,
   payment,
   onSelect,
-  onEditPickup,
-  onEditDestination,
+  onConfirm,
   onOpenPayment,
 }: {
   pickup: Pickup;
-  pickupLine: string;
   destination: Location | null;
-  destinationLine: string;
   estimate: { miles: number; minutes: number } | null;
   product: RideProduct | null;
   payment: PaymentMethod;
   onSelect: (option: RideProduct) => void;
-  onEditPickup: () => void;
-  onEditDestination: () => void;
+  onConfirm: () => void;
   onOpenPayment: () => void;
 }) {
   const rides = useMemo<PricedRide[]>(() => {
@@ -92,25 +87,11 @@ export function LimeCabRideSelectScene({
 
   return (
     <>
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 className="font-heading text-[22px] font-semibold tracking-[-0.02em]">
-          Choose a ride
-        </h2>
-        {estimate ? (
-          <span className="text-muted-foreground shrink-0 text-sm tabular-nums">
-            {estimate.minutes} min · {estimate.miles.toFixed(1)} mi
-          </span>
-        ) : null}
-      </div>
-      <RouteLine
-        className="mt-1"
-        pickup={pickupLine}
-        destination={destinationLine}
-        onEditPickup={onEditPickup}
-        onEditDestination={onEditDestination}
-      />
+      <h2 className="font-heading text-[22px] font-semibold tracking-[-0.02em]">
+        Choose a ride
+      </h2>
 
-      <ul className="mt-4 flex flex-col gap-2">
+      <ul className="-mx-5 mt-4 flex flex-col md:-mx-6">
         {rides.map((row) => (
           <li key={row.product.id}>
             <RideRow
@@ -123,40 +104,35 @@ export function LimeCabRideSelectScene({
         ))}
       </ul>
 
-      {/* The thumb zone: how it is paid for, and the one button that moves on. */}
-      <div className="bg-card border-border sticky bottom-0 -mx-5 mt-4 border-t px-5 pt-3 pb-1 md:-mx-6 md:px-6">
-        <button
-          type="button"
-          onClick={onOpenPayment}
-          aria-label={`Payment: ${payment.detail}. Change`}
-          className="focus-visible:ring-ring flex min-h-11 w-full items-center gap-3 rounded-xl text-left focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
-        >
-          <Icon
-            icon={CreditCardIcon}
-            size={16}
-            className="text-muted-foreground shrink-0"
-            aria-hidden="true"
-          />
-          <span className="min-w-0 flex-1 truncate text-sm">
-            {payment.detail}
-          </span>
-          <Icon
-            icon={ArrowRight01Icon}
-            size={16}
-            className="text-muted-foreground shrink-0"
-            aria-hidden="true"
-          />
-        </button>
-        <PrimaryAction
-          className="mt-1"
-          disabled={!ready}
-          onClick={() => selected && onSelect(selected.product)}
-        >
-          {ready && selected
-            ? `Confirm ${selected.product.name} · ${formatMoney(selected.totalCents)}`
-            : "Select a ride"}
-        </PrimaryAction>
-      </div>
+      {ready && selected ? (
+        <SheetActions>
+          <button
+            type="button"
+            onClick={onOpenPayment}
+            aria-label={`Payment: ${payment.detail}. Change`}
+            className="focus-visible:ring-ring flex min-h-11 w-full items-center gap-3 rounded-xl text-left focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
+          >
+            <Icon
+              icon={CreditCardIcon}
+              size={16}
+              className="text-muted-foreground shrink-0"
+              aria-hidden="true"
+            />
+            <span className="min-w-0 flex-1 truncate text-sm">
+              {payment.detail}
+            </span>
+            <Icon
+              icon={ArrowRight01Icon}
+              size={16}
+              className="text-muted-foreground shrink-0"
+              aria-hidden="true"
+            />
+          </button>
+          <PrimaryAction onClick={onConfirm}>
+            {`Confirm ${selected.product.name} · ${formatMoney(selected.totalCents)}`}
+          </PrimaryAction>
+        </SheetActions>
+      ) : null}
     </>
   );
 }
@@ -191,12 +167,12 @@ function RideRow({
           : `${product.name}. ${UNAVAILABLE}.`
       }
       className={cn(
-        "flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left ring-1",
-        "focus-visible:ring-ring focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none",
+        "relative flex w-full items-center gap-3 overflow-hidden px-5 py-3 text-left md:px-6",
+        "focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset",
         selected
-          ? "ring-foreground bg-accent ring-2"
-          : "ring-border hover:ring-foreground/20 active:bg-accent",
-        !available && "ring-border/60 opacity-60",
+          ? "bg-accent before:bg-foreground before:absolute before:inset-y-0 before:left-0 before:w-1 before:content-['']"
+          : "hover:bg-accent/60 active:bg-accent",
+        !available && "opacity-60",
       )}
     >
       <span
@@ -240,51 +216,6 @@ function RideRow({
         </span>
       ) : null}
     </button>
-  );
-}
-
-/**
- * The one-line route. Ride selection is a comparison scene: the itinerary is
- * context the rider has already decided, so it gets a line, not a card.
- */
-function RouteLine({
-  pickup,
-  destination,
-  onEditPickup,
-  onEditDestination,
-  className,
-}: {
-  pickup: string;
-  destination: string;
-  onEditPickup: () => void;
-  onEditDestination: () => void;
-  className?: string;
-}) {
-  return (
-    <p
-      className={cn(
-        "text-muted-foreground flex items-center gap-1.5 text-sm",
-        className,
-      )}
-    >
-      <button
-        type="button"
-        onClick={onEditPickup}
-        aria-label={`Pickup: ${pickup}. Change`}
-        className="focus-visible:ring-ring min-w-0 truncate rounded hover:underline focus-visible:ring-2 focus-visible:outline-none"
-      >
-        {pickup}
-      </button>
-      <span aria-hidden="true">→</span>
-      <button
-        type="button"
-        onClick={onEditDestination}
-        aria-label={`Destination: ${destination}. Change`}
-        className="text-foreground focus-visible:ring-ring min-w-0 truncate rounded font-medium hover:underline focus-visible:ring-2 focus-visible:outline-none"
-      >
-        {destination}
-      </button>
-    </p>
   );
 }
 

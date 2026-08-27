@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { mapboxToken } from "@/server/limecab/mapbox";
+import { mapboxFetch, mapboxToken } from "@/server/limecab/mapbox";
 
 /**
  * Reverse geocode for a dropped pin.
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
   endpoint.searchParams.set("limit", "5");
   endpoint.searchParams.set("access_token", token);
 
-  const res = await fetch(endpoint, { cache: "no-store" });
+  const res = await mapboxFetch(endpoint, request);
   if (!res.ok) {
     const status = res.status === 403 ? 403 : 502;
     const message =

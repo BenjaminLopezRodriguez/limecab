@@ -12,8 +12,8 @@ import { cn } from "@/lib/utils";
  * ServiceAppShell — the canvas + surface frame.
  *
  * On a phone, `layout="home"` is a column: a rounded map card above, then the
- * launcher (Where to?, places). The map is a sibling, not a full-bleed canvas
- * clipped by an overlay sheet — so the rounded region is actually visible.
+ * launcher (Where to?, places) on the same paper. No fake sheet chrome — the
+ * map is a sibling, not a canvas clipped by an overlay.
  *
  * `layout="task"` keeps the map as the full canvas with the sheet floating
  * over it from the thumb zone.
@@ -80,14 +80,16 @@ function ShellBody({
 
   return (
     <div
+      data-service-app-shell=""
       className={cn(
-        "relative flex flex-col overflow-hidden",
+        "relative flex flex-col",
         SHELL_H,
+        !home && "overflow-hidden",
         // Desktop home: controls left, larger map right. Same state,
         // different composition — no second state machine.
         home &&
           cn(
-            "md:grid md:min-h-0 md:grid-cols-[minmax(22rem,28rem)_minmax(0,1fr)] md:overflow-visible",
+            "overflow-y-auto md:grid md:min-h-0 md:grid-cols-[minmax(22rem,28rem)_minmax(0,1fr)] md:overflow-hidden",
             SHELL_H_MD,
           ),
         className,
@@ -100,15 +102,12 @@ function ShellBody({
         className={cn(
           home
             ? cn(
-                // Home launcher sits below the map card on mobile — a sibling,
-                // not an overlay that clips the rounded map.
-                "bg-card border-border relative z-10 shrink-0",
-                "overflow-y-auto rounded-t-3xl border-t px-5 pt-4",
-                "pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-lg",
-                "md:col-start-1 md:row-start-1 md:mt-0 md:max-h-none md:flex md:flex-1",
-                "md:flex-col md:rounded-none md:border-0 md:px-6 md:py-6 md:shadow-none",
-                // Cap height so a long recent list does not eat the map card.
-                "max-h-[min(52%,28rem)] md:max-h-none",
+                // Same paper as the map card — not a raised sheet overlay.
+                "relative z-10 shrink-0",
+                "px-5 pt-3",
+                "pb-[var(--nav-pill-clear,8rem)]",
+                "md:col-start-1 md:row-start-1 md:mt-0 md:flex md:h-full md:min-h-0 md:flex-1",
+                "md:flex-col md:overflow-y-auto md:px-6 md:pt-6 md:pb-[var(--nav-pill-clear,8rem)]",
               )
             : "relative z-10 mt-auto md:pointer-events-none md:absolute md:inset-0 md:mt-0 md:flex md:justify-end md:p-6",
           !home && !sheetOpen && "md:hidden",
@@ -148,9 +147,10 @@ function MapSlot({
     <div
       className={cn(
         home
-          ? // Home: flex sibling with padding so the rounded card is visible.
-            "relative min-h-[12rem] flex-1 p-4 pb-2 md:col-start-2 md:row-start-1 md:h-full md:min-h-0 md:p-6 md:pl-0"
-          : "absolute inset-0 md:inset-6",
+          ? // Home: a map region on the same paper, not a leftover behind a sheet.
+            "relative h-[min(34dvh,20rem)] shrink-0 p-4 pb-2 md:col-start-2 md:row-start-1 md:h-full md:min-h-0 md:flex-1 md:p-6 md:pl-0"
+          : // Task: the map lives in the remaining frame above/beside the sheet.
+            "absolute top-0 right-0 left-0 bottom-[var(--map-overlay-bottom,0px)] transition-[bottom,right] duration-450 ease-[cubic-bezier(0.22,1,0.36,1)] md:top-6 md:left-6 md:bottom-6 md:right-[max(1.5rem,calc(var(--map-overlay-end,0px)+1.5rem))]",
       )}
     >
       <div
@@ -161,11 +161,11 @@ function MapSlot({
         aria-label={onPress ? "Adjust pickup on map" : undefined}
         className={cn(
           "size-full overflow-hidden",
-          // Rounded map card on home at every width; task canvas stays square
-          // on mobile and rounds only in the desktop inset.
+          // Home: a rounded map card on the same paper. Task: a square canvas
+          // — do not round the map to match the sheet.
           home
             ? "ring-border rounded-3xl ring-1 md:min-h-[22rem]"
-            : "ring-border md:rounded-3xl md:ring-1",
+            : "md:ring-border md:ring-1",
           onPress &&
             "focus-visible:ring-ring cursor-pointer touch-manipulation focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none",
         )}

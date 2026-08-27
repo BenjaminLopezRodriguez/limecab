@@ -1,0 +1,7 @@
+.pnpm-store
+.playwright-mcp
+.ux-bugs
+.claude
+.env
+.env.*
+!.env.example

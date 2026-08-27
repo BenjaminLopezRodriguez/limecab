@@ -4,15 +4,20 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight01Icon,
+  Call02Icon,
+  Location01Icon,
   Moon02Icon,
   Navigation03Icon,
   PowerIcon,
+  Shield01Icon,
 } from "@hugeicons/core-free-icons";
 
+import { DriverOfferCard } from "@/components/limecab/driver-offer-card";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { isCourierProduct } from "@/lib/limecab/courier";
+import { SAVED_PLACES } from "@/lib/limecab/mock";
 import { formatMoney } from "@/lib/service-app/services";
 import { api } from "@/trpc/react";
 
@@ -36,6 +41,7 @@ export default function DriverInboxPage() {
   const setAvailable = api.driver.setAvailable.useMutation({
     onSuccess: () => void inbox.refetch(),
   });
+  const [declined, setDeclined] = useState<string[]>([]);
 
   if (inbox.error) {
     return (
@@ -60,7 +66,8 @@ export default function DriverInboxPage() {
   }
 
   const available = inbox.data.driver.available;
-  const { open, active } = inbox.data;
+  const { open, active, todayCents } = inbox.data;
+  const visible = open.filter((trip) => !declined.includes(trip.id));
 
   return (
     <>
@@ -100,6 +107,12 @@ export default function DriverInboxPage() {
             ? "Requests arrive here on their own. Keep the app open."
             : "Nothing is offered to you until you go online."}
         </p>
+        <p className="mt-4 text-3xl font-semibold tracking-[-0.03em] tabular-nums">
+          {formatMoney(todayCents)}{" "}
+          <span className="text-[15px] font-medium tracking-normal opacity-70">
+            today
+          </span>
+        </p>
         <Button
           size="lg"
           variant={available ? "outline" : "default"}
@@ -118,8 +131,30 @@ export default function DriverInboxPage() {
         </p>
       ) : null}
 
+      <HeadingFilter
+        address={inbox.data.driver.headingAddress}
+        onChanged={() => void inbox.refetch()}
+      />
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <a
+          href="tel:911"
+          className="ring-border focus-visible:ring-ring flex min-h-12 items-center justify-center gap-2 rounded-full text-[15px] font-semibold tracking-tight ring-1 focus-visible:ring-2 focus-visible:outline-none"
+        >
+          <Icon icon={Call02Icon} size={18} aria-hidden="true" />
+          Call 911
+        </a>
+        <Link
+          href="/driver/profile/safety"
+          className="ring-border focus-visible:ring-ring flex min-h-12 items-center justify-center gap-2 rounded-full text-[15px] font-semibold tracking-tight ring-1 focus-visible:ring-2 focus-visible:outline-none"
+        >
+          <Icon icon={Shield01Icon} size={18} aria-hidden="true" />
+          Safety toolkit
+        </Link>
+      </div>
+
       <Section title="New rides">
-        {open.length === 0 ? (
+        {visible.length === 0 ? (
           available ? (
             <Empty
               icon={<Icon icon={Navigation03Icon} size={24} aria-hidden="true" />}
@@ -137,50 +172,17 @@ export default function DriverInboxPage() {
           )
         ) : (
           <ul className="space-y-3">
-            {open.map((trip) => (
+            {visible.map((trip) => (
               <li key={trip.id}>
-                <Link
-                  href={`/driver/trips/${trip.id}`}
-                  className="ring-border hover:bg-muted/50 focus-visible:ring-ring block rounded-3xl px-5 py-5 ring-1 focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
-                >
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="text-4xl font-semibold tracking-[-0.03em] tabular-nums">
-                      {formatMoney(trip.totalCents)}
-                    </p>
-                    <p className="text-muted-foreground shrink-0 text-[15px] tabular-nums">
-                      {trip.distanceMiles.toFixed(1)} mi · {trip.tripMinutes}{" "}
-                      min
-                    </p>
-                  </div>
-                  <p className="mt-1 text-[15px] font-medium tabular-nums">
-                    {isCourierProduct(trip.productId) ? "Courier · " : null}
-                    {trip.arrivalMinutes
-                      ? `${trip.arrivalMinutes} min to pickup`
-                      : "Pickup nearby"}
-                  </p>
-
-                  <div className="mt-4 grid grid-cols-[auto_1fr] gap-x-3.5">
-                    <span
-                      className="border-foreground mt-1.5 size-3 rounded-full border-[3px]"
-                      aria-hidden="true"
-                    />
-                    <p className="text-[17px] leading-snug font-medium tracking-tight">
-                      {trip.pickupAddress}
-                    </p>
-                    <span
-                      className="bg-border mx-auto my-1 h-6 w-0.5 rounded-full"
-                      aria-hidden="true"
-                    />
-                    <span aria-hidden="true" />
-                    <span
-                      className="bg-foreground mt-1.5 size-3 rounded-[3px]"
-                      aria-hidden="true"
-                    />
-                    <p className="text-muted-foreground text-[17px] leading-snug tracking-tight">
-                      {trip.destinationAddress}
-                    </p>
-                  </div>
-                </Link>
+                <DriverOfferCard
+                  trip={trip}
+                  available={available}
+                  onGone={(id) =>
+                    setDeclined((prev) =>
+                      prev.includes(id) ? prev : [...prev, id],
+                    )
+                  }
+                />
               </li>
             ))}
           </ul>
@@ -268,6 +270,87 @@ function Empty({
         {children}
       </p>
     </div>
+  );
+}
+
+const HEADING_PRESETS = SAVED_PLACES.filter((place) =>
+  ["home", "work", "union"].includes(place.id),
+);
+
+function HeadingFilter({
+  address,
+  onChanged,
+}: {
+  address: string | null;
+  onChanged: () => void;
+}) {
+  const setHeading = api.driver.setHeading.useMutation({
+    onSuccess: onChanged,
+  });
+
+  return (
+    <section className="mt-4">
+      <div className="flex items-center gap-2">
+        <Icon
+          icon={Location01Icon}
+          size={18}
+          className="text-muted-foreground"
+          aria-hidden="true"
+        />
+        <p className="text-[15px] font-medium tracking-tight">
+          {address ? `Heading to ${address}` : "Heading anywhere"}
+        </p>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button
+          type="button"
+          className={
+            address
+              ? "ring-border hover:bg-muted min-h-10 rounded-full px-3 text-sm font-medium ring-1"
+              : "bg-accent text-accent-foreground min-h-10 rounded-full px-3 text-sm font-medium"
+          }
+          disabled={setHeading.isPending}
+          onClick={() =>
+            setHeading.mutate({
+              address: null,
+              latitude: null,
+              longitude: null,
+            })
+          }
+        >
+          Anywhere
+        </button>
+        {HEADING_PRESETS.map((place) => {
+          const active = address === place.address;
+          return (
+            <button
+              key={place.id}
+              type="button"
+              className={
+                active
+                  ? "bg-accent text-accent-foreground min-h-10 rounded-full px-3 text-sm font-medium"
+                  : "ring-border hover:bg-muted min-h-10 rounded-full px-3 text-sm font-medium ring-1"
+              }
+              disabled={setHeading.isPending}
+              onClick={() =>
+                setHeading.mutate({
+                  address: place.address,
+                  latitude: place.latitude ?? null,
+                  longitude: place.longitude ?? null,
+                })
+              }
+            >
+              {place.label}
+            </button>
+          );
+        })}
+      </div>
+      {setHeading.error ? (
+        <p role="alert" className="text-destructive mt-2 text-sm">
+          {setHeading.error.message}
+        </p>
+      ) : null}
+    </section>
   );
 }
 

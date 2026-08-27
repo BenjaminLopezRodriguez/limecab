@@ -9,6 +9,7 @@ import {
 
 import { PrimaryAction } from "@/components/service-app/task-scene";
 import { SurfaceSkeleton } from "@/components/service-app/surface-skeleton";
+import { SheetActions } from "@/components/service-app/service-sheet";
 import { DetailLines } from "@/components/limecab/limecab-parts";
 import { Icon } from "@/components/ui/icon";
 import type { DetailKind } from "@/components/limecab/limecab-interrupts";
@@ -130,7 +131,7 @@ export function LimeCabQuoteScene({
         </div>
       ) : null}
 
-      <div className="bg-card border-border sticky bottom-0 -mx-5 mt-4 border-t px-5 pt-3 pb-1 md:-mx-6 md:px-6">
+      <SheetActions>
         <PrimaryAction disabled={busy} onClick={onConfirm}>
           {error
             ? "Try again"
@@ -138,10 +139,10 @@ export function LimeCabQuoteScene({
               ? `Request ${product.name} · ${formatMoney(payableCents)}`
               : signInLabel}
         </PrimaryAction>
-        <p className="text-muted-foreground mt-2 text-center text-xs leading-relaxed">
+        <p className="text-muted-foreground text-center text-xs leading-relaxed">
           Fares are estimates. Nothing is charged in this demo.
         </p>
-      </div>
+      </SheetActions>
     </div>
   );
 }

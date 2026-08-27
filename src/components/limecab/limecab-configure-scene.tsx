@@ -1,6 +1,7 @@
 "use client";
 
 import { ConfigureScene } from "@/components/service-app/configure-scene";
+import { SheetActions } from "@/components/service-app/service-sheet";
 import { PrimaryAction } from "@/components/service-app/task-scene";
 import { COURIER_OPTIONS } from "@/lib/limecab/courier";
 import type {
@@ -34,16 +35,15 @@ export function LimeCabConfigureScene({
         values={values}
         onChange={onChange}
       />
-      <div className="bg-card border-border sticky bottom-0 -mx-5 mt-6 border-t px-5 pt-3 pb-1 md:-mx-6 md:px-6">
-        <PrimaryAction disabled={!ready} onClick={onContinue}>
-          See price
-        </PrimaryAction>
-        {ready ? null : (
-          <p className="text-muted-foreground mt-2 text-center text-xs leading-relaxed">
-            Add the recipient’s name and a phone number to continue.
-          </p>
-        )}
-      </div>
+      {ready ? (
+        <SheetActions>
+          <PrimaryAction onClick={onContinue}>See price</PrimaryAction>
+        </SheetActions>
+      ) : (
+        <p className="text-muted-foreground mt-5 text-sm leading-relaxed">
+          Add the recipient’s name and a phone number to continue.
+        </p>
+      )}
     </div>
   );
 }

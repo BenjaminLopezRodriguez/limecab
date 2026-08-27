@@ -55,6 +55,14 @@ export function LimeCabShell({
   // The driver app is its own product with its own chrome.
   if (pathname.startsWith("/driver")) return <>{children}</>;
 
+  if (pathname.startsWith("/signin")) {
+    return (
+      <main id="limecab-main" className="bg-background text-foreground min-h-dvh">
+        {children}
+      </main>
+    );
+  }
+
   const onHome = pathname === "/";
   const inTask = scene !== "home";
   const showChrome = !onHome || !inTask;
@@ -65,8 +73,9 @@ export function LimeCabShell({
       className="bg-background text-foreground"
       style={
         {
-          // The shell's own chrome, so the kit sizes the canvas correctly.
-          "--service-app-chrome": showChrome ? "8rem" : "0rem",
+          // Header only — the tab capsule floats and does not consume layout.
+          "--service-app-chrome": showChrome ? "3.75rem" : "0rem",
+          "--nav-pill-clear": "8rem",
         } as React.CSSProperties
       }
     >
@@ -75,23 +84,19 @@ export function LimeCabShell({
           <p className="font-heading text-[19px] font-semibold tracking-[-0.03em]">
             {signedIn ? (
               <>
-                Hello,{" "}
-                <span className="text-lime">{riderName ?? "there"}</span>
+                Hello, <span className="text-lime">{riderName ?? "there"}</span>
               </>
             ) : (
               "LimeCab"
             )}
           </p>
           {signedIn ? null : (
-            // NextAuth's sign-in is a route handler, not a page: a real
-            // navigation, not a client-side route change.
-            // eslint-disable-next-line @next/next/no-html-link-for-pages
-            <a
-              href="/api/auth/signin"
+            <Link
+              href="/signin"
               className="focus-visible:ring-ring rounded-full px-3 py-1.5 text-sm font-semibold focus-visible:ring-2 focus-visible:outline-none"
             >
               Sign in
-            </a>
+            </Link>
           )}
         </header>
       ) : null}
@@ -133,7 +138,10 @@ function TabBar({ pathname }: { pathname: string }) {
     >
       <ul className="bg-card/90 ring-border flex items-center gap-1 rounded-full p-1.5 shadow-[0_8px_28px_rgba(26,24,20,0.12)] ring-1 backdrop-blur-xl">
         {TABS.map(({ href, label, icon }) => {
-          const active = href === pathname;
+          const active =
+            href === "/"
+              ? pathname === "/"
+              : pathname === href || pathname.startsWith(`${href}/`);
           return (
             <li key={href}>
               <Link
@@ -170,6 +178,15 @@ function TabBar({ pathname }: { pathname: string }) {
 }
 
 /** Tabs other than Home are plain scrolling pages, not task surfaces. */
+export function TabPageFrame({ children }: { children: ReactNode }) {
+  return (
+    // pb clears the floating tab capsule, which no longer reserves layout space.
+    <div className="min-h-[calc(100dvh-3.75rem)] px-5 pb-[var(--nav-pill-clear,8rem)] md:mx-auto md:max-w-2xl md:px-6">
+      {children}
+    </div>
+  );
+}
+
 export function TabPage({
   title,
   children,
@@ -178,12 +195,11 @@ export function TabPage({
   children: ReactNode;
 }) {
   return (
-    // pb clears the floating tab capsule, which no longer reserves layout space.
-    <div className="min-h-[calc(100dvh-8rem)] px-5 pb-28 md:mx-auto md:max-w-2xl md:px-6">
+    <TabPageFrame>
       <h1 className="font-heading text-[34px] leading-none font-bold tracking-[-0.035em]">
         {title}
       </h1>
       <div className="mt-7">{children}</div>
-    </div>
+    </TabPageFrame>
   );
 }

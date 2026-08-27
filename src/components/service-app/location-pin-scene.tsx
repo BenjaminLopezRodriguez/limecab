@@ -1,6 +1,7 @@
 "use client";
 
 import { PrimaryAction } from "@/components/service-app/task-scene";
+import { SheetActions } from "@/components/service-app/service-sheet";
 
 /**
  * Confirm strip for "Where on the map?".
@@ -29,9 +30,11 @@ export function LocationPinScene({
       <p className="min-h-11 text-[15px] leading-snug font-medium tracking-tight">
         {locating ? "Finding address…" : (address ?? "Move the map to place the pin")}
       </p>
-      <PrimaryAction onClick={onConfirm} disabled={!address || locating}>
-        {confirmLabel}
-      </PrimaryAction>
+      <SheetActions>
+        <PrimaryAction onClick={onConfirm} disabled={!address || locating}>
+          {confirmLabel}
+        </PrimaryAction>
+      </SheetActions>
     </div>
   );
 }

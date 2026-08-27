@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, isNull, notInArray } from "drizzle-orm";
+import { and, count, desc, eq, isNull, notInArray } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -7,6 +7,8 @@ import {
   courierStartAllowed,
   isCourierProduct,
 } from "@/lib/limecab/courier";
+import { offerHeadsToward } from "@/lib/limecab/heading";
+import { civilDateInZone, mondayCivilDateInZone } from "@/lib/limecab/week";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { drivers, trips } from "@/server/db/schema";
 import {
@@ -35,12 +37,65 @@ const advanceInput = tripIdInput.extend({
   signatureCaptured: z.boolean().optional(),
 });
 
+function takeFromCompleted(
+  rows: { totalCents: number; completedAt: Date | null; requestedAt: Date }[],
+  now = new Date(),
+) {
+  const today = civilDateInZone(now);
+  const monday = mondayCivilDateInZone(now);
+  let todayCents = 0;
+  let weekCents = 0;
+  for (const row of rows) {
+    const key = civilDateInZone(row.completedAt ?? row.requestedAt);
+    if (key === today) todayCents += row.totalCents;
+    if (key >= monday && key <= today) weekCents += row.totalCents;
+  }
+  return { todayCents, weekCents };
+}
+
+type AppDb = typeof import("@/server/db").db;
+
+async function completedForDriver(database: AppDb, driverId: string) {
+  return database.query.trips.findMany({
+    where: and(eq(trips.driverId, driverId), eq(trips.status, "complete")),
+    columns: {
+      id: true,
+      productId: true,
+      destinationAddress: true,
+      totalCents: true,
+      baseCents: true,
+      distanceCents: true,
+      timeCents: true,
+      bookingCents: true,
+      completedAt: true,
+      requestedAt: true,
+    },
+    orderBy: [desc(trips.completedAt)],
+    limit: 100,
+  });
+}
+
 export const driverRouter = createTRPCRouter({
   me: protectedProcedure.query(async ({ ctx }) => {
     const driver = await ctx.db.query.drivers.findFirst({
       where: eq(drivers.userId, ctx.session.user.id),
     });
-    return { driver: driver ?? null };
+    if (!driver) return { driver: null, completedTrips: 0, todayCents: 0, weekCents: 0 };
+
+    const [row] = await ctx.db
+      .select({ n: count() })
+      .from(trips)
+      .where(and(eq(trips.driverId, driver.id), eq(trips.status, "complete")));
+
+    const completed = await completedForDriver(ctx.db, driver.id);
+    const take = takeFromCompleted(completed);
+
+    return {
+      driver,
+      completedTrips: Number(row?.n ?? 0),
+      todayCents: take.todayCents,
+      weekCents: take.weekCents,
+    };
   }),
 
   register: protectedProcedure
@@ -75,9 +130,25 @@ export const driverRouter = createTRPCRouter({
       where: eq(drivers.userId, ctx.session.user.id),
     });
     // Not a driver yet: the UI renders a registration form off this.
-    if (!driver) return { driver: null, open: [], active: [] };
+    if (!driver) {
+      return {
+        driver: null,
+        open: [],
+        active: [],
+        todayCents: 0,
+        weekCents: 0,
+      };
+    }
 
-    const [open, active] = await Promise.all([
+    const heading =
+      driver.headingLatitude != null && driver.headingLongitude != null
+        ? {
+            latitude: driver.headingLatitude,
+            longitude: driver.headingLongitude,
+          }
+        : null;
+
+    const [openAll, active, completed] = await Promise.all([
       ctx.db.query.trips.findMany({
         where: and(eq(trips.status, "requested"), isNull(trips.driverId)),
         orderBy: [desc(trips.requestedAt)],
@@ -89,9 +160,55 @@ export const driverRouter = createTRPCRouter({
         ),
         orderBy: [desc(trips.requestedAt)],
       }),
+      completedForDriver(ctx.db, driver.id),
     ]);
 
-    return { driver, open, active };
+    const open = openAll.filter((trip) => offerHeadsToward(trip, heading));
+    const take = takeFromCompleted(completed);
+
+    return {
+      driver,
+      open,
+      active,
+      todayCents: take.todayCents,
+      weekCents: take.weekCents,
+    };
+  }),
+
+  setHeading: protectedProcedure
+    .input(
+      z.object({
+        address: z.string().trim().max(512).nullable(),
+        latitude: z.number().nullable(),
+        longitude: z.number().nullable(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const clear = !input.address;
+      const [driver] = await ctx.db
+        .update(drivers)
+        .set({
+          headingAddress: clear ? null : input.address,
+          headingLatitude: clear ? null : input.latitude,
+          headingLongitude: clear ? null : input.longitude,
+        })
+        .where(eq(drivers.userId, ctx.session.user.id))
+        .returning();
+      if (!driver) throw new TRPCError({ code: "NOT_FOUND" });
+      return driver;
+    }),
+
+  earnings: protectedProcedure.query(async ({ ctx }) => {
+    const driver = await ctx.db.query.drivers.findFirst({
+      where: eq(drivers.userId, ctx.session.user.id),
+    });
+    if (!driver) throw new TRPCError({ code: "NOT_FOUND" });
+    const completed = await completedForDriver(ctx.db, driver.id);
+    const take = takeFromCompleted(completed);
+    return {
+      ...take,
+      trips: completed,
+    };
   }),
 
   get: protectedProcedure.input(tripIdInput).query(async ({ ctx, input }) => {
@@ -217,9 +334,7 @@ export const driverRouter = createTRPCRouter({
         .update(trips)
         .set({
           status: to,
-          ...(courier && to === "in_progress"
-            ? { pickupVerifiedAt: now }
-            : {}),
+          ...(courier && to === "in_progress" ? { pickupVerifiedAt: now } : {}),
           ...(to === "complete"
             ? {
                 completedAt: now,

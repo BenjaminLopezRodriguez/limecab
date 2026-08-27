@@ -183,10 +183,12 @@ export function LocationSearchScene({
             inputClassName={
               route
                 ? cn(
-                    "h-12 rounded-none pl-10",
+                    "h-12 rounded-none bg-transparent pl-10 shadow-none md:text-[15px]",
+                    "focus-visible:border-transparent focus-visible:ring-0",
                     canAddStop ? "pr-12" : "pr-4",
-                    route.active === "destination" &&
-                      "border-transparent focus-visible:border-b-transparent",
+                    route.active === "destination"
+                      ? "border-transparent"
+                      : "border-x-0 border-t-0 border-b-border",
                   )
                 : undefined
             }

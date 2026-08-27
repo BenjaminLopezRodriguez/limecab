@@ -35,7 +35,8 @@ export function LocationTrigger({
       type="button"
       onClick={onPress}
       className={cn(
-        "bg-muted flex w-full items-center gap-3 rounded-full text-left",
+        "bg-card border border-border flex w-full items-center gap-3 rounded-full text-left",
+        "shadow-[0_4px_16px_rgba(26,24,20,0.12)]",
         large
           ? "h-14 px-5 text-[17px] font-semibold tracking-tight"
           : "h-12 px-4 text-[15px]",
