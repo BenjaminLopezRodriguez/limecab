@@ -54,3 +54,6 @@ yarn-error.log*
 
 # orchestration bookkeeping, not product
 .claude/memory.md
+
+# leftover auth CLI dump — contains secrets, never commit
+/Untitled
