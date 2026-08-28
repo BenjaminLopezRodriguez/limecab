@@ -2,7 +2,7 @@
 
 import { useCallback, useState, type ReactNode, Suspense } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   Clock01Icon,
   DashboardSquare01Icon,
@@ -13,17 +13,19 @@ import {
 import { LimeCabApp } from "@/components/limecab/limecab-app";
 import { LimeCabTripPill } from "@/components/limecab/limecab-trip-pill";
 import { Icon } from "@/components/ui/icon";
+import { LIMECAB_SERVICES } from "@/lib/limecab/mock";
 import { cn } from "@/lib/utils";
 
 /**
- * The app frame: a greeting, the tab the rider is in, and the tab bar.
+ * The app frame: a greeting, a ribbon of services, the tab the rider is in,
+ * and the tab bar.
  *
- * Service switching lives on `/services` and in booking scenes, not a second
- * chrome layer on Home. Every tab but Home is a real route; this shell lives
- * in the root layout so the ride flow stays mounted across those navigations.
- * The tab bar hides itself once the rider is inside a ride task, because a
- * request in progress owns the screen; that is the only thing the ride flow
- * tells the shell.
+ * Every tab but Home is a real route; this shell lives in the root layout so
+ * the ride flow stays mounted across those navigations — leaving Activity and
+ * coming back must not reset a destination the rider already chose. The tab
+ * bar hides itself once the rider is inside a ride task, because a request in
+ * progress owns the screen; that is the only thing the ride flow tells the
+ * shell.
  */
 
 const TABS = [
@@ -74,29 +76,36 @@ export function LimeCabShell({
       id="limecab-main"
       className={cn(
         "bg-background text-foreground [--nav-pill-clear:8rem]",
+        // Mobile stacks the service ribbon under the greeting.
         showChrome
-          ? "[--service-app-chrome:3.75rem]"
+          ? "[--service-app-chrome:6.5rem] md:[--service-app-chrome:3.75rem]"
           : "[--service-app-chrome:0rem]",
       )}
     >
       {showChrome ? (
-        <header className="flex h-[3.75rem] items-center justify-between px-5 md:px-6">
-          <p className="font-heading text-[19px] font-semibold tracking-[-0.03em]">
-            {signedIn ? (
-              <>
-                Hello, <span className="text-lime">{riderName ?? "there"}</span>
-              </>
-            ) : (
-              "LimeCab"
+        <header className="grid h-[6.5rem] grid-cols-[1fr_auto] grid-rows-[3.75rem_2.75rem] items-center gap-x-3 px-5 md:h-[3.75rem] md:grid-cols-[1fr_auto_auto] md:grid-rows-1 md:px-6">
+          <div className="col-span-2 row-start-1 flex items-center justify-between gap-3 md:col-span-1 md:col-start-1">
+            <p className="font-heading text-[19px] font-semibold tracking-[-0.03em]">
+              {signedIn ? (
+                <>
+                  Hello,{" "}
+                  <span className="text-lime">{riderName ?? "there"}</span>
+                </>
+              ) : (
+                "LimeCab"
+              )}
+            </p>
+            {signedIn ? null : (
+              <SignInLink className="flex shrink-0 md:hidden" />
             )}
-          </p>
+          </div>
+          <div className="col-span-2 row-start-2 min-w-0 md:col-span-1 md:col-start-2 md:row-start-1">
+            <Suspense fallback={<ServiceRibbonList activeId={null} />}>
+              <ServiceRibbon />
+            </Suspense>
+          </div>
           {signedIn ? null : (
-            <Link
-              href="/signin"
-              className="focus-visible:ring-ring rounded-full px-3 py-1.5 text-sm font-semibold focus-visible:ring-2 focus-visible:outline-none"
-            >
-              Sign in
-            </Link>
+            <SignInLink className="hidden md:col-start-3 md:row-start-1 md:inline-flex" />
           )}
         </header>
       ) : null}
@@ -121,6 +130,103 @@ export function LimeCabShell({
 
       {showChrome ? <TabBar pathname={pathname} /> : null}
     </main>
+  );
+}
+
+function serviceHref(id: string) {
+  if (id === "courier") return "/?service=courier";
+  if (id === "reserve") return "/?service=reserve";
+  return "/";
+}
+
+function SignInLink({ className }: { className?: string }) {
+  return (
+    <Link
+      href="/signin"
+      className={cn(
+        "focus-visible:ring-ring rounded-full px-3 py-1.5 text-sm font-semibold focus-visible:ring-2 focus-visible:outline-none",
+        className,
+      )}
+    >
+      Sign in
+    </Link>
+  );
+}
+
+/** Compact launcher for what LimeCab offers — same capsule language as the tabs. */
+function ServiceRibbon() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const current = searchParams.get("service");
+  const activeId =
+    pathname !== "/"
+      ? null
+      : current === "courier" || current === "reserve"
+        ? current
+        : "ride";
+
+  return <ServiceRibbonList activeId={activeId} />;
+}
+
+function ServiceRibbonList({ activeId }: { activeId: string | null }) {
+  return (
+    <nav aria-label="Services" className="min-w-0 flex-1 md:flex-none">
+      <ul className="flex w-full items-stretch gap-5 md:w-auto md:gap-6">
+        {LIMECAB_SERVICES.map((service) => {
+          const available = service.status === "available";
+          const active = available && service.id === activeId;
+          // An underline, not a filled pill: the ribbon sits on the same
+          // paper as the greeting, so the indicator has to mark the tab
+          // without drawing a second container around the row.
+          const className = cn(
+            "flex min-h-11 min-w-0 items-center whitespace-nowrap",
+            "text-[13px] tracking-tight md:text-[14px]",
+            "focus-visible:ring-ring rounded-sm focus-visible:ring-2 focus-visible:outline-none",
+            active
+              ? "text-foreground font-semibold"
+              : available
+                ? "text-muted-foreground hover:text-foreground font-medium"
+                : "text-muted-foreground/50 font-medium",
+          );
+          // The rule hugs the label, not the tap target: the row keeps its
+          // 44px touch height, and the indicator still reads as an underline
+          // rather than a line floating below the word.
+          const body = (
+            <span
+              className={cn(
+                "truncate border-b-2 pb-1",
+                active ? "border-foreground" : "border-transparent",
+              )}
+            >
+              {service.title}
+            </span>
+          );
+
+          return (
+            <li key={service.id} className="min-w-0 md:flex-none">
+              {available ? (
+                <Link
+                  href={serviceHref(service.id)}
+                  aria-current={active ? "page" : undefined}
+                  className={className}
+                >
+                  {body}
+                </Link>
+              ) : (
+                <span
+                  className={className}
+                  aria-disabled="true"
+                  aria-label={`${service.title}. Not in your city yet`}
+                  title="Not in your city yet"
+                >
+                  {body}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
   );
 }
 
