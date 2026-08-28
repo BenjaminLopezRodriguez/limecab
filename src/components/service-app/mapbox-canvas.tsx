@@ -25,6 +25,18 @@ import { cn } from "@/lib/utils";
 
 const ROUTE_LIME = "#c8f031";
 
+/**
+ * One layer id, two paint states.
+ *
+ * These used to be two ids on a single `<Source>`; swapping between them made
+ * react-map-gl tear the layer down and rebuild it ("layer id changed"), which
+ * is a remount of the route line every time the map went muted — a driver
+ * sees it on every leg. Same id means the SDK diffs paint instead.
+ *
+ * Both states declare the *same* paint keys for that diff to be complete: a
+ * key present only on the muted state would survive the switch back.
+ * `[1, 0]` is dash-1/gap-0, i.e. solid.
+ */
 const routeLayer = {
   id: "limecab-route",
   type: "line" as const,
@@ -33,12 +45,12 @@ const routeLayer = {
     "line-color": ROUTE_LIME,
     "line-width": 5,
     "line-opacity": 0.9,
+    "line-dasharray": [1, 0],
   },
 };
 
 const mutedRouteLayer = {
   ...routeLayer,
-  id: "limecab-route-muted",
   paint: {
     "line-color": ROUTE_LIME,
     "line-width": 4,

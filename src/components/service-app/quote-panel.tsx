@@ -45,7 +45,7 @@ export function QuotePanel({
   const total = formatMoney(quote.totalCents, quote.currency);
 
   return (
-    <div>
+    <div className="flex min-h-full flex-col">
       <h2 className="text-[17px] font-medium tracking-tight">{title}</h2>
       {line ? <p className="mt-1 text-[15px] tracking-tight">{line}</p> : null}
       {locality ? (

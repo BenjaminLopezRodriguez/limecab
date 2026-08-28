@@ -23,7 +23,7 @@ export function LocationPinScene({
   onConfirm: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex min-h-full flex-col gap-3">
       <p className="text-muted-foreground text-[11px] font-medium tracking-[0.12em] uppercase">
         {title}
       </p>
