@@ -31,6 +31,7 @@ export function LimeCabQuoteScene({
   fareLines,
   pickupLine,
   destinationLine,
+  stopLines,
   pickupLabel = "Pickup",
   destinationLabel = "Destination",
   payment,
@@ -55,6 +56,8 @@ export function LimeCabQuoteScene({
   fareLines: { label: string; value: string }[];
   pickupLine: string;
   destinationLine: string;
+  /** Intermediate stops on the route rail, e.g. a For the Way cafe. */
+  stopLines?: string[];
   pickupLabel?: string;
   destinationLabel?: string;
   payment: PaymentMethod;
@@ -99,6 +102,7 @@ export function LimeCabQuoteScene({
         className="mt-4"
         pickup={pickupLine}
         destination={destinationLine}
+        stops={stopLines}
         pickupLabel={pickupLabel}
         destinationLabel={destinationLabel}
         onEditPickup={onEditPickup}
@@ -189,10 +193,11 @@ function SettingRow({
   );
 }
 
-/** Pickup → destination, on the same dot→line→square rail as the search. */
+/** Pickup → optional stops → destination, same rail language as search. */
 function Itinerary({
   pickup,
   destination,
+  stops = [],
   pickupLabel = "Pickup",
   destinationLabel = "Destination",
   onEditPickup,
@@ -201,6 +206,7 @@ function Itinerary({
 }: {
   pickup: string;
   destination: string;
+  stops?: string[];
   pickupLabel?: string;
   destinationLabel?: string;
   onEditPickup?: () => void;
@@ -215,6 +221,19 @@ function Itinerary({
         value={pickup}
         onPress={onEditPickup}
       />
+      {stops.map((stop, index) => (
+        <div key={`${stop}:${index}`}>
+          <div
+            aria-hidden="true"
+            className="border-border ml-[5px] h-4 border-l"
+          />
+          <ItineraryRow
+            kind="stop"
+            label={stops.length === 1 ? "Stop" : `Stop ${index + 1}`}
+            value={stop}
+          />
+        </div>
+      ))}
       <div aria-hidden="true" className="border-border ml-[5px] h-4 border-l" />
       <ItineraryRow
         kind="destination"
@@ -232,7 +251,7 @@ function ItineraryRow({
   value,
   onPress,
 }: {
-  kind: "pickup" | "destination";
+  kind: "pickup" | "stop" | "destination";
   label: string;
   value: string;
   onPress?: () => void;
@@ -245,7 +264,9 @@ function ItineraryRow({
           "size-2.5 shrink-0",
           kind === "pickup"
             ? "bg-lime rounded-full"
-            : "bg-foreground rounded-[3px]",
+            : kind === "stop"
+              ? "border-foreground rounded-full border"
+              : "bg-foreground rounded-[3px]",
         )}
       />
       <span className="min-w-0 flex-1 truncate text-sm">

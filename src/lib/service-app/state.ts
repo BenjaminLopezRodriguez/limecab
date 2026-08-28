@@ -62,8 +62,8 @@ export type ServiceAppContext = {
   needsConfigure?: boolean;
   /**
    * Whether choosing among services is its own scene. Apps that enter with a
-   * service already chosen skip `service_select`; back from configure returns
-   * home with the location intact.
+   * service already chosen skip `service_select`; back from configure revises
+   * to location with the destination intact — it does not clear to home.
    */
   needsServiceSelect?: boolean;
   /**
@@ -157,7 +157,9 @@ export function backServiceAppState(
     case "service_select":
       return "home";
     case "configure":
-      return ctx.needsServiceSelect === false ? "home" : "service_select";
+      return ctx.needsServiceSelect === false
+        ? "location_search"
+        : "service_select";
     case "quote":
       return ctx.needsConfigure ? "configure" : "service_select";
     default:

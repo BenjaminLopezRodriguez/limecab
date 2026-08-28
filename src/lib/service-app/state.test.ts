@@ -104,8 +104,8 @@ test("configure_done advances to quote", () => {
   );
 });
 
-test("back from configure without a service list returns home", () => {
-  assert.equal(backServiceAppState("configure", configured), "home");
+test("back from configure without a service list revises to location", () => {
+  assert.equal(backServiceAppState("configure", configured), "location_search");
 });
 
 test("back from configure still returns to services when that scene exists", () => {
