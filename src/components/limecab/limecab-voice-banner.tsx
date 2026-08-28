@@ -8,11 +8,13 @@ import { Icon } from "@/components/ui/icon";
 import { parseRideUtterance } from "@/lib/limecab/voice-booking";
 import { cn } from "@/lib/utils";
 
+type SpeechResult = ArrayLike<{ transcript: string }> & { isFinal?: boolean };
+
 type SpeechCtor = new () => {
   continuous: boolean;
   interimResults: boolean;
   lang: string;
-  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onresult: ((event: { results: ArrayLike<SpeechResult> }) => void) | null;
   onerror: ((event: { error: string }) => void) | null;
   onend: (() => void) | null;
   start: () => void;
@@ -161,12 +163,7 @@ export function useVoiceCapture(onHeard: (text: string) => void) {
       const last = event.results[event.results.length - 1];
       const transcript = last?.[0]?.transcript?.trim() ?? "";
       setCapture({ kind: "listening", transcript });
-      if (
-        transcript &&
-        (event.results as unknown as { [i: number]: { isFinal?: boolean } })[
-          event.results.length - 1
-        ]?.isFinal
-      ) {
+      if (transcript && last?.isFinal) {
         lock.current = false;
         rec.current = null;
         heard.current(transcript);

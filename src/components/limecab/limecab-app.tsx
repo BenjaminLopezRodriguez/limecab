@@ -81,9 +81,9 @@ import {
 } from "@/lib/limecab/mock";
 import {
   FOR_THE_WAY_CAFE,
-  FOR_THE_WAY_ITEMS,
   forTheWayEligible,
   forTheWayItem,
+  type FOR_THE_WAY_ITEMS,
 } from "@/lib/limecab/for-the-way";
 import { reservedLabel } from "@/lib/limecab/reserve";
 import type { SearchIntent } from "@/lib/limecab/search-intent";
