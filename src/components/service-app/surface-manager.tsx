@@ -134,6 +134,15 @@ export function useSurfaceManager<
   return ctx as unknown as ManagerValue<Id, ActionId>;
 }
 
+/** Layout only. Null outside a provider — presentation adapters may read it. */
+export function useOptionalSurfaceManager<
+  Id extends string = string,
+  ActionId extends string = string,
+>() {
+  const ctx = useContext(SurfaceManagerContext);
+  return ctx as unknown as ManagerValue<Id, ActionId> | null;
+}
+
 const FALLBACK: SurfaceState = {
   emphasis: "primary",
   presentation: null,

@@ -76,6 +76,8 @@ const coverageFillLayer = {
       "case",
       ["==", ["coalesce", ["get", "emphasis"], ""], "self"],
       0.18,
+      ["==", ["coalesce", ["get", "emphasis"], ""], "hot"],
+      0.14,
       [
         "+",
         0.06,
@@ -137,6 +139,7 @@ export function MapboxCanvas({
   interactive = false,
   recenterAt = 0,
   onCameraChange,
+  onSelectPoint,
   className,
 }: MapViewProps & { token: string }) {
   const mapRef = useRef<MapRef>(null);
@@ -345,7 +348,16 @@ export function MapboxCanvas({
             anchor="center"
             rotationAlignment="map"
           >
-            {point.kind === "provider" || point.kind === "marker" ? (
+            {point.kind === "poi" ? (
+              <button
+                type="button"
+                onClick={() => onSelectPoint?.(point)}
+                className="bg-card/95 ring-border flex max-w-[9.5rem] items-center gap-1 rounded-full px-2 py-1 text-left text-[11px] font-semibold tracking-tight shadow-[0_4px_16px_rgba(26,24,20,0.16)] ring-1"
+              >
+                <span className="bg-lime size-2 shrink-0 rounded-full" />
+                <span className="truncate">{point.label ?? "Stop"}</span>
+              </button>
+            ) : point.kind === "provider" || point.kind === "marker" ? (
               <CarMarker
                 heading={point.heading ?? 0}
                 size={point.kind === "provider" ? "md" : "sm"}

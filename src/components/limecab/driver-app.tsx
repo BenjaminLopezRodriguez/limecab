@@ -18,11 +18,14 @@ import {
   GpsSignal01Icon,
   Home01Icon,
   ArrowExpand01Icon,
+  Coffee01Icon,
   Shield01Icon,
 } from "@hugeicons/core-free-icons";
 
 import { useAdaptiveSurface } from "@/components/service-app/adaptive-surface";
 import { AdaptiveSurface } from "@/components/service-app/adaptive-surface";
+import { LocationPinScene } from "@/components/service-app/location-pin-scene";
+import { LocationSearchScene } from "@/components/service-app/location-search-scene";
 import { createMapboxAdapter } from "@/components/service-app/mapbox-adapter";
 import { ServiceAppShell } from "@/components/service-app/service-app-shell";
 import { ServiceMap } from "@/components/service-app/service-map";
@@ -74,9 +77,14 @@ import {
 } from "@/lib/limecab/driver-state";
 import { cellCenter, cellPolygon, toDriverCell } from "@/lib/limecab/h3";
 import { CURRENT_LOCATION } from "@/lib/limecab/mock";
-import { fetchDrivingRoute } from "@/lib/service-app/directions";
+import {
+  createPlacesAdapter,
+  fetchNearbyRestStops,
+  setSearchProximity,
+} from "@/lib/limecab/places";
+import { fetchDrivingRoute, fetchReverseGeocode } from "@/lib/service-app/directions";
 import type { MapPoint } from "@/lib/service-app/map-adapter";
-import { formatMoney, splitAddress, type Place } from "@/lib/service-app/services";
+import { formatMoney, splitAddress, type Location } from "@/lib/service-app/services";
 import { env } from "@/env";
 import { api, type RouterOutputs } from "@/trpc/react";
 
@@ -96,6 +104,12 @@ import { api, type RouterOutputs } from "@/trpc/react";
 
 type Inbox = RouterOutputs["driver"]["inbox"];
 type ActiveTrip = Inbox["active"][number];
+
+/** Questions *about* the duty session, not scenes. Pin is a phase of the
+ *  heading question, so it lives here rather than as an extra boolean. */
+type DriverAside = "heading" | "heading_pin" | "safety" | null;
+
+const placesAdapter = createPlacesAdapter();
 
 /** How long a driver gets to decide. The countdown *is* the decline. */
 const OFFER_SECONDS = 20;
@@ -164,7 +178,7 @@ function DriverFlow({
   const [finished, setFinished] = useState<JobTrip | null>(null);
   const [device, setDevice] = useState<MapPoint | null>(null);
   const [route, setRoute] = useState<MapPoint[] | null>(null);
-  const [aside, setAside] = useState<"heading" | "safety" | null>(null);
+  const [aside, setAside] = useState<DriverAside>(null);
   const asideRef = useRef(aside);
   asideRef.current = aside;
   /**
@@ -181,6 +195,14 @@ function DriverFlow({
   const [recenterAt, setRecenterAt] = useState(0);
   /** Where the camera is, rounded to its cell: panning is not a refetch. */
   const [camera, setCamera] = useState<MapPoint | null>(null);
+  /** The point under the heading pin. App data for the map, not a scene. */
+  const [pin, setPin] = useState<MapPoint | null>(null);
+  const [pinAddress, setPinAddress] = useState<string | null>(null);
+  const [pinLocating, setPinLocating] = useState(false);
+  /** Rest stops on the heading pin. `null` is hidden; an array is showing. */
+  const [restStops, setRestStops] = useState<Location[] | null>(null);
+  /** A rest-stop tap already named the point; skip reverse-geocode flash. */
+  const pinKnown = useRef(false);
   const dashcam = useDashcam();
 
   const hunting = scene === "online" && offeredId === null;
@@ -395,6 +417,7 @@ function DriverFlow({
     [driverPoint, target],
   );
 
+  const pinning = aside === "heading_pin";
   /**
    * The location lattice.
    *
@@ -404,41 +427,72 @@ function DriverFlow({
    * There is no scale here, no multiplier, and nothing to bid against.
    *
    * The camera is rounded to its own cell before it becomes a query key, so
-   * a car crossing a car park does not refetch the grid.
+   * a car crossing a car park does not refetch the grid. The heading pin uses
+   * the same lattice so dropping a pin is a choice *toward* activity, not a
+   * blank map.
    */
-  const anchor = camera ?? device ?? FALLBACK_POINT;
-  const anchorCell = toDriverCell(anchor.latitude, anchor.longitude);
+  const demandAnchor = pinning
+    ? (pin ?? device ?? FALLBACK_POINT)
+    : (camera ?? device ?? FALLBACK_POINT);
+  const anchorCell = toDriverCell(demandAnchor.latitude, demandAnchor.longitude);
   const idleMap = (surfaces.layout.map?.presentation ?? "idle") === "idle";
+  const showDemand = !offer && (idleMap || pinning);
   const demand = api.driver.demand.useQuery(cellCenter(anchorCell), {
-    enabled: idleMap && !offer,
+    enabled: showDemand,
     refetchInterval: DEMAND_MS,
   });
 
   const selfCell = device
     ? toDriverCell(device.latitude, device.longitude)
     : null;
-  // Names are for the trends aside only: one on every hex is noise on a dash.
+  const pinCell = pinning && pin ? toDriverCell(pin.latitude, pin.longitude) : null;
+  // Names: trends aside, and the heading pin — hot cells only, so the lattice
+  // stays a lattice and the busy places read as places.
   const named = panel === "trends";
   const coverage = useMemo<GeoJSON.FeatureCollection | undefined>(() => {
-    if (!idleMap || offer) return undefined;
+    if (!showDemand) return undefined;
     const cells = demand.data;
     if (!cells?.length) return undefined;
     return {
       type: "FeatureCollection",
-      features: cells.map((cell) => ({
-        type: "Feature",
-        id: cell.h3,
-        properties: {
-          weight: cell.openCount + cell.weekCount,
-          ...(cell.h3 === selfCell ? { emphasis: "self" } : {}),
-          ...(named && cell.label && cell.weekCount >= 1
-            ? { label: cell.label }
-            : {}),
-        },
-        geometry: cellPolygon(cell.h3),
-      })),
+      features: cells.map((cell) => {
+        const hot = cell.openCount > 0 || cell.weekCount >= 2;
+        const here = cell.h3 === selfCell;
+        return {
+          type: "Feature" as const,
+          id: cell.h3,
+          properties: {
+            weight: cell.openCount + cell.weekCount,
+            ...(here ? { emphasis: "self" } : hot && pinning ? { emphasis: "hot" } : {}),
+            ...(named && cell.label && cell.weekCount >= 1
+              ? { label: cell.label }
+              : pinning && hot && cell.label
+                ? { label: cell.label }
+                : {}),
+          },
+          geometry: cellPolygon(cell.h3),
+        };
+      }),
     };
-  }, [demand.data, idleMap, named, offer, selfCell]);
+  }, [demand.data, named, pinning, showDemand, selfCell]);
+
+  const pinActivity = useMemo(() => {
+    if (!pinning || !pinCell || !demand.data) return null;
+    const cell = demand.data.find((entry) => entry.h3 === pinCell);
+    if (!cell) return null;
+    if (cell.openCount >= 1 && cell.weekCount >= 1) {
+      return `${cell.openCount} waiting nearby · ${cell.weekCount} trips this week`;
+    }
+    if (cell.openCount >= 1) {
+      return cell.openCount === 1
+        ? "1 request waiting nearby"
+        : `${cell.openCount} requests waiting nearby`;
+    }
+    if (cell.weekCount >= 2) {
+      return `${cell.weekCount} trips started here this week`;
+    }
+    return null;
+  }, [demand.data, pinCell, pinning]);
 
   /** The locality the driver is standing in, if their pickups have named it. */
   const areaLabel =
@@ -457,19 +511,122 @@ function DriverFlow({
     (kind: "heading" | "safety") => {
       // The offer already owns the interrupt rung; 911 on the map still works.
       if (kind === "safety" && offeredId) return;
+      if (kind === "heading") setSearchProximity(device);
       if (asideRef.current === null) {
         perform(kind === "safety" ? "openSafety" : "openHeading");
       }
       setAside(kind);
     },
-    [offeredId, perform],
+    [device, offeredId, perform],
   );
 
   const closeAside = useCallback(() => {
     if (asideRef.current === null) return;
     setAside(null);
+    setPin(null);
+    setPinAddress(null);
+    setRestStops(null);
     perform("closeAside");
   }, [perform]);
+
+  const chooseHeadingOnMap = useCallback(() => {
+    const seed = device ?? FALLBACK_POINT;
+    asideRef.current = "heading_pin";
+    setPin(seed);
+    setPinAddress(null);
+    setPinLocating(true);
+    setRecenterAt(Date.now());
+    setAside("heading_pin");
+    perform("chooseHeadingOnMap");
+  }, [device, perform]);
+
+  const backFromHeadingPin = useCallback(() => {
+    asideRef.current = "heading";
+    setPin(null);
+    setPinAddress(null);
+    setRestStops(null);
+    setAside("heading");
+    perform("closeHeadingPin");
+  }, [perform]);
+
+  useEffect(() => {
+    if (!pinning || !pin) return;
+    if (pinKnown.current) {
+      pinKnown.current = false;
+      setPinLocating(false);
+      return;
+    }
+    let cancelled = false;
+    setPinLocating(true);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const resolved = await fetchReverseGeocode(
+            pin.latitude,
+            pin.longitude,
+          ).catch(() => placesAdapter.reverse?.(pin.latitude, pin.longitude));
+          if (!cancelled) {
+            setPinAddress(resolved?.address ?? "Pinned location");
+          }
+        } catch {
+          if (!cancelled) setPinAddress("Pinned location");
+        } finally {
+          if (!cancelled) setPinLocating(false);
+        }
+      })();
+    }, 280);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [pin, pinning]);
+
+  const restStopPoints = useMemo<MapPoint[]>(
+    () =>
+      (restStops ?? []).flatMap((stop) => {
+        if (stop.latitude === undefined || stop.longitude === undefined) {
+          return [];
+        }
+        return [
+          {
+            latitude: stop.latitude,
+            longitude: stop.longitude,
+            kind: "poi" as const,
+            label: stop.shortName ?? splitAddress(stop.address).line,
+          },
+        ];
+      }),
+    [restStops],
+  );
+
+  const toggleRestStops = useCallback(() => {
+    if (restStops !== null) {
+      setRestStops(null);
+      return;
+    }
+    const origin = pin ?? device ?? FALLBACK_POINT;
+    void fetchNearbyRestStops({
+      address: pinAddress ?? "Current location",
+      latitude: origin.latitude,
+      longitude: origin.longitude,
+    }).then(setRestStops);
+  }, [device, pin, pinAddress, restStops]);
+
+  const chooseRestStop = useCallback(
+    (point: MapPoint) => {
+      const stop = restStops?.find(
+        (place) =>
+          place.latitude === point.latitude &&
+          place.longitude === point.longitude,
+      );
+      pinKnown.current = true;
+      setPin(point);
+      setPinAddress(stop?.address ?? point.label ?? null);
+      setPinLocating(false);
+      setRecenterAt(Date.now());
+    },
+    [restStops],
+  );
 
   /**
    * The idle panels. Every one of these is a single named action: nothing in
@@ -597,24 +754,55 @@ function DriverFlow({
                 adapter={mapAdapter}
                 mode={DRIVER_MAP_MODE[mapPosture] ?? "home"}
                 center={
-                  focus ??
-                  (scene === "complete" ? (target ?? driverPoint) : driverPoint)
+                  pinning
+                    ? (pin ?? driverPoint)
+                    : focus ??
+                      (scene === "complete"
+                        ? (target ?? driverPoint)
+                        : driverPoint)
                 }
                 interactive={surfaces.layout.map?.interaction === "active"}
                 // A res-8 cell is ~460 m across: at the shared home zoom one
                 // hex fills a phone and the lattice stops being a lattice.
-                zoom={idleMap ? 12.5 : undefined}
+                zoom={idleMap && !pinning ? 12.5 : undefined}
                 recenterAt={recenterAt}
-                onCameraChange={setCamera}
-                points={points}
-                route={route ?? undefined}
-                coverage={coverage}
+                onCameraChange={pinning ? setPin : setCamera}
+                onSelectPoint={pinning ? chooseRestStop : undefined}
+                points={pinning ? restStopPoints : points}
+                route={pinning ? undefined : route ?? undefined}
+                coverage={showDemand ? coverage : undefined}
+                pinLabel={
+                  pinning
+                    ? pinAddress
+                      ? splitAddress(pinAddress).line
+                      : null
+                    : undefined
+                }
+                pinLocating={pinning && pinLocating}
               />
 
               {/* Canvas controls. Which ones exist is the posture, not a pile
                   of booleans: a job keeps the chrome it always had, and the
                   idle canvas gets the controls that belong to looking. */}
-              {driving || offer ? (
+              {pinning ? (
+                <div className="pointer-events-none absolute inset-x-3 bottom-[calc(var(--sheet-snap,0)*100dvh_+_0.75rem)] z-10 flex items-end justify-end">
+                  <MapControl
+                    label={
+                      restStops
+                        ? "Hide nearby rest stops"
+                        : "Show nearby rest stops"
+                    }
+                    onPress={toggleRestStops}
+                    className={
+                      restStops
+                        ? "bg-lime pointer-events-auto"
+                        : "pointer-events-auto"
+                    }
+                  >
+                    <Icon icon={Coffee01Icon} size={20} aria-hidden="true" />
+                  </MapControl>
+                </div>
+              ) : driving || offer ? (
                 <>
                   <div className="absolute inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-10 flex items-start justify-between gap-3">
                     <Link
@@ -762,6 +950,12 @@ function DriverFlow({
           onFocusCell={focusCell}
           dashcam={dashcam}
           onOpenHeading={() => openAside("heading")}
+          onChooseHeadingOnMap={chooseHeadingOnMap}
+          onBackFromHeadingPin={backFromHeadingPin}
+          pinAddress={pinAddress}
+          pinLocating={pinning && pinLocating}
+          pinActivity={pinActivity}
+          pin={pin}
           onCloseAside={closeAside}
           onOpenRecommended={openRecommended}
           onCloseRecommended={closeRecommended}
@@ -828,6 +1022,12 @@ function DriverSurfaces({
   onFocusCell,
   dashcam,
   onOpenHeading,
+  onChooseHeadingOnMap,
+  onBackFromHeadingPin,
+  pinAddress,
+  pinLocating,
+  pinActivity,
+  pin,
   onCloseAside,
   onOpenRecommended,
   onCloseRecommended,
@@ -847,7 +1047,7 @@ function DriverSurfaces({
   areaLabel: string | null;
   headingAddress: string | null;
   loading: boolean;
-  aside: "heading" | "safety" | null;
+  aside: DriverAside;
   panel: "recommended" | "trends" | null;
   trendCells: TrendCell[];
   trendDay: number;
@@ -857,6 +1057,12 @@ function DriverSurfaces({
   onFocusCell: (cell: TrendCell) => void;
   dashcam: Dashcam;
   onOpenHeading: () => void;
+  onChooseHeadingOnMap: () => void;
+  onBackFromHeadingPin: () => void;
+  pinAddress: string | null;
+  pinLocating: boolean;
+  pinActivity: string | null;
+  pin: MapPoint | null;
   onCloseAside: () => void;
   onOpenRecommended: () => void;
   onCloseRecommended: () => void;
@@ -879,6 +1085,7 @@ function DriverSurfaces({
    * "no longer available" on the *next* ride's card would be a lie.
    */
   const [failure, setFailure] = useState<string | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const setAvailable = api.driver.setAvailable.useMutation();
   const setHeading = api.driver.setHeading.useMutation();
@@ -893,6 +1100,20 @@ function DriverSurfaces({
       place ? [place] : [],
     );
   }, [savedPlaces.data]);
+
+  const chooseHeading = (place: {
+    address: string | null;
+    latitude: number | null;
+    longitude: number | null;
+  }) => {
+    setSearchError(null);
+    setHeading.mutate(place, {
+      onSettled: () => {
+        void refresh();
+        onCloseAside();
+      },
+    });
+  };
   const accept = api.driver.accept.useMutation();
   const advance = api.driver.advance.useMutation();
 
@@ -1080,7 +1301,8 @@ function DriverSurfaces({
     return value === "launcher" ||
       value === "peek" ||
       value === "sheet" ||
-      value === "expanded"
+      value === "expanded" ||
+      value === "overlay"
       ? value
       : "sheet";
   })();
@@ -1109,11 +1331,13 @@ function DriverSurfaces({
         ) : posture === null ? null : (
           <ServiceSheet
             label={
-              panel === "trends"
-                ? "Earnings trends"
-                : panel === "recommended"
-                  ? "Recommended for you"
-                  : "Your duty session"
+              aside === "heading_pin"
+                ? "Heading"
+                : panel === "trends"
+                  ? "Earnings trends"
+                  : panel === "recommended"
+                    ? "Recommended for you"
+                    : "Your duty session"
             }
             presentation={posture}
             onSnapChange={
@@ -1126,7 +1350,40 @@ function DriverSurfaces({
           >
             {loading ? <SurfaceSkeleton lines={2} /> : null}
 
-            {!loading && panel === "trends" ? (
+            {!loading && aside === "heading_pin" ? (
+              <>
+                <Button
+                  variant="ghost"
+                  className="text-muted-foreground mb-2 -ml-2 h-11 justify-start px-2"
+                  onClick={onBackFromHeadingPin}
+                >
+                  Back
+                </Button>
+                <LocationPinScene
+                  title="Where are you heading?"
+                  address={pinAddress}
+                  locating={pinLocating}
+                  confirmLabel="Set heading"
+                  secondary={
+                    pinActivity ? (
+                      <p className="text-muted-foreground text-sm leading-snug">
+                        {pinActivity}
+                      </p>
+                    ) : undefined
+                  }
+                  onConfirm={() => {
+                    if (!pin || !pinAddress) return;
+                    chooseHeading({
+                      address: pinAddress,
+                      latitude: pin.latitude,
+                      longitude: pin.longitude,
+                    });
+                  }}
+                />
+              </>
+            ) : null}
+
+            {!loading && aside !== "heading_pin" && panel === "trends" ? (
               <DriverTrendsScene
                 cells={trendCells}
                 day={trendDay}
@@ -1140,7 +1397,7 @@ function DriverSurfaces({
               />
             ) : null}
 
-            {!loading && panel === "recommended" ? (
+            {!loading && aside !== "heading_pin" && panel === "recommended" ? (
               <DriverRecommendedScene
                 busy={surface.progress.locked}
                 error={failure}
@@ -1153,7 +1410,10 @@ function DriverSurfaces({
               />
             ) : null}
 
-            {!loading && panel === null && visible === "online" ? (
+            {!loading &&
+            aside !== "heading_pin" &&
+            panel === null &&
+            visible === "online" ? (
               <DriverHuntingPeek
                 onOpenPreferences={onOpenPreferences}
                 onOpenRecommended={onOpenRecommended}
@@ -1162,7 +1422,7 @@ function DriverSurfaces({
 
             {/* Nothing about a job is asserted until the server has confirmed
                 one: no address, no rider, no PIN before the row exists. */}
-            {!loading && isDriving(visible) ? (
+            {!loading && aside !== "heading_pin" && isDriving(visible) ? (
               job ? (
                 <DriverJobScene
                   scene={visible as "to_pickup" | "at_pickup" | "on_trip"}
@@ -1181,7 +1441,10 @@ function DriverSurfaces({
               )
             ) : null}
 
-            {!loading && visible === "complete" && job ? (
+            {!loading &&
+            aside !== "heading_pin" &&
+            visible === "complete" &&
+            job ? (
               <DriverCompleteScene
                 trip={job}
                 todayCents={todayCents}
@@ -1217,10 +1480,15 @@ function DriverSurfaces({
       </AdaptiveSurface.Interrupt>
 
       <AdaptiveSurface.Interrupt
-        id="aside"
-        open={aside !== null}
+        id="interrupt"
+        open={aside === "heading" || aside === "safety"}
         onOpenChange={(next) => {
-          if (!next) onCloseAside();
+          if (
+            !next &&
+            (aside === "heading" || aside === "safety")
+          ) {
+            onCloseAside();
+          }
         }}
         label={aside === "safety" ? "Safety" : "Where are you heading?"}
         description={
@@ -1230,18 +1498,48 @@ function DriverSurfaces({
         }
       >
         {aside === "heading" ? (
-          <HeadingChoice
-            address={headingAddress}
+          <LocationSearchScene
+            framed={false}
+            open
+            adapter={placesAdapter}
             places={headingPlaces}
-            busy={setHeading.isPending}
-            onChoose={(place) => {
-              setHeading.mutate(place, {
-                onSettled: () => {
-                  void refresh();
-                  onCloseAside();
-                },
+            title="Where are you heading?"
+            placeholder="Where are you heading?"
+            onSelect={(result) => {
+              if (result.latitude == null || result.longitude == null) {
+                setSearchError(
+                  "Pick a place from the list or set a pin on the map.",
+                );
+                return;
+              }
+              chooseHeading({
+                address: result.address,
+                latitude: result.latitude,
+                longitude: result.longitude,
               });
             }}
+            onChooseOnMap={onChooseHeadingOnMap}
+            onDismiss={onCloseAside}
+            error={searchError}
+            onError={setSearchError}
+            footer={
+              headingAddress ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    chooseHeading({
+                      address: null,
+                      latitude: null,
+                      longitude: null,
+                    })
+                  }
+                  disabled={setHeading.isPending}
+                  className="text-muted-foreground hover:bg-accent mt-4 flex min-h-12 w-full items-center rounded-2xl px-2 text-left text-[15px] focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none"
+                >
+                  Anywhere
+                </button>
+              ) : null
+            }
           />
         ) : null}
         {aside === "safety" ? (
@@ -1249,59 +1547,6 @@ function DriverSurfaces({
         ) : null}
       </AdaptiveSurface.Interrupt>
     </>
-  );
-}
-
-function HeadingChoice({
-  address,
-  places,
-  busy,
-  onChoose,
-}: {
-  address: string | null;
-  /** The driver's own saved spots. They are a `users` row like anyone else. */
-  places: Place[];
-  busy: boolean;
-  onChoose: (place: {
-    address: string | null;
-    latitude: number | null;
-    longitude: number | null;
-  }) => void;
-}) {
-  const options = [
-    { id: "anywhere", label: "Anywhere", address: null, latitude: null, longitude: null },
-    ...places.map((place) => ({
-      id: place.id,
-      label: place.label,
-      address: place.address,
-      latitude: place.latitude ?? null,
-      longitude: place.longitude ?? null,
-    })),
-  ];
-
-  return (
-    <div className="flex flex-col gap-2">
-      {options.map((option) => {
-        const active = (option.address ?? null) === address;
-        return (
-          <Button
-            key={option.id}
-            variant={active ? "default" : "outline"}
-            className="h-14 w-full justify-start text-[17px]"
-            disabled={busy}
-            onClick={() =>
-              onChoose({
-                address: option.address,
-                latitude: option.latitude,
-                longitude: option.longitude,
-              })
-            }
-          >
-            {option.label}
-          </Button>
-        );
-      })}
-    </div>
   );
 }
 

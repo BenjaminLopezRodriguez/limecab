@@ -65,7 +65,7 @@ export const limeCabSurfaces = createSurfaceManager({
     interrupt: {
       role: "interrupt",
       // Payment is an interruption that happens to want the whole screen.
-      presentations: ["compact-interrupt", "fullscreen"],
+      presentations: ["compact-interrupt", "fullscreen", "overlay"],
       initial: { emphasis: "hidden", presentation: null, interaction: "inert" },
     },
   },

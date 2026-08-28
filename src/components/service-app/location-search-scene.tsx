@@ -45,6 +45,8 @@ export function LocationSearchScene({
   adapter,
   places = [],
   title = "Where to?",
+  placeholder = "Search an address…",
+  framed = true,
   route,
   onSelect,
   onDismiss,
@@ -53,6 +55,7 @@ export function LocationSearchScene({
   onError,
   trailing,
   banner,
+  footer,
   normalizeQuery,
   renderResults,
   rowAction,
@@ -62,6 +65,13 @@ export function LocationSearchScene({
   /** Saved and recent places, shown before the user types anything. */
   places?: Place[];
   title?: string;
+  /** Empty-field copy when this is a single free-standing search. */
+  placeholder?: string;
+  /**
+   * When false, only the search body is rendered. The parent owns chrome —
+   * an overlay drawer, a TaskScene, a page.
+   */
+  framed?: boolean;
   /**
    * The points the search belongs to. Supplied, the input is one field of a
    * connected route stack (origin, optional stops, destination). Omitted, the
@@ -89,6 +99,8 @@ export function LocationSearchScene({
   trailing?: ReactNode;
   /** Listening or fallback copy above the field. Parent stays this scene. */
   banner?: ReactNode;
+  /** Extra rows under the search body (Anywhere, a filter). */
+  footer?: ReactNode;
   normalizeQuery?: (query: string) => string;
   renderResults?: ComponentProps<typeof LocationSearch>["renderResults"];
   /** Trailing control on a suggestion row, e.g. filing the address. */
@@ -165,19 +177,7 @@ export function LocationSearchScene({
     );
   };
 
-  return (
-    <TaskScene
-      open={open}
-      title={title}
-      description="Search for an address, use your current location, set a pin on the map, or pick a saved place."
-      onDismiss={onDismiss}
-      initialFocusRef={inputRef}
-    >
-      <TaskSceneHeader
-        title={title}
-        onBack={onDismiss}
-        backLabel="Close search"
-      />
+  const body = (
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
         {banner}
         <div className="relative">
@@ -191,12 +191,13 @@ export function LocationSearchScene({
             normalizeQuery={normalizeQuery}
             renderResults={renderResults}
             rowAction={rowAction}
+            autoFocus={!framed}
             placeholder={
               route?.active === "origin"
                 ? "Pickup address…"
                 : activeStopIndex !== null
                   ? `Stop ${activeStopIndex + 1}…`
-                  : "Search an address…"
+                  : placeholder
             }
             fieldsClassName={
               route
@@ -367,7 +368,26 @@ export function LocationSearchScene({
             </ul>
           </>
         ) : null}
+        {footer}
       </div>
+  );
+
+  if (!framed) return open ? body : null;
+
+  return (
+    <TaskScene
+      open={open}
+      title={title}
+      description="Search for an address, use your current location, set a pin on the map, or pick a saved place."
+      onDismiss={onDismiss}
+      initialFocusRef={inputRef}
+    >
+      <TaskSceneHeader
+        title={title}
+        onBack={onDismiss}
+        backLabel="Close search"
+      />
+      {body}
     </TaskScene>
   );
 }

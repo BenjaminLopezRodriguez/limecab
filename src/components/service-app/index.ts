@@ -2,11 +2,13 @@ export {
   AdaptiveSurface,
   useAdaptiveSurface,
   useOptionalAdaptiveSurface,
+  isSurfacePresentation,
   type SurfacePresentation,
   type SurfaceEntry,
   type SurfaceProgressInput,
   type TransitionIntent,
 } from "@/components/service-app/adaptive-surface";
+export { OverlaySurface } from "@/components/service-app/overlay-surface";
 export { ServiceAppShell } from "@/components/service-app/service-app-shell";
 export { ServiceSheet, SheetActions } from "@/components/service-app/service-sheet";
 export {
@@ -39,6 +41,7 @@ export {
   ManagedSurface,
   SurfaceManagerDebug,
   useSurfaceManager,
+  useOptionalSurfaceManager,
   useSurface,
 } from "@/components/service-app/surface-manager";
 export {

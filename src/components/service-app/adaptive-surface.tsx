@@ -25,10 +25,12 @@ import {
   DrawerDescription,
   DrawerTitle,
 } from "@/components/ui/drawer";
+import { OverlaySurface } from "@/components/service-app/overlay-surface";
 import {
   TaskScene,
   TaskSceneHeader,
 } from "@/components/service-app/task-scene";
+import { useOptionalSurfaceManager } from "@/components/service-app/surface-manager";
 import { useServiceAppMobile } from "@/hooks/use-service-app-mobile";
 import { cn } from "@/lib/utils";
 import {
@@ -49,7 +51,7 @@ import type { TransitionIntent } from "@/lib/service-app/state";
  * never forks its logic on viewport.
  *
  * It owns three things:
- *   1. the presentation ladder (`peek → sheet → expanded → fullscreen`)
+ *   1. the presentation ladder (`peek → sheet → expanded → overlay | fullscreen`)
  *   2. the interruption stack, with suspend/restore of the parent scene
  *   3. the async progression choreography (see `surface-progress.ts`)
  */
@@ -59,7 +61,23 @@ export type SurfacePresentation =
   | "sheet"
   | "expanded"
   | "fullscreen"
+  | "overlay"
   | "compact-interrupt";
+
+const SURFACE_PRESENTATIONS: readonly SurfacePresentation[] = [
+  "peek",
+  "sheet",
+  "expanded",
+  "fullscreen",
+  "overlay",
+  "compact-interrupt",
+];
+
+export function isSurfacePresentation(
+  value: string | null | undefined,
+): value is SurfacePresentation {
+  return SURFACE_PRESENTATIONS.some((entry) => entry === value);
+}
 
 export type { TransitionIntent };
 
@@ -411,7 +429,7 @@ function AdaptiveSurfaceInterrupt({
   open,
   onOpenChange,
   id = "interrupt",
-  presentation = "compact-interrupt",
+  presentation: presentationProp,
   label,
   description,
   locked = false,
@@ -428,6 +446,13 @@ function AdaptiveSurfaceInterrupt({
   children: ReactNode;
 }) {
   const surface = useAdaptiveSurface();
+  const manager = useOptionalSurfaceManager();
+  const layoutPresentation = manager?.layout[id]?.presentation;
+  const presentation =
+    presentationProp ??
+    (isSurfacePresentation(layoutPresentation)
+      ? layoutPresentation
+      : "compact-interrupt");
   const transitionRef = useRef(surface.transition);
   transitionRef.current = surface.transition;
 
@@ -444,8 +469,21 @@ function AdaptiveSurfaceInterrupt({
     onOpenChange(next);
   };
 
-  // A question that needs a list, a form, or an "add one" affordance is a
-  // prepared environment, not a drawer. Same suspend/restore either way.
+  // Overlay: the same drawer, snapped to the viewport. Fullscreen: a
+  // prepared TaskScene. Both suspend the parent; only the rung changes.
+  if (presentation === "overlay") {
+    return (
+      <OverlaySurface
+        open={open}
+        title={label}
+        description={description}
+        onDismiss={() => handleOpenChange(false)}
+      >
+        {children}
+      </OverlaySurface>
+    );
+  }
+
   if (presentation === "fullscreen") {
     return (
       <TaskScene

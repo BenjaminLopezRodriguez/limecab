@@ -21,6 +21,7 @@ export type DriverSurfaceId = "map" | "primary" | "offer" | "interrupt";
 /** Map postures the driver app uses, and what the canvas draws for each. */
 export const DRIVER_MAP_MODE: Record<string, MapMode> = {
   idle: "home",
+  locating: "select_location",
   tracking: "provider_arrival",
   trip: "active_route",
   receipt: "results",
@@ -101,11 +102,40 @@ const ASIDE = {
   },
 } as const;
 
+/**
+ * Heading is search — keyboard plus suggestions — so the interrupt drawer
+ * slides up to fill the screen rather than sitting as a compact stub.
+ */
+const HEADING = {
+  primary: { emphasis: "suspended" },
+  map: { emphasis: "background", interaction: "passive" },
+  interrupt: {
+    emphasis: "interrupt",
+    presentation: "overlay",
+    interaction: "active",
+  },
+} as const;
+
+/**
+ * "Set heading with pin" — the heading interrupt recedes, the canvas is the
+ * subject, and a confirm strip names the point under the pin.
+ */
+const HEADING_PIN = {
+  interrupt: { emphasis: "hidden" },
+  map: {
+    emphasis: "primary",
+    presentation: "locating",
+    interaction: "active",
+  },
+  primary: { emphasis: "primary", presentation: "peek", interaction: "active" },
+  offer: { emphasis: "hidden" },
+} as const;
+
 export const driverSurfaces = createSurfaceManager({
   surfaces: {
     map: {
       role: "background",
-      presentations: ["idle", "tracking", "trip", "receipt"],
+      presentations: ["idle", "locating", "tracking", "trip", "receipt"],
       initial: {
         emphasis: "background",
         presentation: "idle",
@@ -134,7 +164,7 @@ export const driverSurfaces = createSurfaceManager({
     /** Heading, safety, confirmations. Never up at the same time as an offer. */
     interrupt: {
       role: "interrupt",
-      presentations: ["compact-interrupt", "fullscreen"],
+      presentations: ["compact-interrupt", "fullscreen", "overlay"],
       initial: { emphasis: "hidden", presentation: null, interaction: "inert" },
     },
   },
@@ -221,8 +251,13 @@ export const driverSurfaces = createSurfaceManager({
     /** Back in the hunt, still online. The next offer may land immediately. */
     resumeIdle: { intent: "progress", surfaces: IDLE },
 
-    openHeading: { intent: "interrupt", surfaces: ASIDE },
+    openHeading: { intent: "interrupt", surfaces: HEADING },
     openSafety: { intent: "interrupt", surfaces: ASIDE },
+
+    /** Search recedes; the driver drops a pin for the heading filter. */
+    chooseHeadingOnMap: { intent: "expand", surfaces: HEADING_PIN },
+    /** Back from the pin revises the overlay, rather than clearing the heading. */
+    closeHeadingPin: { intent: "collapse", surfaces: HEADING },
 
     /** The aside is answered; the duty session returns exactly as it was. */
     closeAside: {

@@ -276,6 +276,49 @@ export const GEOCODE_FIXTURES = [
   },
 ] as const;
 
+/**
+ * Places a driver can pause: coffee, and the highway rest areas on the roads
+ * out of LA. Used when Mapbox is down, never as invented demand.
+ */
+export const REST_STOPS: Location[] = [
+  {
+    address: "Grand Central Market, S Broadway, Los Angeles",
+    shortName: "Grand Central Market",
+    latitude: 34.0508,
+    longitude: -118.249,
+  },
+  {
+    address: "Intelligentsia Coffee, Sunset Blvd, Silver Lake",
+    shortName: "Intelligentsia",
+    latitude: 34.0836,
+    longitude: -118.2736,
+  },
+  {
+    address: "Verve Coffee, Spring St, Downtown Los Angeles",
+    shortName: "Verve",
+    latitude: 34.047,
+    longitude: -118.2495,
+  },
+  {
+    address: "Castaic Rest Area, I-5, Castaic",
+    shortName: "Castaic Rest Area",
+    latitude: 34.492,
+    longitude: -118.612,
+  },
+  {
+    address: "Gorman Rest Area, I-5, Gorman",
+    shortName: "Gorman Rest Area",
+    latitude: 34.794,
+    longitude: -118.852,
+  },
+  {
+    address: "Conejo Pass vista, US-101, Thousand Oaks",
+    shortName: "Conejo Pass",
+    latitude: 34.185,
+    longitude: -118.883,
+  },
+];
+
 const TYPICAL_WAIT = `usually ${RIDE_PRODUCTS[0]!.etaMinutes} min`;
 
 /** Curated spots for Travel Mode. Same booking chain as Saved places. */

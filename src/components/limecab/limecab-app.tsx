@@ -2236,6 +2236,7 @@ const SHEET_PRESENTATIONS = [
   "sheet",
   "expanded",
   "fullscreen",
+  "overlay",
 ] as const;
 type SheetPresentation = (typeof SHEET_PRESENTATIONS)[number];
 

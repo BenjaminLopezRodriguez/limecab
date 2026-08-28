@@ -50,9 +50,10 @@ export type SurfaceMotionIntent =
 export type SurfaceState = {
   emphasis: SurfaceEmphasis;
   /**
-   * Surface-defined posture token, e.g. "sheet" / "fullscreen" for a task
-   * surface, "route" / "tracking" for a canvas. SurfaceManager passes it
-   * through; the surface decides what it means at this viewport.
+   * Surface-defined posture token, e.g. "sheet" / "overlay" / "fullscreen"
+   * for a task surface, "route" / "tracking" for a canvas. SurfaceManager
+   * passes it through; the surface decides what it means at this viewport.
+   * `"overlay"` flags a drawer that should slide up to fill the screen.
    */
   presentation: string | null;
   interaction: SurfaceInteraction;
@@ -308,12 +309,14 @@ export function surfaceLayoutViolations<Id extends string>(
   const problems: string[] = [];
   const entries = Object.entries(layout) as [Id, SurfaceState][];
 
-  const fullscreenPrimary = entries.filter(
-    ([, s]) => s.emphasis === "primary" && s.presentation === "fullscreen",
+  const fillingPrimary = entries.filter(
+    ([, s]) =>
+      s.emphasis === "primary" &&
+      (s.presentation === "fullscreen" || s.presentation === "overlay"),
   );
-  if (fullscreenPrimary.length > 1) {
+  if (fillingPrimary.length > 1) {
     problems.push(
-      `two fullscreen primary surfaces: ${fullscreenPrimary
+      `two filling primary surfaces: ${fillingPrimary
         .map(([id]) => id)
         .join(", ")}`,
     );

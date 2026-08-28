@@ -32,7 +32,8 @@ import { cn } from "@/lib/utils";
  *   peek       — a status strip; canvas is the subject
  *   sheet      — 40%
  *   expanded   — 60%
- * Anything taller is a window overlay (`TaskScene`), not another snap.
+ * `overlay` snaps the same drawer to the viewport. `TaskScene` (`fullscreen`)
+ * is a different chrome — a dialog, not a snap.
  *
  * A snap drawer is 100dvh tall and translated down, so only its top slice is
  * on screen. The body is sized to that slice *in CSS*, from the drawer's own
@@ -46,15 +47,18 @@ type SheetPresentation = Exclude<SurfacePresentation, "compact-interrupt">;
 const PEEK = 0.22;
 const SHEET = 0.4;
 const EXPANDED = 0.6;
+const OVERLAY = 1;
 
 const SNAP_FOR: Record<SheetPresentation, number> = {
   peek: PEEK,
   sheet: SHEET,
   expanded: EXPANDED,
   fullscreen: EXPANDED,
+  overlay: OVERLAY,
 };
 
 const SNAP_POINTS = [PEEK, SHEET, EXPANDED];
+const OVERLAY_POINTS = [OVERLAY];
 
 export { EXPANDED as SHEET_EXPANDED_SNAP };
 
@@ -63,6 +67,7 @@ const DESKTOP_MAX: Record<SheetPresentation, string> = {
   sheet: "md:max-h-[40dvh]",
   expanded: "md:max-h-[60dvh]",
   fullscreen: "md:max-h-[60dvh]",
+  overlay: "md:h-full md:max-h-full",
 };
 
 /** Swipe handle (h-3) plus the popup's top border. */
@@ -188,7 +193,7 @@ export function ServiceSheet({
       disablePointerDismissal
       showSwipeHandle
       swipeDirection="down"
-      snapPoints={SNAP_POINTS}
+      snapPoints={presentation === "overlay" ? OVERLAY_POINTS : SNAP_POINTS}
       snapPoint={snap}
       onSnapPointChange={(value) => {
         setSnap(value);

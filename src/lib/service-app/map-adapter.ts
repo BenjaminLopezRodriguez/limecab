@@ -23,7 +23,8 @@ export type MapPointKind =
   | "destination"
   | "provider"
   | "selection"
-  | "marker";
+  | "marker"
+  | "poi";
 
 export type MapPoint = {
   latitude: number;
@@ -68,6 +69,8 @@ export type MapViewProps = {
   recenterAt?: number;
   /** Fired when the user finishes a pan or pinch. */
   onCameraChange?: (center: MapPoint) => void;
+  /** A labeled point on the canvas was chosen — a rest stop, a saved place. */
+  onSelectPoint?: (point: MapPoint) => void;
 };
 
 export interface MapAdapter {

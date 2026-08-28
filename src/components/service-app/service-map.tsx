@@ -79,6 +79,7 @@ const POINT_STYLE: Record<
   provider: { fill: "currentColor", halo: true },
   selection: { fill: "currentColor", halo: true },
   marker: { fill: "currentColor", halo: false },
+  poi: { fill: "currentColor", halo: true },
 };
 
 /**
@@ -112,7 +113,7 @@ const MODE_TREATMENT: Record<MapMode, ModeTreatment> = {
   },
   select_location: {
     route: "none",
-    emphasis: ["selection"],
+    emphasis: ["selection", "poi"],
     dimOthers: true,
     coverage: false,
     crosshair: true,
