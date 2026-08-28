@@ -1294,8 +1294,17 @@ function LimeCabSurfaces({
           },
           { label: "Booking fee", value: formatMoney(fare.bookingCents) },
           ...optionLines,
+          // The stop is real; the charge is not ours. `trip.request` prices
+          // the ride from product and distance and never reads a client
+          // total, so folding the drink into the fare would show a number
+          // nobody charges. The rider pays the counter.
           ...(snack
-            ? [{ label: snack.label, value: formatMoney(snack.priceCents) }]
+            ? [
+                {
+                  label: `${snack.label} · paid at the counter`,
+                  value: formatMoney(snack.priceCents),
+                },
+              ]
             : []),
         ],
       },
@@ -1305,7 +1314,7 @@ function LimeCabSurfaces({
   /** What the rider is actually charged, after any credit. */
   const payableCents = Math.max(
     0,
-    (quote?.fare.totalCents ?? 0) - discountCents + (snack?.priceCents ?? 0),
+    (quote?.fare.totalCents ?? 0) - discountCents,
   );
 
   const chooseLocation = (result: Location) => {
@@ -1738,6 +1747,9 @@ function LimeCabSurfaces({
                 }
                 pickupLine={pickupLine}
                 destinationLine={destinationLine}
+                stopLines={stops.map(
+                  (stop) => stop.shortName ?? splitAddress(stop.address).line,
+                )}
                 pickupLabel={courier ? "Pick up" : "Pickup"}
                 destinationLabel={courier ? "Drop-off" : "Destination"}
                 payment={payment}
