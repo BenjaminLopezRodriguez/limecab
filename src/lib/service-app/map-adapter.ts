@@ -33,6 +33,13 @@ export type MapPoint = {
   label?: string;
   /** Degrees clockwise from north. Used to aim a vehicle marker. */
   heading?: number;
+  /** True when this point is the chosen rest stop. */
+  selected?: boolean;
+  /**
+   * POI stamp glyph. An open token: the app names its own categories and the
+   * marker draws the ones it has a glyph for. Ignored on every other kind.
+   */
+  category?: string;
 };
 
 export type MapViewProps = {

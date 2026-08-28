@@ -11,7 +11,9 @@ import {
   findBookableProduct,
   isCourierProduct,
 } from "@/lib/limecab/courier";
+import { HELP_VISIT_MINUTES, isHelpProduct } from "@/lib/limecab/help";
 import { toDriverCell } from "@/lib/limecab/h3";
+import { shopListSchema } from "@/lib/limecab/shop-list";
 import { RIDE_PRODUCTS } from "@/lib/limecab/mock";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { trips, supportTickets } from "@/server/db/schema";
@@ -32,6 +34,12 @@ const courierInput = z.object({
   recipientPhone: z.string().min(7).max(20),
   packageCount: z.number().int().min(1).max(8),
   proof: z.enum(["hand", "door", "signature"]),
+  /**
+   * Lime Shop's list. Present makes this a Shop job: the courier buys these
+   * lines at the pickup store. Item cost is settled in store — no line here
+   * carries money, and none is charged.
+   */
+  itemList: shopListSchema.optional(),
 });
 
 const requestInput = z.object({
@@ -43,6 +51,8 @@ const requestInput = z.object({
   /** Client-supplied so a retried request cannot book two rides. */
   idempotencyKey: z.string().min(8).max(255),
   courier: courierInput.optional(),
+  /** When the provider should arrive. Required for a Help visit. */
+  scheduledAt: z.coerce.date().optional(),
 });
 
 /** Spoken to the driver at the curb; never accepted from the client. */
@@ -116,11 +126,30 @@ export const tripRouter = createTRPCRouter({
           message: "Courier trips need a recipient.",
         });
       }
+      if (courier && input.courier?.itemList?.length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "A Shop trip needs a list.",
+        });
+      }
+
+      // A visit *is* its clock: without one there is nothing to schedule and
+      // the driver has no window to be held to.
+      const help = isHelpProduct(product.id);
+      if (help && !input.scheduledAt) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "A visit needs a time.",
+        });
+      }
 
       // Price is computed here, from the same functions the quote uses. A
       // client-sent total is never read.
-      const miles = computeDistanceMiles(input.pickup, input.destination);
-      const minutes = computeTripMinutes(miles);
+      // A Help visit does not drive anywhere: pickup and destination are the
+      // same house, so the price is an hour on site, not the zero miles
+      // between identical coordinates.
+      const miles = help ? 0 : computeDistanceMiles(input.pickup, input.destination);
+      const minutes = help ? HELP_VISIT_MINUTES : computeTripMinutes(miles);
       const fare = estimateFare(product, miles, minutes);
       const proof = courier ? (input.courier?.proof ?? "hand") : null;
 
@@ -144,6 +173,7 @@ export const tripRouter = createTRPCRouter({
           destinationLatitude: input.destination.latitude,
           destinationLongitude: input.destination.longitude,
           productId: product.id,
+          scheduledAt: input.scheduledAt ?? null,
           baseCents: fare.baseCents,
           distanceCents: fare.distanceCents,
           timeCents: fare.timeCents,
@@ -158,6 +188,9 @@ export const tripRouter = createTRPCRouter({
           packageCount: input.courier?.packageCount ?? 1,
           deliveryProof: proof,
           deliveryPin: proof === "hand" ? pickupPin() : null,
+          itemList: input.courier?.itemList
+            ? JSON.stringify(input.courier.itemList)
+            : null,
           requestIdempotencyKey: input.idempotencyKey,
         })
         .returning();

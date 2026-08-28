@@ -15,6 +15,28 @@
  * exactly the thing `back` must never be.
  */
 
+import { isCourierProduct } from "./courier.ts";
+import { isHelpProduct } from "./help.ts";
+import { parseShopList } from "./shop-list.ts";
+
+/**
+ * What kind of job the driver is doing. Not a scene and not a state: the six
+ * duty scenes are the same for every job — only the words change.
+ *
+ * Derived from the trip, never stored: a courier trip carrying a list is a
+ * Shop job, which is why Shop has no product id and no inbox flag of its own.
+ */
+export type DriverJobKind = "ride" | "courier" | "shop" | "help";
+
+export function driverJobKind(
+  trip: { productId: string; itemList?: string | null } | null | undefined,
+): DriverJobKind {
+  if (!trip) return "ride";
+  if (isHelpProduct(trip.productId)) return "help";
+  if (!isCourierProduct(trip.productId)) return "ride";
+  return parseShopList(trip.itemList).length > 0 ? "shop" : "courier";
+}
+
 export const DRIVER_APP_STATES = [
   "offline",
   "online",
@@ -88,8 +110,13 @@ export function backDriverAppState(state: DriverAppState): DriverAppState {
  */
 export function driverAppQuestion(
   state: DriverAppState,
-  courier = false,
+  kind: DriverJobKind = "ride",
 ): { question: string; action: string; exit: string } {
+  const courier = kind === "courier" || kind === "shop";
+  const shop = kind === "shop";
+  // A visit is not a pickup and not a delivery: the driver arrives at a house,
+  // starts the visit, finishes it. PIN is the wrong object at every step.
+  const help = kind === "help";
   switch (state) {
     case "offline":
       return {
@@ -105,22 +132,44 @@ export function driverAppQuestion(
       };
     case "to_pickup":
       return {
-        question: courier ? "Have you reached the merchant?" : "Have you arrived?",
+        question: help
+          ? "Have you arrived at the house?"
+          : shop
+            ? "Have you reached the store?"
+            : courier
+              ? "Have you reached the merchant?"
+              : "Have you arrived?",
         action: "I’ve arrived",
         exit: "Cancel this job",
       };
     case "at_pickup":
+      // Shop has nothing sealed to take custody of — the courier bought the
+      // list themselves, so the question is the list and not a code.
       return {
-        question: courier
-          ? "Do you have the package?"
-          : "Is the rider with you?",
-        action: courier ? "Scan pickup" : "Start ride",
+        question: help
+          ? "Ready to start the visit?"
+          : shop
+            ? "Did you get everything on the list?"
+            : courier
+              ? "Do you have the package?"
+              : "Is the rider with you?",
+        action: help
+          ? "Start visit"
+          : shop
+            ? "Got the list"
+            : courier
+              ? "Scan pickup"
+              : "Start ride",
         exit: "Cancel this job",
       };
     case "on_trip":
       return {
-        question: "Have you finished?",
-        action: courier ? "Confirm delivery" : "Complete ride",
+        question: help ? "Have you finished the visit?" : "Have you finished?",
+        action: help
+          ? "Complete visit"
+          : courier
+            ? "Confirm delivery"
+            : "Complete ride",
         exit: "None",
       };
     case "complete":
@@ -152,17 +201,55 @@ export function driverSceneForTripStatus(
   }
 }
 
-/** First paint for `/driver` — derived from the inbox the page already loaded. */
+/**
+ * First paint for `/driver` — derived from the inbox the page already loaded.
+ * Multiple live jobs: the current leg, not the newest accept.
+ */
+const LIVE_RANK: Record<string, number> = {
+  in_progress: 0,
+  arriving: 1,
+  matched: 2,
+};
+
+function requestedTime(value: unknown): number {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "string" || typeof value === "number") {
+    const time = new Date(value).getTime();
+    return Number.isFinite(time) ? time : 0;
+  }
+  return 0;
+}
+
+/**
+ * Live jobs as a queue: the one in progress first, then oldest matched.
+ * Incoming accepts stack behind; they do not steal the current leg.
+ */
+export function rankLiveJobs<T extends { status: string; requestedAt?: unknown }>(
+  jobs: readonly T[],
+): T[] {
+  return [...jobs].sort((a, b) => {
+    const rank = (LIVE_RANK[a.status] ?? 9) - (LIVE_RANK[b.status] ?? 9);
+    if (rank !== 0) return rank;
+    return requestedTime(a.requestedAt) - requestedTime(b.requestedAt);
+  });
+}
+
+export function currentJob<T extends { status: string; requestedAt?: unknown }>(
+  jobs: readonly T[],
+): T | undefined {
+  return rankLiveJobs(jobs)[0];
+}
+
 export function driverSceneFromInbox(
   inbox:
     | {
         driver?: { available: boolean } | null;
-        active?: { status: string }[];
+        active?: { status: string; requestedAt?: unknown }[];
       }
     | null
     | undefined,
 ): DriverAppState {
-  const activeStatus = inbox?.active?.[0]?.status;
+  const activeStatus = currentJob(inbox?.active ?? [])?.status;
   if (activeStatus) {
     const fromTrip = driverSceneForTripStatus(activeStatus);
     if (fromTrip) return fromTrip;

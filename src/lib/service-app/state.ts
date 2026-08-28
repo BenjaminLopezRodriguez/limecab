@@ -71,10 +71,28 @@ export type ServiceAppContext = {
    * search's "choose on map" returns to search.
    */
   pinEntry?: "home" | "search";
+  /**
+   * Whether the place the flow still needs is asked for *after* configuring.
+   * Some flows capture their options first and the destination last, so
+   * `configure_done` progresses to search rather than to the quote, and back
+   * out of that search revises the options rather than clearing to home.
+   *
+   * Named by effect: the kit does not know which product wants this order.
+   */
+  locationAfterConfigure?: boolean;
+  /**
+   * Whether *which* service is asked after configuring rather than before.
+   * Flows that must settle a shared question first — a time, a window — enter
+   * on `configure`, then choose among services with that answer in hand.
+   */
+  selectAfterConfigure?: boolean;
 };
 
 /** The state entered once both location and service are known. */
 function afterIntent(ctx: ServiceAppContext): ServiceAppState {
+  // Options-then-place: reaching this with the place known means configure is
+  // already behind the rider, so the next question is the price.
+  if (ctx.locationAfterConfigure) return ctx.hasLocation ? "quote" : "configure";
   return ctx.needsConfigure ? "configure" : "quote";
 }
 
@@ -111,15 +129,27 @@ export function reduceServiceAppState(
       return ctx.hasService ? afterIntent(ctx) : "service_select";
 
     case "cancel_search":
-      if (ctx.hasLocation && ctx.hasService) return afterIntent(ctx);
-      return ctx.hasLocation ? "service_select" : "home";
+      // Leaving a search lands where backing out of it lands: the scene that
+      // asked for the place, not one step further along.
+      return backServiceAppState("location_search", ctx);
 
     case "select_service":
-      if (!ctx.hasService) return state;
+      // Picking a vertical whose options come first opens those options; the
+      // service itself is chosen on the far side of them.
+      if (!ctx.hasService) {
+        return ctx.selectAfterConfigure ? afterIntent(ctx) : state;
+      }
       return ctx.hasLocation ? afterIntent(ctx) : "location_search";
 
     case "configure_done":
-      return state === "configure" ? "quote" : state;
+      if (state !== "configure") return state;
+      // Whatever is still unknown is the next scene, in that order: which
+      // service, then where, then the price.
+      if (ctx.selectAfterConfigure && !ctx.hasService) return "service_select";
+      if (ctx.locationAfterConfigure && !ctx.hasLocation) {
+        return "location_search";
+      }
+      return "quote";
 
     // `request` is the optimistic-but-truthful step: the request has been
     // submitted, so "matching" is the honest description of what is happening.
@@ -150,17 +180,25 @@ export function backServiceAppState(
     case "home":
       return "home";
     case "location_search":
+      // Options-then-place: the scene before the place is the one that asked
+      // for it — the service tiles when they are a scene, else the options.
+      if (ctx.locationAfterConfigure) {
+        return ctx.needsServiceSelect ? "service_select" : "configure";
+      }
       if (ctx.hasLocation && ctx.hasService) return afterIntent(ctx);
       return ctx.hasLocation ? "service_select" : "home";
     case "location_pin":
       return ctx.pinEntry === "home" ? "home" : "location_search";
     case "service_select":
-      return "home";
+      return ctx.selectAfterConfigure ? "configure" : "home";
     case "configure":
+      if (ctx.selectAfterConfigure) return "home";
       return ctx.needsServiceSelect === false
         ? "location_search"
         : "service_select";
     case "quote":
+      // The last thing answered was the place, so that is what back revises.
+      if (ctx.locationAfterConfigure) return "location_search";
       return ctx.needsConfigure ? "configure" : "service_select";
     default:
       // Committed states are not unwound by Back. Leaving a committed request

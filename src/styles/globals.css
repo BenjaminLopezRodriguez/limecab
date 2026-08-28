@@ -145,6 +145,32 @@
   html {
     @apply font-sans;
   }
+  /*
+   * iOS Safari auto-zooms a focused field whose computed font-size is < 16px.
+   * There is no API to disable that. This floors unstyled / inherited fields
+   * on iOS; size utilities still win, so never put text-sm on an input.
+   * Pinch-zoom stays available — do not set maximum-scale=1 for this.
+   */
+  @supports (-webkit-touch-callout: none) {
+    :is(
+        input:not(
+            [type="button"],
+            [type="submit"],
+            [type="reset"],
+            [type="checkbox"],
+            [type="radio"],
+            [type="file"],
+            [type="image"],
+            [type="range"],
+            [type="hidden"],
+            [type="color"]
+          ),
+        textarea,
+        select
+      ) {
+      font-size: max(16px, 1em);
+    }
+  }
   h1,
   h2,
   h3 {

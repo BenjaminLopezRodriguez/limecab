@@ -104,7 +104,7 @@ export function LimeCabVoiceBanner({
         value={capture.draft}
         onChange={(event) => onTypedChange(event.target.value)}
         placeholder="Take me to LAX in an XL"
-        className="bg-card ring-border placeholder:text-muted-foreground focus-visible:ring-ring mt-2 w-full resize-none rounded-xl px-3 py-2.5 text-[15px] leading-relaxed ring-1 focus-visible:ring-2 focus-visible:outline-none"
+        className="bg-card ring-border placeholder:text-muted-foreground focus-visible:ring-ring mt-2 w-full resize-none rounded-xl px-3 py-2.5 text-base leading-relaxed ring-1 focus-visible:ring-2 focus-visible:outline-none"
       />
       {error ? (
         <p role="alert" className="text-muted-foreground mt-2 text-sm">

@@ -12,6 +12,7 @@ import {
   type WheelEvent,
 } from "react";
 import { LocationPinMarker } from "@/components/service-app/location-pin-marker";
+import { RestStopMarker } from "@/components/service-app/rest-stop-marker";
 import { SpatialEtaMarker } from "@/components/service-app/spatial-eta-marker";
 import {
   fitMetersPerUnit,
@@ -247,6 +248,7 @@ function PlaceholderCanvas({
   zoom,
   interactive = false,
   onCameraChange,
+  onSelectPoint,
   className,
 }: MapViewProps) {
   const frameRef = useRef<HTMLDivElement>(null);
@@ -439,6 +441,7 @@ function PlaceholderCanvas({
 
           {projected.map(({ point, at }, index) => {
             const kind = point.kind ?? "marker";
+            if (kind === "poi") return null;
             const style = POINT_STYLE[kind] ?? POINT_STYLE.marker;
             const emphasised = treatment.emphasis.includes(kind);
             const dimmed = treatment.dimOthers && !emphasised;
@@ -508,6 +511,31 @@ function PlaceholderCanvas({
             </g>
           ) : null}
         </svg>
+
+        {projected.map(({ point, at }, index) =>
+          point.kind === "poi" ? (
+            <span
+              key={`poi-${point.latitude},${point.longitude},${index}`}
+              className={cn(
+                "absolute z-[1] -translate-x-1/2 -translate-y-1/2",
+                point.selected && "z-[2]",
+              )}
+              style={{
+                left: `${(at.x / 200) * 100}%`,
+                top: `${(at.y / 200) * 100}%`,
+              }}
+            >
+              <RestStopMarker
+                label={point.label ?? "Stop"}
+                selected={point.selected}
+                category={point.category}
+                onSelect={
+                  onSelectPoint ? () => onSelectPoint(point) : undefined
+                }
+              />
+            </span>
+          ) : null,
+        )}
 
         {treatment.crosshair && interactive ? (
           <LocationPinMarker name={pinLabel ?? null} locating={pinLocating} />

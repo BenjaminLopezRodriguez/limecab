@@ -86,8 +86,8 @@ export type Trip = {
   /** Estimated minutes until the driver reaches the pickup. */
   arrivalMinutes: number;
   /**
-   * Spoken to the driver at the curb. The convention exists because matching
-   * the car is the one part of a ride the app cannot verify for you.
+   * The rider presents this at the curb. The driver types it; they never
+   * see the digits. Matching the car is the one part the app cannot verify.
    */
   pickupPin: string;
   /** Present on courier trips. Possession and proof live here, not in status. */

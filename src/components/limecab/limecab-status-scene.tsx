@@ -13,6 +13,7 @@ import { DetailButton } from "@/components/limecab/limecab-parts";
 import type { DetailKind } from "@/components/limecab/limecab-interrupts";
 import type { Pickup, RideProduct, Trip } from "@/lib/limecab/domain";
 import { courierOrderLabel } from "@/lib/limecab/courier";
+import { isHelpProduct } from "@/lib/limecab/help";
 import type { Location } from "@/lib/service-app/services";
 import type { ServiceStatus, StatusLabels } from "@/lib/service-app/status";
 import { cn } from "@/lib/utils";
@@ -66,6 +67,9 @@ export function LimeCabStatusScene({
   onCancel: () => void;
 }) {
   const curbside = CURBSIDE.has(status.state);
+  // A visit is not a curb: the code is reassurance the rider may ask for, not
+  // a gate the helper has to pass.
+  const visit = isHelpProduct(product?.id);
   const pin = curbside && trip;
   const courierLive = status.state === "active" && trip?.courier;
   const hasDetails = Boolean(pin) || Boolean(courierLive) || Boolean(showDriver && trip);
@@ -92,13 +96,17 @@ export function LimeCabStatusScene({
                   title={
                     pin.courier
                       ? `${courierOrderLabel(pin.id)} · Pickup`
-                      : undefined
+                      : visit
+                        ? "Ask for this if you want to"
+                        : undefined
                   }
-                  meetAt={pickup.meetingPoint ?? pickupLine}
+                  meetAt={visit ? undefined : (pickup.meetingPoint ?? pickupLine)}
                   detail={
                     pin.courier
                       ? `${pin.courier.packageCount === 1 ? "1 package" : `${pin.courier.packageCount} packages`} · show this to your courier`
-                      : undefined
+                      : visit
+                        ? "Show this if you want to confirm it’s them."
+                        : undefined
                   }
                   provider={labels.provider}
                 />

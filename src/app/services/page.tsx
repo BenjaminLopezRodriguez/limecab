@@ -1,7 +1,9 @@
 import {
   Calendar03Icon,
   Car01Icon,
+  Home01Icon,
   Package01Icon,
+  ShoppingBasket01Icon,
   WheelchairIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
@@ -16,6 +18,8 @@ const ICONS: Record<string, IconSvgElement> = {
   ride: Car01Icon,
   reserve: Calendar03Icon,
   courier: Package01Icon,
+  shop: ShoppingBasket01Icon,
+  help: Home01Icon,
   assist: WheelchairIcon,
 };
 
@@ -48,8 +52,9 @@ export default function ServicesPage() {
       ) : null}
 
       <p className="text-muted-foreground mt-5 text-sm leading-relaxed">
-        Rides, Courier, and Reserve are live. Assist is listed so you can see
-        where LimeCab is going, not to take your booking.
+        Rides, Courier, Reserve, Shop, and Help are live. Assist is ride
+        accessibility — a hand getting into the car — and is listed so you can
+        see where LimeCab is going, not to take your booking.
       </p>
     </TabPage>
   );
@@ -106,7 +111,11 @@ function Tile({
       ? "/?service=courier"
       : service.id === "reserve"
         ? "/?service=reserve"
-        : "/";
+        : service.id === "shop"
+          ? "/?service=shop"
+          : service.id === "help"
+            ? "/?service=help"
+            : "/";
 
   return (
     <Link

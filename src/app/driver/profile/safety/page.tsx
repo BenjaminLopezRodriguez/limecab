@@ -24,7 +24,7 @@ export default async function DriverSafetyPage() {
       title="Safety"
     >
       <ProfileSection tone="driver" title="On a job">
-        <ProfileValueRow label="Pickup PIN" value="Read it back at the curb" />
+        <ProfileValueRow label="Pickup PIN" value="Ask the rider at the curb" />
         <SettingSwitch
           label="Share my live location with LimeCab"
           description="Used to show riders where you are. Required while a trip is active."

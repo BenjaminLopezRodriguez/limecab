@@ -1,14 +1,18 @@
 import {
   createHttpGeocodeAdapter,
   type GeocodeAdapter,
-  type LocationSuggestion,
 } from "@/lib/service-app/geocode-adapter";
 import {
   CURRENT_LOCATION,
   REST_STOPS,
+  SHOP_PLACES,
   geocodeAdapter as staticGeocodeAdapter,
 } from "@/lib/limecab/mock";
-import { nearbyRestStops } from "@/lib/limecab/rest-stops";
+import {
+  nearbyRestStops,
+  SHOP_CATEGORIES,
+  type RestStop,
+} from "@/lib/limecab/rest-stops";
 import type { Location } from "@/lib/service-app/services";
 
 /**
@@ -91,67 +95,52 @@ export function createPlacesAdapter(): GeocodeAdapter {
   };
 }
 
-const REST_STOP_QUERIES = ["coffee", "rest area"] as const;
-const REST_STOP_LIMIT = 8;
-
-function locationFromSuggestion(
-  suggestion: LocationSuggestion,
-): Location | null {
-  const id = suggestion.id;
-  if (!id.startsWith("mb:")) return null;
-  const payload = id.slice(3);
-  const split = payload.indexOf("::");
-  if (split < 0) return null;
-  const [lngRaw, latRaw] = payload.slice(0, split).split(",");
-  const longitude = Number(lngRaw);
-  const latitude = Number(latRaw);
-  const address = payload.slice(split + 2).trim() || suggestion.address;
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !address) {
-    return null;
-  }
-  return {
-    address,
-    shortName: suggestion.address.split(",")[0]?.trim() || address,
-    latitude,
-    longitude,
-  };
-}
-
 /**
- * Coffee and highway rest areas around a heading pin. Mapbox first; the
- * fixture list if the token cannot geocode.
+ * Category Search around a point, with a fixture list behind it: Mapbox being
+ * down must leave the scene with rows, not a blank.
+ *
+ * One lookup for every category — a second endpoint would be a second story
+ * about the same Search Box response.
  */
-export async function fetchNearbyRestStops(
+async function fetchNearbyCategory(
   origin: Location,
+  categories: readonly string[] | undefined,
+  fallback: readonly RestStop[],
   signal?: AbortSignal,
-): Promise<Location[]> {
+): Promise<RestStop[]> {
   if (origin.latitude === undefined || origin.longitude === undefined) {
-    return nearbyRestStops(origin, REST_STOPS);
+    return nearbyRestStops(origin, fallback);
   }
-  const found: Location[] = [];
-  const seen = new Set<string>();
   try {
-    await Promise.all(
-      REST_STOP_QUERIES.map(async (query) => {
-        const res = await fetch(
-          `/api/map/places?q=${encodeURIComponent(query)}&lat=${origin.latitude}&lng=${origin.longitude}`,
-          { signal },
-        );
-        if (!res.ok) return;
-        const body = (await res.json()) as { suggestions?: LocationSuggestion[] };
-        for (const suggestion of body.suggestions ?? []) {
-          const place = locationFromSuggestion(suggestion);
-          if (!place) continue;
-          const key = `${place.latitude?.toFixed(4)},${place.longitude?.toFixed(4)}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          found.push(place);
-        }
-      }),
+    const query = categories?.length
+      ? `&categories=${categories.join(",")}`
+      : "";
+    const res = await fetch(
+      `/api/map/category?lat=${origin.latitude}&lng=${origin.longitude}${query}`,
+      { signal },
     );
+    if (res.ok) {
+      const body = (await res.json()) as { stops?: RestStop[] };
+      if (body.stops && body.stops.length > 0) return body.stops;
+    }
   } catch {
     /* Mapbox down or unconfigured — fixtures still answer. */
   }
-  if (found.length > 0) return found.slice(0, REST_STOP_LIMIT);
-  return nearbyRestStops(origin, REST_STOPS);
+  return nearbyRestStops(origin, fallback);
+}
+
+/** Coffee and highway rest areas around a heading pin. */
+export async function fetchNearbyRestStops(
+  origin: Location,
+  signal?: AbortSignal,
+): Promise<RestStop[]> {
+  return fetchNearbyCategory(origin, undefined, REST_STOPS, signal);
+}
+
+/** Grocery, supermarket and pharmacy around the rider — Lime Shop's stores. */
+export async function fetchNearbyShops(
+  origin: Location,
+  signal?: AbortSignal,
+): Promise<RestStop[]> {
+  return fetchNearbyCategory(origin, SHOP_CATEGORIES, SHOP_PLACES, signal);
 }

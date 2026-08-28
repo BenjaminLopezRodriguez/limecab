@@ -205,7 +205,7 @@ export function LocationSearch({
             }}
             onKeyDown={onKeyDown}
             className={cn(
-            "h-12 rounded-full text-[15px]",
+            "h-12 rounded-full",
               inputClassName,
               end && "pr-20",
             )}

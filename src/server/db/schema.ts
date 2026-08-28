@@ -159,6 +159,13 @@ export const trips = createTable(
 
     productId: d.varchar({ length: 64 }).notNull(),
 
+    /**
+     * When the rider asked for the provider to arrive. Lime Help requires it —
+     * a visit *is* its clock. Reserve may write the same instant. Null on an
+     * immediate ride.
+     */
+    scheduledAt: d.timestamp({ withTimezone: true }),
+
     baseCents: d.integer().notNull(),
     distanceCents: d.integer().notNull(),
     timeCents: d.integer().notNull(),
@@ -178,6 +185,13 @@ export const trips = createTable(
     deliveryPin: d.varchar({ length: 8 }),
     pickupVerifiedAt: d.timestamp({ withTimezone: true }),
     deliveryVerifiedAt: d.timestamp({ withTimezone: true }),
+
+    /**
+     * Lime Shop's list: a JSON array of `{label, note?}`, validated in
+     * `trip.request`. Null on every other trip — a courier row with a list is
+     * a Shop trip, which is why Shop needs neither a product id nor a table.
+     */
+    itemList: d.text(),
 
     driverId: d.varchar({ length: 255 }).references(() => drivers.id),
 
@@ -233,6 +247,22 @@ export const drivers = createTable(
     acceptXl: d.boolean().default(true).notNull(),
     longTrips: d.boolean().default(true).notNull(),
     courierJobs: d.boolean().default(true).notNull(),
+    /**
+     * Lime Help is opt-in and defaults off: a driver signed up to drive has
+     * not agreed to walk into someone's home. The timestamp records that they
+     * read the explainer, and turning the card off clears it.
+     */
+    helpJobs: d.boolean().default(false).notNull(),
+    helpAcknowledgedAt: d.timestamp({ withTimezone: true }),
+    /**
+     * Care is Help plus a rule list the driver walked one rule at a time. The
+     * version is what makes the acknowledgement expire: when the rules change,
+     * `careRulesVersion` no longer matches and the inbox stops offering Care
+     * until they walk the new list.
+     */
+    careJobs: d.boolean().default(false).notNull(),
+    careRulesVersion: d.varchar({ length: 16 }),
+    careAcknowledgedAt: d.timestamp({ withTimezone: true }),
     headingAddress: d.varchar({ length: 512 }),
     headingLatitude: d.doublePrecision(),
     headingLongitude: d.doublePrecision(),

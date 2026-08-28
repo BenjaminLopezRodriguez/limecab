@@ -46,6 +46,8 @@ import {
   submitVoiceText,
   useVoiceCapture,
 } from "@/components/limecab/limecab-voice-banner";
+import { LimeCabHelpKindScene } from "@/components/limecab/limecab-help-kind-scene";
+import { LimeCabShopScene } from "@/components/limecab/limecab-shop-scene";
 import { LimeCabWhenScene } from "@/components/limecab/limecab-when-scene";
 import {
   LIMECAB_MAP_MODE,
@@ -56,6 +58,7 @@ import {
 } from "@/components/limecab/surfaces";
 import {
   clockTime,
+  estimateFare,
   type Pickup,
   type RideProduct,
   type Trip,
@@ -68,7 +71,16 @@ import {
   courierProductFromOptions,
   findBookableProduct,
   isCourierProduct,
+  SHOP_OPTIONS,
 } from "@/lib/limecab/courier";
+import {
+  helpKindLabel,
+  helpVisitLabel,
+  helpVisitSlots,
+  HELP_VISIT_MINUTES,
+  isCareProduct,
+  isHelpProduct,
+} from "@/lib/limecab/help";
 import {
   AVAILABLE_PROMO,
   CURRENT_LOCATION,
@@ -84,8 +96,18 @@ import {
   type FOR_THE_WAY_ITEMS,
 } from "@/lib/limecab/for-the-way";
 import { reservedLabel } from "@/lib/limecab/reserve";
+import {
+  normalizeShopList,
+  shopItemCountLabel,
+  shopListSummary,
+  type ShopItem,
+} from "@/lib/limecab/shop-list";
 import type { SearchIntent } from "@/lib/limecab/search-intent";
-import { createPlacesAdapter, setSearchProximity } from "@/lib/limecab/places";
+import {
+  createPlacesAdapter,
+  fetchNearbyShops,
+  setSearchProximity,
+} from "@/lib/limecab/places";
 import { SIM_PHASE_MS, simulatedApproachStart } from "@/lib/limecab/simulate";
 import {
   fetchDrivingRoute,
@@ -143,8 +165,17 @@ function targetFromField(field: SearchField): RideSearchTarget {
   return field === "origin" ? "pickup" : field;
 }
 
-function searchTitle(target: RideSearchTarget, courier: boolean): string {
-  if (target === "pickup") return courier ? "Pick up package" : "Pickup";
+function searchTitle(
+  target: RideSearchTarget,
+  courier: boolean,
+  shop = false,
+  help = false,
+): string {
+  if (help) return "Where is the house?";
+  if (target === "pickup") {
+    if (shop) return "Which shop?";
+    return courier ? "Pick up package" : "Pickup";
+  }
   if (target.startsWith("stop:")) {
     return `Stop ${Number(target.slice("stop:".length)) + 1}`;
   }
@@ -196,7 +227,7 @@ function locationFromFixture(query: string): Location | null {
   };
 }
 
-type BookingMode = "ride" | "courier" | "reserve";
+type BookingMode = "ride" | "courier" | "reserve" | "shop" | "help";
 
 /**
  * A trip row becomes a rider-facing `Trip` only once dispatch has attached a
@@ -328,11 +359,27 @@ function LimeCabFlow({
   const searchParams = useSearchParams();
   const wantCourier = searchParams.get("service") === "courier";
   const wantReserve = searchParams.get("service") === "reserve";
+  const wantShop = searchParams.get("service") === "shop";
+  const wantHelp = searchParams.get("service") === "help";
 
   const [state, setState] = useState<ServiceAppState>("home");
   const [bookingMode, setBookingMode] = useState<BookingMode>(
-    wantCourier ? "courier" : wantReserve ? "reserve" : "ride",
+    wantHelp
+      ? "help"
+      : wantShop
+        ? "shop"
+        : wantCourier
+          ? "courier"
+          : wantReserve
+            ? "reserve"
+            : "ride",
   );
+  /**
+   * Lime Shop's store, once chosen. Not a scene flag: it is the fact that
+   * flips the flow's order — options first, drop-off last — and the reducer
+   * reads it as `locationAfterConfigure`.
+   */
+  const [shopStore, setShopStore] = useState<Location | null>(null);
   const [pickup, setPickup] = useState<Pickup>(UNSET_PICKUP);
   const [destination, setDestination] = useState<Location | null>(null);
   const [stops, setStops] = useState<Location[]>([]);
@@ -361,8 +408,16 @@ function LimeCabFlow({
 
   const product = findBookableProduct(productId ?? "", RIDE_PRODUCTS) ?? null;
   const available = product?.status === "available";
-  const courier = bookingMode === "courier";
+  // Shop rides the courier rails: same products, same recipient, same proof.
+  // Only the questions differ, so `courier` stays true for both.
+  const shop = bookingMode === "shop";
+  const courier = bookingMode === "courier" || shop;
   const reserve = bookingMode === "reserve";
+  /**
+   * Lime Help. Its scenes are the ordinary ones in an unusual order — when,
+   * then kind, then where — so it is a booking mode, not a second reducer.
+   */
+  const help = bookingMode === "help";
 
   // ---- the server is the truth -------------------------------------------
   const [tripId, setTripId] = useState<string | null>(null);
@@ -409,8 +464,11 @@ function LimeCabFlow({
       longitude: live.destinationLongitude ?? undefined,
     });
     setProductId(live.productId);
-    if (isCourierProduct(live.productId)) setBookingMode("courier");
-    else if (live.productId === "lime-reserve") setBookingMode("reserve");
+    if (isCourierProduct(live.productId)) {
+      setBookingMode(live.itemList ? "shop" : "courier");
+    } else if (isHelpProduct(live.productId)) {
+      setBookingMode("help");
+    } else if (live.productId === "lime-reserve") setBookingMode("reserve");
     setState(SCENE_FOR_STATUS[live.status]);
   }, [activeTrip.data, activeTrip.isSuccess]);
 
@@ -420,11 +478,13 @@ function LimeCabFlow({
       destination: Location;
       productId: string;
       idempotencyKey: string;
+      scheduledAt?: Date;
       courier?: {
         recipientName: string;
         recipientPhone: string;
         packageCount: number;
         proof: "hand" | "door" | "signature";
+        itemList?: ShopItem[];
       };
     }) => {
       const created = await requestTrip.mutateAsync({
@@ -441,6 +501,7 @@ function LimeCabFlow({
         },
         productId: input.productId,
         idempotencyKey: input.idempotencyKey,
+        scheduledAt: input.scheduledAt,
         courier: input.courier,
       });
       setTripId(created.id);
@@ -504,6 +565,17 @@ function LimeCabFlow({
 
   useEffect(() => {
     if (isCommitted(state)) return;
+    if (wantHelp) {
+      setBookingMode("help");
+      // The kind is the second question, so no Help product is chosen yet.
+      setProductId((id) => (isHelpProduct(id) ? id : null));
+      return;
+    }
+    if (wantShop) {
+      setBookingMode("shop");
+      setProductId((id) => (isCourierProduct(id) ? id : "courier-small"));
+      return;
+    }
     if (wantCourier) {
       setBookingMode("courier");
       setProductId((id) => (isCourierProduct(id) ? id : "courier-small"));
@@ -513,17 +585,27 @@ function LimeCabFlow({
       setBookingMode("reserve");
       setProductId("lime-reserve");
     }
-  }, [wantCourier, wantReserve, state]);
+  }, [wantCourier, wantHelp, wantReserve, wantShop, state]);
 
   useEffect(() => {
-    if (wantCourier || wantReserve || isCommitted(state) || state !== "home") {
+    if (
+      wantCourier ||
+      wantReserve ||
+      wantShop ||
+      wantHelp ||
+      isCommitted(state) ||
+      state !== "home"
+    ) {
       return;
     }
     setBookingMode("ride");
+    setShopStore(null);
     setProductId((id) =>
-      isCourierProduct(id) || id === "lime-reserve" ? null : id,
+      isCourierProduct(id) || isHelpProduct(id) || id === "lime-reserve"
+        ? null
+        : id,
     );
-  }, [wantCourier, wantReserve, state]);
+  }, [wantCourier, wantHelp, wantReserve, wantShop, state]);
 
   const go = useCallback(
     (
@@ -534,19 +616,26 @@ function LimeCabFlow({
         pinEntry: "home" | "search";
         needsConfigure: boolean;
         needsServiceSelect: boolean;
+        locationAfterConfigure: boolean;
+        selectAfterConfigure: boolean;
       }>,
     ) =>
       setState((current) =>
         reduceServiceAppState(current, event, {
           hasLocation: Boolean(destination),
           hasService: courier || reserve || Boolean(available),
-          needsConfigure: courier || reserve,
-          needsServiceSelect: !courier && !reserve,
+          needsConfigure: courier || reserve || help,
+          needsServiceSelect: (!courier && !reserve) || help,
+          // Shop asks for the shop, then the list, then the drop-off — until
+          // the shop is chosen it is in its ordinary order. Help always asks
+          // when, then what kind, then where.
+          locationAfterConfigure: help || (shop && shopStore !== null),
+          selectAfterConfigure: help,
           pinEntry,
           ...overrides,
         }),
       ),
-    [available, courier, destination, pinEntry, reserve],
+    [available, courier, destination, help, pinEntry, reserve, shop, shopStore],
   );
 
   const duration = PHASE_HINT_MS[state] ?? 0;
@@ -1000,13 +1089,22 @@ function LimeCabFlow({
               destination ? (
                 <MapRouteBar
                   origin={pickupLine}
-                  destination={destinationLine}
+                  // A visit has one address; the bar would otherwise show it
+                  // twice with an arrow between.
+                  destination={help ? "" : destinationLine}
                   // Back revises while the request is still a draft; once it is
                   // committed, Back minimizes. It never unwinds and never
                   // cancels — cancelling has its own confirmation.
                   onBack={
                     canReviseRoute
-                      ? () => go("back")
+                      ? () => {
+                          // Back out of the list revises the shop, so the
+                          // search it lands on has to be asking for one.
+                          if (shop && state === "configure") {
+                            setSearchTarget("pickup");
+                          }
+                          go("back");
+                        }
                       : liveRide
                         ? minimizeRide
                         : undefined
@@ -1057,6 +1155,11 @@ function LimeCabFlow({
         setProductId={setProductId}
         courier={courier}
         reserve={reserve}
+        shop={shop}
+        help={help}
+        shopStore={shopStore}
+        setShopStore={setShopStore}
+        setSearchTarget={setSearchTarget}
         setBookingMode={setBookingMode}
         trip={trip}
         serverStatus={serverStatus}
@@ -1165,6 +1268,11 @@ function LimeCabSurfaces({
   setProductId,
   courier,
   reserve,
+  shop,
+  help,
+  shopStore,
+  setShopStore,
+  setSearchTarget,
   setBookingMode,
   trip,
   serverStatus,
@@ -1191,6 +1299,8 @@ function LimeCabSurfaces({
       pinEntry: "home" | "search";
       needsConfigure: boolean;
       needsServiceSelect: boolean;
+      locationAfterConfigure: boolean;
+      selectAfterConfigure: boolean;
     }>,
   ) => void;
   pickup: Pickup;
@@ -1211,6 +1321,11 @@ function LimeCabSurfaces({
   setProductId: (next: string | null) => void;
   courier: boolean;
   reserve: boolean;
+  shop: boolean;
+  help: boolean;
+  shopStore: Location | null;
+  setShopStore: (next: Location | null) => void;
+  setSearchTarget: (next: RideSearchTarget) => void;
   setBookingMode: (next: BookingMode) => void;
   trip: Trip | null;
   serverStatus: TripStatus | null;
@@ -1219,11 +1334,13 @@ function LimeCabSurfaces({
     destination: Location;
     productId: string;
     idempotencyKey: string;
+    scheduledAt?: Date;
     courier?: {
       recipientName: string;
       recipientPhone: string;
       packageCount: number;
       proof: "hand" | "door" | "signature";
+      itemList?: ShopItem[];
     };
   }) => Promise<void>;
   cancelTrip: () => Promise<void>;
@@ -1256,6 +1373,13 @@ function LimeCabSurfaces({
   const [courierValues, setCourierValues] = useState<ServiceOptionValues>(() =>
     defaultOptionValues(COURIER_OPTIONS),
   );
+  /**
+   * Lime Shop's list. Draft rows, so an empty one is a row waiting to be
+   * typed rather than an item; `normalizeShopList` decides what is real.
+   */
+  const [shopItems, setShopItems] = useState<ShopItem[]>([{ label: "" }]);
+  /** What needs doing at the house. Inline on the kind scene, not a scene. */
+  const [helpNote, setHelpNote] = useState("");
   const [traveling, setTraveling] = useState(false);
   const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
   const [snack, setSnack] = useState<(typeof FOR_THE_WAY_ITEMS)[number] | null>(
@@ -1307,16 +1431,47 @@ function LimeCabSurfaces({
     },
   );
 
+  /**
+   * Shops around the rider, for Shop's "Which shop?". Mapbox Category Search
+   * with a fixture list behind it — the scene always has rows.
+   */
+  const [nearbyShops, setNearbyShops] = useState<Place[]>([]);
+  const wantsShops =
+    shop && state === "location_search" && searchTarget === "pickup";
+  useEffect(() => {
+    if (!wantsShops) return;
+    const ac = new AbortController();
+    void fetchNearbyShops(pickup, ac.signal)
+      .then((stops) =>
+        setNearbyShops(
+          stops.slice(0, 8).map((stop, index) => ({
+            id: `shop:${stop.latitude},${stop.longitude},${index}`,
+            label: stop.shortName ?? splitAddress(stop.address).line,
+            address: stop.address,
+            latitude: stop.latitude,
+            longitude: stop.longitude,
+            source: "saved" as const,
+            hint: stop.category === "pharmacy" ? "Pharmacy" : "Grocery",
+          })),
+        ),
+      )
+      .catch(() => undefined);
+    return () => ac.abort();
+  }, [pickup, wantsShops]);
+
   /** Home/Work slots, then nearby customs, then recents — not every custom. */
   const searchPlaces = useMemo<Place[]>(() => {
     const near = nearbyPlaces.data ?? [];
     const nearIds = new Set(near.map((place) => place.id));
-    return [
+    const rest = [
       ...savedSlots.filter((place) => !nearIds.has(place.id)),
       ...near,
       ...recents,
     ];
-  }, [nearbyPlaces.data, recents, savedSlots]);
+    // Picking the shop is the question, so shops come first — not the
+    // rider's own saved addresses, which are never the store.
+    return wantsShops ? [...nearbyShops, ...rest] : rest;
+  }, [nearbyPlaces.data, nearbyShops, recents, savedSlots, wantsShops]);
 
   applyVoiceRef.current = (text) => {
     const parsed = submitVoiceText(text, (message) => {
@@ -1438,6 +1593,11 @@ function LimeCabSurfaces({
     setForTheWayOpen(true);
   }, [product?.id, snack, surfaces, visible]);
 
+  const shopList = useMemo(() => normalizeShopList(shopItems), [shopItems]);
+  const shopReady =
+    shopList.length > 0 &&
+    courierDraftReady(courierDraftFromOptions(courierValues));
+
   const payment =
     PAYMENT_METHODS.find((entry) => entry.id === paymentId) ??
     PAYMENT_METHODS[0]!;
@@ -1445,10 +1605,28 @@ function LimeCabSurfaces({
 
   const quote = useMemo(() => {
     if (!product || !destination) return null;
-    const { fare, miles, minutes } = quoteFor(product, pickup, destination);
-    const optionLines = courier
-      ? summarizeOptions(COURIER_OPTIONS, courierValues)
-      : [];
+    // A visit is priced the way `trip.request` prices it: an hour at the
+    // house, zero miles. Quoting driving minutes here would show a number
+    // nobody is charged.
+    const priced = help
+      ? {
+          fare: estimateFare(product, 0, HELP_VISIT_MINUTES),
+          miles: 0,
+          minutes: HELP_VISIT_MINUTES,
+        }
+      : quoteFor(product, pickup, destination);
+    const { fare, miles, minutes } = priced;
+    const optionLines = shop
+      ? [
+          {
+            label: `Your list · ${shopItemCountLabel(shopList.length)}`,
+            value: shopListSummary(shopList),
+          },
+          ...summarizeOptions(SHOP_OPTIONS, courierValues),
+        ]
+      : courier
+        ? summarizeOptions(COURIER_OPTIONS, courierValues)
+        : [];
     return {
       fare,
       minutes,
@@ -1481,7 +1659,17 @@ function LimeCabSurfaces({
         ],
       },
     };
-  }, [courier, courierValues, destination, pickup, product, snack]);
+  }, [
+    courier,
+    courierValues,
+    destination,
+    help,
+    pickup,
+    product,
+    shop,
+    shopList,
+    snack,
+  ]);
 
   /** What the rider is actually charged, after any credit. */
   const payableCents = Math.max(
@@ -1494,6 +1682,34 @@ function LimeCabSurfaces({
     // ride, and the reducer's `select_location` has no committed guard.
     if (rideMinimized) return onRestoreRide();
     setSearchError(null);
+
+    // Lime Help's only place: the house is where the helper comes and where
+    // they stay. Sending it as both ends keeps one trip row and one pin —
+    // there is no cross-town route to draw.
+    if (help) {
+      setPickup({ ...pickup, ...result, followsDevice: false });
+      setDestination(result);
+      surfaces.perform("destinationSelected");
+      go("select_location", { hasLocation: true, hasService: true });
+      return;
+    }
+
+    // Lime Shop's first question. The store becomes the pickup and the next
+    // unknown is the list, not a second address — so this does not fall
+    // through to "which field is still empty?".
+    if (shop && (searchTarget === "pickup" || shopStore === null)) {
+      setPickup({ ...pickup, ...result, followsDevice: false });
+      setShopStore(result);
+      surfaces.perform("shopSelected");
+      go("select_location", {
+        hasService: true,
+        needsConfigure: true,
+        needsServiceSelect: false,
+        locationAfterConfigure: false,
+      });
+      return;
+    }
+
     const { draft, next } = applyRouteChoice(
       { origin: pickup, destination, stops },
       fieldFromTarget(searchTarget),
@@ -1547,12 +1763,11 @@ function LimeCabSurfaces({
         chooseLocation(result);
         return;
       }
-      setBookingMode("courier");
       setProductId("courier-small");
       if (intent === "store") {
-        // The store becomes the pickup; the rider is the recipient. "Here" is
-        // wherever they actually are — with no fix there is no here, so the
-        // flow asks for a drop-off instead of inventing one.
+        // "Get from a store" *is* Lime Shop: the store becomes the pickup and
+        // the next question is the list, not a one-line "what should they
+        // buy?" crammed into the packed-courier form.
         const here =
           pickup.address && pickup.latitude !== undefined
             ? {
@@ -1561,22 +1776,28 @@ function LimeCabSurfaces({
                 longitude: pickup.longitude,
               }
             : null;
-        setPickup({ ...result, followsDevice: false });
+        setBookingMode("shop");
+        setPickup({ ...pickup, ...result, followsDevice: false });
+        setShopStore(result);
         setDestination(here);
+        setShopItems([{ label: "" }]);
         setCourierValues({
           ...defaultOptionValues(COURIER_OPTIONS),
-          fulfillment: "buy",
           recipientName: rider?.name ?? "",
           recipientPhone: rider?.phone ?? "",
         });
-        if (!here) {
-          openSearch("destination");
-          return;
-        }
-      } else {
-        setDestination(result);
-        setCourierValues(defaultOptionValues(COURIER_OPTIONS));
+        surfaces.perform("shopSelected");
+        go("select_location", {
+          hasService: true,
+          needsConfigure: true,
+          needsServiceSelect: false,
+          locationAfterConfigure: false,
+        });
+        return;
       }
+      setBookingMode("courier");
+      setDestination(result);
+      setCourierValues(defaultOptionValues(COURIER_OPTIONS));
       surfaces.perform("destinationSelected");
       go("select_location", {
         hasLocation: true,
@@ -1648,9 +1869,16 @@ function LimeCabSurfaces({
           interim: "map",
           task: () => {
             const draft = courierDraftFromOptions(courierValues);
-            const meeting = courier
-              ? courierMeetingPoint(courierValues)
-              : [
+            // The clock is a column now, so the meeting point carries only
+            // what the rider actually wrote about the visit.
+            const meeting = help
+              ? helpNote.trim() || undefined
+              : courier
+                ? courierMeetingPoint(
+                    courierValues,
+                    shop ? shopList.length : undefined,
+                  )
+                : [
                   reserve && scheduledAt ? reservedLabel(scheduledAt) : null,
                   snack
                     ? `${snack.label} at Grand Central Market`
@@ -1667,12 +1895,18 @@ function LimeCabSurfaces({
               destination,
               productId: product.id,
               idempotencyKey: key,
+              // Reserve already had the instant client-side; a visit needs it
+              // on the row, so both send it now.
+              scheduledAt:
+                help || reserve ? (scheduledAt ?? undefined) : undefined,
               courier: courier
                 ? {
                     recipientName: draft.recipientName,
                     recipientPhone: draft.recipientPhone,
                     packageCount: draft.quantity,
                     proof: draft.proof,
+                    // A list on the row is what makes this a Shop job.
+                    itemList: shop ? shopList : undefined,
                   }
                 : undefined,
             });
@@ -1704,6 +1938,9 @@ function LimeCabSurfaces({
     idempotencyKey.current = null;
     setProductId(courier ? "courier-small" : reserve ? "lime-reserve" : null);
     setCourierValues(defaultOptionValues(COURIER_OPTIONS));
+    setShopItems([{ label: "" }]);
+    setShopStore(null);
+    setHelpNote("");
     setDestination(null);
     setStops([]);
     setScheduledAt(null);
@@ -1813,12 +2050,37 @@ function LimeCabSurfaces({
           saved={savedSlots}
           recents={recents}
           title={
-            courier ? "Where is it going?" : reserve ? "Book ahead" : undefined
+            help
+              ? "Help at home"
+              : shop
+                ? "Shop"
+                : courier
+                ? "Where is it going?"
+                : reserve
+                  ? "Book ahead"
+                  : undefined
           }
-          destinationHint={courier ? "Where is it going?" : "Where to?"}
+          destinationHint={
+            help
+              ? "When should they arrive?"
+              : shop
+                ? "Which shop?"
+                : courier
+                  ? "Where is it going?"
+                  : "Where to?"
+          }
           traveling={traveling}
           onTravelingChange={setTraveling}
-          onSearch={openSearch}
+          onSearch={(target) => {
+            // Help's first question is the clock, so its launcher opens the
+            // options scene rather than a place search.
+            if (help) {
+              surfaces.perform("chooseRide");
+              go("select_service", { hasService: false });
+              return;
+            }
+            openSearch(shop ? "pickup" : target);
+          }}
           onVoice={openVoice}
           onChooseLocation={chooseLocation}
         />
@@ -1893,7 +2155,20 @@ function LimeCabSurfaces({
               />
             ) : null}
 
-            {visible === "service_select" ? (
+            {visible === "service_select" && help ? (
+              <LimeCabHelpKindScene
+                productId={product?.id ?? null}
+                onSelect={setProductId}
+                note={helpNote}
+                onNoteChange={setHelpNote}
+                onContinue={() => {
+                  surfaces.perform("chooseRide");
+                  go("select_service", { hasService: true });
+                }}
+              />
+            ) : null}
+
+            {visible === "service_select" && !help ? (
               <LimeCabRideSelectScene
                 pickup={pickup}
                 destination={destination}
@@ -1907,7 +2182,44 @@ function LimeCabSurfaces({
             ) : null}
 
             {visible === "configure" ? (
-              reserve ? (
+              help ? (
+                <LimeCabWhenScene
+                  value={scheduledAt}
+                  onChange={setScheduledAt}
+                  onContinue={() => go("configure_done")}
+                  title="When should they arrive?"
+                  description="Daytime visits, today or tomorrow. No overnight."
+                  action="Continue"
+                  slotsFor={helpVisitSlots}
+                  emptyDayNote="No visits left today. Try tomorrow."
+                />
+              ) : shop && shopStore ? (
+                <LimeCabShopScene
+                  store={
+                    shopStore.shortName ?? splitAddress(shopStore.address).line
+                  }
+                  items={shopItems}
+                  onItemsChange={setShopItems}
+                  values={courierValues}
+                  ready={shopReady}
+                  onChange={(id, value) => {
+                    setCourierValues((current) => {
+                      const next = { ...current, [id]: value };
+                      if (id === "size") {
+                        setProductId(courierProductFromOptions(next).id);
+                      }
+                      return next;
+                    });
+                  }}
+                  onEditStore={() => openSearch("pickup")}
+                  onContinue={() => {
+                    // The remaining unknown is the drop-off, so the reducer
+                    // sends this to a prepared search and back revises here.
+                    setSearchTarget("destination");
+                    go("configure_done", { locationAfterConfigure: true });
+                  }}
+                />
+              ) : reserve ? (
                 <LimeCabWhenScene
                   value={scheduledAt}
                   onChange={setScheduledAt}
@@ -1951,11 +2263,13 @@ function LimeCabSurfaces({
                     : quote.panel.lines
                 }
                 pickupLine={pickupLine}
-                destinationLine={destinationLine}
+                destinationLine={help ? "" : destinationLine}
                 stopLines={stops.map(
                   (stop) => stop.shortName ?? splitAddress(stop.address).line,
                 )}
-                pickupLabel={courier ? "Pick up" : "Pickup"}
+                pickupLabel={
+                  help ? "Where" : shop ? "Shop" : courier ? "Pick up" : "Pickup"
+                }
                 destinationLabel={courier ? "Drop-off" : "Destination"}
                 payment={payment}
                 promoApplied={promoApplied}
@@ -1963,10 +2277,18 @@ function LimeCabSurfaces({
                 error={surface.progress.error}
                 signedIn={signedIn}
                 pricingLabel={
-                  courier ? "Pricing your delivery" : "Pricing your ride"
+                  help
+                    ? "Pricing your visit"
+                    : shop
+                      ? "Pricing your trip"
+                    : courier
+                      ? "Pricing your delivery"
+                      : "Pricing your ride"
                 }
                 etaLine={
-                  courier
+                  help && scheduledAt
+                    ? `${helpVisitLabel(scheduledAt)} · ${helpKindLabel(product.id)}`
+                    : courier
                     ? `Pickup in ~${product.etaMinutes} min · Deliver by ${clockTime(product.etaMinutes + quote.minutes)}`
                     : reserve && scheduledAt
                       ? reservedLabel(scheduledAt)
@@ -1974,20 +2296,30 @@ function LimeCabSurfaces({
                 }
                 confirmLabel={
                   signedIn
-                    ? reserve
-                      ? `Reserve Lime · ${formatMoney(payableCents)}`
-                      : undefined
+                    ? help
+                      ? `${isCareProduct(product.id) ? "Schedule Care" : "Schedule Help"} · ${formatMoney(payableCents)}`
+                      : reserve
+                        ? `Reserve Lime · ${formatMoney(payableCents)}`
+                        : undefined
                     : undefined
                 }
                 footnote={
-                  courierValues.fulfillment === "buy"
-                    ? "Item cost is paid in store; this fare is the trip. Nothing is charged in this demo."
-                    : undefined
+                  help
+                    ? "A visit is priced as an hour at the house. Nothing is charged in this demo."
+                    : shop
+                    ? "Item cost is paid in store by the courier. This price is the trip. This build does not reimburse or scan receipts."
+                    : courierValues.fulfillment === "buy"
+                      ? "Item cost is paid in store; this fare is the trip. Nothing is charged in this demo."
+                      : undefined
                 }
                 signInLabel={
-                  courier
-                    ? "Sign in to send a delivery"
-                    : "Sign in to request a ride"
+                  help
+                    ? "Sign in to schedule a visit"
+                    : shop
+                    ? "Sign in to send a courier"
+                    : courier
+                      ? "Sign in to send a delivery"
+                      : "Sign in to request a ride"
                 }
                 onEditPickup={() => openSearch("pickup")}
                 onOpenDetail={openDetail}
@@ -2015,15 +2347,25 @@ function LimeCabSurfaces({
                 cancelError={cancelError}
                 cancellable={cancellable}
                 labels={
-                  courier
-                    ? { provider: "courier", service: "delivery" }
-                    : { provider: "driver", service: "ride" }
+                  help
+                    ? { provider: "helper", service: "visit" }
+                    : courier
+                      ? { provider: "courier", service: "delivery" }
+                      : { provider: "driver", service: "ride" }
                 }
                 shareLabel={
                   traveling ? "Share with someone at home" : "Share trip"
                 }
                 liveSubtitle={
-                  snack &&
+                  // Truthful: a visit hours away must not read as a car four
+                  // minutes out, so the clock is what the live scene says.
+                  help && scheduledAt
+                    ? `${helpVisitLabel(scheduledAt)} · ${product ? helpKindLabel(product.id) : ""}`.trim()
+                    : shop
+                    ? visible === "active" || visible === "completing"
+                      ? "On the way to you"
+                      : `Buying your list · ${shopItemCountLabel(shopList.length)}, then delivering`
+                    : snack &&
                   (visible === "assigned" || visible === "provider_en_route")
                     ? `Picking up your ${snack.label.toLowerCase()}, then you`
                     : courier &&
@@ -2063,9 +2405,23 @@ function LimeCabSurfaces({
                 onTip={setTipCents}
                 onDone={reset}
                 onOpenDetail={openDetail}
-                headline={courier ? "Package delivered" : "You've arrived"}
-                totalLabel={courier ? "Delivery total" : "Trip total"}
-                providerNoun={courier ? "your courier" : "your driver"}
+                headline={
+                  help
+                    ? "Visit finished"
+                    : courier
+                      ? "Package delivered"
+                      : "You've arrived"
+                }
+                totalLabel={
+                  help ? "Visit total" : courier ? "Delivery total" : "Trip total"
+                }
+                providerNoun={
+                  help
+                    ? "your helper"
+                    : courier
+                      ? "your courier"
+                      : "your driver"
+                }
               />
             ) : null}
           </ServiceSheet>
@@ -2077,9 +2433,12 @@ function LimeCabSurfaces({
           open={state === "location_search"}
           adapter={placesAdapter}
           places={searchPlaces}
-          title={searchTitle(searchTarget, courier)}
+          title={searchTitle(searchTarget, courier, shop, help)}
           route={{
-            origin: pickupLine,
+            // Shop's first question is the store, and the rider's own pickup
+            // is not a candidate for it — a prefilled field would spend the
+            // scene searching their doorstep instead of showing shops.
+            origin: shop && !shopStore ? "" : pickupLine,
             destination: destination?.address ?? "",
             stops: stops.map((stop) => splitAddress(stop.address).line),
             active: fieldFromTarget(searchTarget),
@@ -2113,7 +2472,14 @@ function LimeCabSurfaces({
           onDismiss={() => {
             setSearchError(null);
             voice.stop();
-            go("cancel_search");
+            // Leaving a search returns to the scene that asked for it. For
+            // Shop that is the list whenever the *store* is what is being
+            // revised, whether or not a drop-off is already set.
+            go("cancel_search", {
+              ...(shop && searchTarget === "pickup"
+                ? { hasLocation: false }
+                : {}),
+            });
           }}
           error={searchError ?? voiceError}
           onError={setSearchError}

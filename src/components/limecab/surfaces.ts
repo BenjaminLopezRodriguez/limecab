@@ -150,6 +150,27 @@ export const limeCabSurfaces = createSurfaceManager({
       intent: "return",
       surfaces: { interrupt: { emphasis: "hidden" } },
     },
+    /**
+     * "Which shop?" — Lime Shop's first question. Same prepared search scene
+     * as any other place; the store it returns becomes the pickup.
+     */
+    openShopSearch: {
+      intent: "expand",
+      surfaces: {
+        map: { emphasis: "background", presentation: "locating" },
+        primary: { emphasis: "hidden" },
+        search: { emphasis: "primary", presentation: "fullscreen" },
+      },
+    },
+    /** A shop is chosen: the store pin appears and the list rises over it. */
+    shopSelected: {
+      intent: "progress",
+      surfaces: {
+        map: { emphasis: "background", presentation: "route" },
+        primary: { emphasis: "primary", presentation: "expanded" },
+        search: { emphasis: "hidden" },
+      },
+    },
     /** Correcting the pickup. Same scene, different question. */
     openPickupSearch: {
       intent: "expand",

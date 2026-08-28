@@ -136,6 +136,8 @@ export function LimeCabShell({
 function serviceHref(id: string) {
   if (id === "courier") return "/?service=courier";
   if (id === "reserve") return "/?service=reserve";
+  if (id === "shop") return "/?service=shop";
+  if (id === "help") return "/?service=help";
   return "/";
 }
 
@@ -161,7 +163,10 @@ function ServiceRibbon() {
   const activeId =
     pathname !== "/"
       ? null
-      : current === "courier" || current === "reserve"
+      : current === "courier" ||
+          current === "reserve" ||
+          current === "shop" ||
+          current === "help"
         ? current
         : "ride";
 

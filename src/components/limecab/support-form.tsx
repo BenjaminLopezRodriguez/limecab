@@ -63,7 +63,7 @@ export function SupportForm({
           value={message}
           onChange={(event) => setMessage(event.target.value)}
           rows={6}
-          className="bg-muted focus-visible:ring-ring mt-2 w-full resize-y rounded-2xl px-4 py-3 text-[15px] leading-relaxed outline-none focus-visible:ring-2"
+          className="bg-muted focus-visible:ring-ring mt-2 w-full resize-y rounded-2xl px-4 py-3 text-base leading-relaxed outline-none focus-visible:ring-2"
         />
       </label>
       {open.error ? (

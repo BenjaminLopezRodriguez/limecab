@@ -61,7 +61,9 @@ function RouteSummary({
   destination: string;
   onEdit?: () => void;
 }) {
-  const body = (
+  // A single-point task — a visit, an inspection — has no second end. Drawing
+  // an arrow from an address to itself would invent a journey.
+  const body = destination ? (
     <>
       <span className="text-muted-foreground min-w-0 max-w-[46%] truncate">
         {origin}
@@ -76,6 +78,8 @@ function RouteSummary({
         {destination}
       </span>
     </>
+  ) : (
+    <span className="min-w-0 truncate font-medium">{origin}</span>
   );
 
   if (!onEdit) {
@@ -90,7 +94,9 @@ function RouteSummary({
     <button
       type="button"
       onClick={onEdit}
-      aria-label={`Route: ${origin} to ${destination}. Edit`}
+      aria-label={
+        destination ? `Route: ${origin} to ${destination}. Edit` : `${origin}. Edit`
+      }
       className="hover:bg-accent/50 active:bg-accent focus-visible:ring-ring flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full px-1 text-sm touch-manipulation focus-visible:ring-2 focus-visible:outline-none"
     >
       {body}

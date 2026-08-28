@@ -1,0 +1,1 @@
+ALTER TABLE "limecab_trip" ADD COLUMN "itemList" text;

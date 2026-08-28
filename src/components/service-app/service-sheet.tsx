@@ -58,9 +58,10 @@ const SNAP_FOR: Record<SheetPresentation, number> = {
 };
 
 const SNAP_POINTS = [PEEK, SHEET, EXPANDED];
+const LISTED_SNAP_POINTS = [PEEK, SHEET, EXPANDED, OVERLAY];
 const OVERLAY_POINTS = [OVERLAY];
 
-export { EXPANDED as SHEET_EXPANDED_SNAP };
+export { EXPANDED as SHEET_EXPANDED_SNAP, OVERLAY as SHEET_OVERLAY_SNAP };
 
 const DESKTOP_MAX: Record<SheetPresentation, string> = {
   peek: "md:max-h-[22dvh]",
@@ -108,6 +109,7 @@ export function ServiceSheet({
   label = "Your request",
   description = "Drag to resize.",
   presentation = "sheet",
+  overlaySnap = false,
   onSnapChange,
 }: {
   children: ReactNode;
@@ -116,6 +118,11 @@ export function ServiceSheet({
   label?: string;
   description?: string;
   presentation?: SheetPresentation;
+  /**
+   * Listed sheets: the top snap is overlay (1). The 6rem default cap would
+   * make that snap unreachable, so this also lifts max-height to 100dvh.
+   */
+  overlaySnap?: boolean;
   /** Fired when the mobile drawer snaps to a new rung. */
   onSnapChange?: (snap: number) => void;
 }) {
@@ -193,7 +200,13 @@ export function ServiceSheet({
       disablePointerDismissal
       showSwipeHandle
       swipeDirection="down"
-      snapPoints={presentation === "overlay" ? OVERLAY_POINTS : SNAP_POINTS}
+      snapPoints={
+        overlaySnap
+          ? LISTED_SNAP_POINTS
+          : presentation === "overlay"
+            ? OVERLAY_POINTS
+            : SNAP_POINTS
+      }
       snapPoint={snap}
       onSnapPointChange={(value) => {
         setSnap(value);
@@ -205,6 +218,9 @@ export function ServiceSheet({
         data-presentation={presentation}
         className={cn(
           interrupted && "opacity-55 brightness-95",
+          (overlaySnap || presentation === "overlay") &&
+            "[--drawer-content-max-height:100dvh]",
+          presentation === "overlay" && "data-[swipe-direction=down]:rounded-none",
           className,
         )}
       >

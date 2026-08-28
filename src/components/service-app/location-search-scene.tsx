@@ -207,7 +207,7 @@ export function LocationSearchScene({
             inputClassName={
               route
                 ? cn(
-                    "h-12 rounded-none bg-transparent pl-10 shadow-none md:text-[15px]",
+                    "h-12 rounded-none bg-transparent pl-10 shadow-none",
                     "focus-visible:border-transparent focus-visible:ring-0",
                     canAddStop ? "pr-12" : "pr-4",
                     route.active === "destination"

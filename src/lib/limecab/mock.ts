@@ -12,7 +12,9 @@ import {
 } from "@/lib/service-app/geocode-adapter";
 import type { MapPoint } from "@/lib/service-app/map-adapter";
 import type { Location, Place } from "@/lib/service-app/services";
+import type { RestStop } from "@/lib/limecab/rest-stops";
 import { COURIER_SERVICE } from "@/lib/limecab/courier";
+import { HELP_SERVICE } from "@/lib/limecab/help";
 import {
   distanceMiles,
   estimateFare,
@@ -214,6 +216,13 @@ export const LIMECAB_SERVICES = [
     status: "available" as const,
   },
   COURIER_SERVICE,
+  HELP_SERVICE,
+  {
+    id: "shop",
+    title: "Shop",
+    description: "A courier buys your list",
+    status: "available" as const,
+  },
   {
     id: "assist",
     title: "Assist",
@@ -277,45 +286,108 @@ export const GEOCODE_FIXTURES = [
 ] as const;
 
 /**
- * Places a driver can pause: coffee, and the highway rest areas on the roads
- * out of LA. Used when Mapbox is down, never as invented demand.
+ * Shops a Lime Shop courier can buy a list at. Used when Mapbox Category
+ * Search is unavailable, so the scene has rows instead of nothing — real LA
+ * stores, never an invented chain.
  */
-export const REST_STOPS: Location[] = [
+export const SHOP_PLACES: RestStop[] = [
   {
     address: "Grand Central Market, S Broadway, Los Angeles",
     shortName: "Grand Central Market",
     latitude: 34.0508,
     longitude: -118.249,
+    category: "grocery",
+  },
+  {
+    address: "Ralphs, 645 W 9th St, Los Angeles",
+    shortName: "Ralphs",
+    latitude: 34.0435,
+    longitude: -118.2609,
+    category: "supermarket",
+  },
+  {
+    address: "Vons, 1430 S Fair Oaks Ave, Pasadena",
+    shortName: "Vons",
+    latitude: 34.1288,
+    longitude: -118.1497,
+    category: "supermarket",
+  },
+  {
+    address: "Trader Joe's, 610 S Arroyo Pkwy, Pasadena",
+    shortName: "Trader Joe's",
+    latitude: 34.1385,
+    longitude: -118.1489,
+    category: "grocery",
+  },
+  {
+    address: "CVS Pharmacy, 1533 N Lake Ave, Pasadena",
+    shortName: "CVS Pharmacy",
+    latitude: 34.1618,
+    longitude: -118.1316,
+    category: "pharmacy",
+  },
+  {
+    address: "Walgreens, 1201 S Baldwin Ave, Arcadia",
+    shortName: "Walgreens",
+    latitude: 34.1195,
+    longitude: -118.0512,
+    category: "pharmacy",
+  },
+  {
+    address: "Superior Grocers, 5050 Rosemead Blvd, Temple City",
+    shortName: "Superior Grocers",
+    latitude: 34.0947,
+    longitude: -118.0776,
+    category: "grocery",
+  },
+];
+
+/**
+ * Places a driver can pause: coffee, and the highway rest areas on the roads
+ * out of LA. Used when Mapbox is down, never as invented demand.
+ */
+export const REST_STOPS: RestStop[] = [
+  {
+    address: "Grand Central Market, S Broadway, Los Angeles",
+    shortName: "Grand Central Market",
+    latitude: 34.0508,
+    longitude: -118.249,
+    category: "coffee",
   },
   {
     address: "Intelligentsia Coffee, Sunset Blvd, Silver Lake",
     shortName: "Intelligentsia",
     latitude: 34.0836,
     longitude: -118.2736,
+    category: "coffee",
   },
   {
     address: "Verve Coffee, Spring St, Downtown Los Angeles",
     shortName: "Verve",
     latitude: 34.047,
     longitude: -118.2495,
+    category: "coffee",
   },
   {
     address: "Castaic Rest Area, I-5, Castaic",
     shortName: "Castaic Rest Area",
     latitude: 34.492,
     longitude: -118.612,
+    category: "rest_area",
   },
   {
     address: "Gorman Rest Area, I-5, Gorman",
     shortName: "Gorman Rest Area",
     latitude: 34.794,
     longitude: -118.852,
+    category: "rest_area",
   },
   {
     address: "Conejo Pass vista, US-101, Thousand Oaks",
     shortName: "Conejo Pass",
     latitude: 34.185,
     longitude: -118.883,
+    category: "rest_area",
   },
 ];
 

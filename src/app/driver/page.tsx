@@ -3,6 +3,8 @@
 import { useState } from "react";
 
 import { DriverApp } from "@/components/limecab/driver-app";
+import { HelpExplainSurface } from "@/components/limecab/driver-help-optin";
+import { AdaptiveSurface } from "@/components/service-app/adaptive-surface";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { driverSceneFromInbox } from "@/lib/limecab/driver-state";
@@ -105,6 +107,14 @@ const FIELDS = [
   },
 ] as const;
 
+/**
+ * Register, then the Help question — in that order and never merged.
+ *
+ * "Start driving" is gated on the vehicle form alone: a new driver is a
+ * driver whether or not they ever take a Help job. The explainer is a
+ * skippable interruption *after* success, and skipping it leaves the flag
+ * exactly where the column's default put it — off.
+ */
 function RegisterForm({ onDone }: { onDone: () => void }) {
   const [values, setValues] = useState({
     name: "",
@@ -113,9 +123,33 @@ function RegisterForm({ onDone }: { onDone: () => void }) {
     vehicleColor: "",
     vehiclePlate: "",
   });
-  const register = api.driver.register.useMutation({ onSuccess: onDone });
+  const [askHelp, setAskHelp] = useState(false);
+  const register = api.driver.register.useMutation({
+    onSuccess: () => setAskHelp(true),
+  });
+  const setPreferences = api.driver.setPreferences.useMutation();
 
   return (
+    <AdaptiveSurface.Root>
+      <HelpExplainSurface
+        open={askHelp}
+        busy={setPreferences.isPending}
+        onEnable={() =>
+          setPreferences.mutate(
+            { helpJobs: true },
+            {
+              onSettled: () => {
+                setAskHelp(false);
+                onDone();
+              },
+            },
+          )
+        }
+        onDismiss={() => {
+          setAskHelp(false);
+          onDone();
+        }}
+      />
     <form
       className="pt-6"
       onSubmit={(event) => {
@@ -180,5 +214,6 @@ function RegisterForm({ onDone }: { onDone: () => void }) {
         {register.isPending ? "Registering…" : "Start driving"}
       </Button>
     </form>
+    </AdaptiveSurface.Root>
   );
 }

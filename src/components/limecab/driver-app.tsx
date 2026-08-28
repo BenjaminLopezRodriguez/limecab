@@ -19,6 +19,7 @@ import {
   Home01Icon,
   ArrowExpand01Icon,
   Coffee01Icon,
+  Loading03Icon,
   Shield01Icon,
 } from "@hugeicons/core-free-icons";
 
@@ -29,7 +30,11 @@ import { LocationSearchScene } from "@/components/service-app/location-search-sc
 import { createMapboxAdapter } from "@/components/service-app/mapbox-adapter";
 import { ServiceAppShell } from "@/components/service-app/service-app-shell";
 import { ServiceMap } from "@/components/service-app/service-map";
-import { ServiceSheet, SHEET_EXPANDED_SNAP } from "@/components/service-app/service-sheet";
+import {
+  ServiceSheet,
+  SHEET_EXPANDED_SNAP,
+  SHEET_OVERLAY_SNAP,
+} from "@/components/service-app/service-sheet";
 import { SurfaceSkeleton } from "@/components/service-app/surface-skeleton";
 import {
   ManagedSurface,
@@ -46,14 +51,20 @@ import {
   DriverOfferScene,
   DriverOfflineHeadline,
   DriverOfflineHome,
+  DriverPickupPinScene,
   DriverRecommendedScene,
   DriverTrendsScene,
   MapControl,
+  RestStopScene,
   type JobTrip,
   type OfferTrip,
+  type RestStop,
   type TrendCell,
 } from "@/components/limecab/driver-scenes";
-import { DRIVER_TAB_HEIGHT, DriverTabBar } from "@/components/limecab/driver-tabs";
+import {
+  DRIVER_TAB_HEIGHT,
+  DriverTabBar,
+} from "@/components/limecab/driver-tabs";
 import {
   DriverSafetyToolkit,
   useDashcam,
@@ -67,14 +78,18 @@ import {
   type DriverSurfaceId,
 } from "@/components/limecab/driver-surfaces";
 import { isCourierProduct } from "@/lib/limecab/courier";
+import { isHelpProduct } from "@/lib/limecab/help";
 import {
+  currentJob,
   driverAppQuestion,
+  driverJobKind,
   driverSceneForTripStatus,
   type DriverAppState,
   isDriving,
   reduceDriverAppState,
   type DriverAppEvent,
 } from "@/lib/limecab/driver-state";
+import { ridePinBlocksStart } from "@/lib/limecab/pickup-pin";
 import { cellCenter, cellPolygon, toDriverCell } from "@/lib/limecab/h3";
 import { CURRENT_LOCATION } from "@/lib/limecab/mock";
 import {
@@ -82,9 +97,12 @@ import {
   fetchNearbyRestStops,
   setSearchProximity,
 } from "@/lib/limecab/places";
-import { fetchDrivingRoute, fetchReverseGeocode } from "@/lib/service-app/directions";
+import {
+  fetchDrivingRoute,
+  fetchReverseGeocode,
+} from "@/lib/service-app/directions";
 import type { MapPoint } from "@/lib/service-app/map-adapter";
-import { formatMoney, splitAddress, type Location } from "@/lib/service-app/services";
+import { formatMoney, splitAddress } from "@/lib/service-app/services";
 import { env } from "@/env";
 import { api, type RouterOutputs } from "@/trpc/react";
 
@@ -200,12 +218,16 @@ function DriverFlow({
   const [pinAddress, setPinAddress] = useState<string | null>(null);
   const [pinLocating, setPinLocating] = useState(false);
   /** Rest stops on the heading pin. `null` is hidden; an array is showing. */
-  const [restStops, setRestStops] = useState<Location[] | null>(null);
-  /** A rest-stop tap already named the point; skip reverse-geocode flash. */
-  const pinKnown = useRef(false);
+  const [restStops, setRestStops] = useState<RestStop[] | null>(null);
+  const [restStopsLoading, setRestStopsLoading] = useState(false);
+  /** Inspecting a stop is local sheet content, not a pin move. */
+  const [selectedRestStop, setSelectedRestStop] = useState<RestStop | null>(
+    null,
+  );
+  const restAbort = useRef<AbortController | null>(null);
   const dashcam = useDashcam();
 
-  const hunting = scene === "online" && offeredId === null;
+  const hunting = scene !== "offline" && scene !== "complete";
   const inbox = api.driver.inbox.useQuery(undefined, {
     refetchInterval: hunting ? HUNTING_MS : RESTING_MS,
   });
@@ -214,9 +236,16 @@ function DriverFlow({
   const todayCents = inbox.data?.todayCents ?? 0;
   const headingAddress = inbox.data?.driver?.headingAddress ?? null;
   const open = useMemo(() => inbox.data?.open ?? [], [inbox.data?.open]);
-  // A driver holds at most one live job; if the server ever returns more, the
-  // newest is the one they are actually doing.
-  const active = inbox.data?.active[0] ?? null;
+  const liveJobs = useMemo(
+    () => inbox.data?.active ?? [],
+    [inbox.data?.active],
+  );
+  const [focusTripId, setFocusTripId] = useState<string | null>(null);
+  const active =
+    liveJobs.find((trip) => trip.id === focusTripId) ??
+    currentJob(liveJobs) ??
+    null;
+  const queuedJobs = liveJobs.filter((trip) => trip.id !== active?.id);
   const activeStatus = active?.status ?? null;
 
   const go = useCallback(
@@ -316,33 +345,42 @@ function DriverFlow({
   );
 
   /**
-   * The best open ride, by deadhead — Uber's default when the driver is not
-   * surfing a destination filter. One offer at a time; the rest wait.
+   * Open rides as a stack. Inbox already ranked them — Pool detour when the
+   * current job is Pool, nearest deadhead otherwise. The driver can bring any
+   * card forward. Accepting one does not stop the rest from landing.
    */
   const candidate = useMemo(() => {
-    if (!hunting || !available) return null;
-    return (
-      [...open]
-        .filter((trip) => !declined.includes(trip.id))
-        .sort((a, b) => a.arrivalMinutes - b.arrivalMinutes)[0] ?? null
-    );
+    if (!hunting || !available) return [];
+    return open.filter((trip) => !declined.includes(trip.id));
   }, [available, declined, hunting, open]);
 
-  const candidateId = candidate?.id ?? null;
+  const candidateIds = candidate.map((trip) => trip.id).join(",");
   useEffect(() => {
-    if (!candidateId) return;
-    // An offer is louder than anything the driver was reading. The panel goes
-    // first so the ride does not land behind a Go Offline circle.
+    if (!hunting || !available) {
+      if (offeredId) setOfferedId(null);
+      return;
+    }
+    const stillUp = offeredId
+      ? candidate.some((trip) => trip.id === offeredId)
+      : false;
+    const nextId = stillUp ? offeredId : (candidate[0]?.id ?? null);
+    if (nextId === offeredId) return;
     if (panelRef.current) {
       setPanel(null);
       perform(
         panelRef.current === "trends" ? "closeTrends" : "closeRecommended",
       );
     }
-    setOfferedId(candidateId);
-    perform("offerIncoming");
-    alertDriver();
-  }, [candidateId, perform]);
+    setOfferedId(nextId);
+    if (nextId) {
+      perform("offerIncoming");
+      alertDriver();
+    } else {
+      perform("offerDismissed");
+    }
+    // candidateIds is the queue membership; offeredId is the front.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [available, candidateIds, hunting, offeredId, perform]);
 
   /** The ride is the driver's now — it is not declined, it is theirs. */
   const clearOffer = useCallback(() => setOfferedId(null), []);
@@ -367,7 +405,7 @@ function DriverFlow({
 
   /** The point the driver is currently driving to. */
   const target = useMemo<MapPoint | null>(() => {
-    const trip = offer ?? active;
+    const trip = active ?? offer;
     if (!trip) return null;
     const toDestination = scene === "on_trip" || scene === "complete";
     const latitude = toDestination
@@ -390,7 +428,7 @@ function DriverFlow({
    * pretend to — `Open in Maps` is the honest escape hatch.
    */
   const legKey = target
-    ? `${offer?.id ?? active?.id ?? ""}:${target.kind}`
+    ? `${active?.id ?? offer?.id ?? ""}:${target.kind}`
     : null;
   const legStart = useRef(driverPoint);
   legStart.current = driverPoint;
@@ -434,7 +472,10 @@ function DriverFlow({
   const demandAnchor = pinning
     ? (pin ?? device ?? FALLBACK_POINT)
     : (camera ?? device ?? FALLBACK_POINT);
-  const anchorCell = toDriverCell(demandAnchor.latitude, demandAnchor.longitude);
+  const anchorCell = toDriverCell(
+    demandAnchor.latitude,
+    demandAnchor.longitude,
+  );
   const idleMap = (surfaces.layout.map?.presentation ?? "idle") === "idle";
   const showDemand = !offer && (idleMap || pinning);
   const demand = api.driver.demand.useQuery(cellCenter(anchorCell), {
@@ -445,7 +486,8 @@ function DriverFlow({
   const selfCell = device
     ? toDriverCell(device.latitude, device.longitude)
     : null;
-  const pinCell = pinning && pin ? toDriverCell(pin.latitude, pin.longitude) : null;
+  const pinCell =
+    pinning && pin ? toDriverCell(pin.latitude, pin.longitude) : null;
   // Names: trends aside, and the heading pin — hot cells only, so the lattice
   // stays a lattice and the busy places read as places.
   const named = panel === "trends";
@@ -463,7 +505,11 @@ function DriverFlow({
           id: cell.h3,
           properties: {
             weight: cell.openCount + cell.weekCount,
-            ...(here ? { emphasis: "self" } : hot && pinning ? { emphasis: "hot" } : {}),
+            ...(here
+              ? { emphasis: "self" }
+              : hot && pinning
+                ? { emphasis: "hot" }
+                : {}),
             ...(named && cell.label && cell.weekCount >= 1
               ? { label: cell.label }
               : pinning && hot && cell.label
@@ -520,14 +566,24 @@ function DriverFlow({
     [device, offeredId, perform],
   );
 
+  const hideRestStops = useCallback(() => {
+    restAbort.current?.abort();
+    restAbort.current = null;
+    setRestStops(null);
+    setRestStopsLoading(false);
+    setSelectedRestStop(null);
+  }, []);
+
+  useEffect(() => () => restAbort.current?.abort(), []);
+
   const closeAside = useCallback(() => {
     if (asideRef.current === null) return;
     setAside(null);
     setPin(null);
     setPinAddress(null);
-    setRestStops(null);
+    hideRestStops();
     perform("closeAside");
-  }, [perform]);
+  }, [hideRestStops, perform]);
 
   const chooseHeadingOnMap = useCallback(() => {
     const seed = device ?? FALLBACK_POINT;
@@ -544,18 +600,13 @@ function DriverFlow({
     asideRef.current = "heading";
     setPin(null);
     setPinAddress(null);
-    setRestStops(null);
+    hideRestStops();
     setAside("heading");
     perform("closeHeadingPin");
-  }, [perform]);
+  }, [hideRestStops, perform]);
 
   useEffect(() => {
     if (!pinning || !pin) return;
-    if (pinKnown.current) {
-      pinKnown.current = false;
-      setPinLocating(false);
-      return;
-    }
     let cancelled = false;
     setPinLocating(true);
     const timer = window.setTimeout(() => {
@@ -593,24 +644,43 @@ function DriverFlow({
             longitude: stop.longitude,
             kind: "poi" as const,
             label: stop.shortName ?? splitAddress(stop.address).line,
+            selected: stop === selectedRestStop,
+            category: stop.category,
           },
         ];
       }),
-    [restStops],
+    [restStops, selectedRestStop],
   );
 
+  const restStopsOn = restStops !== null || restStopsLoading;
+
   const toggleRestStops = useCallback(() => {
-    if (restStops !== null) {
-      setRestStops(null);
+    if (restStopsOn) {
+      hideRestStops();
       return;
     }
     const origin = pin ?? device ?? FALLBACK_POINT;
-    void fetchNearbyRestStops({
-      address: pinAddress ?? "Current location",
-      latitude: origin.latitude,
-      longitude: origin.longitude,
-    }).then(setRestStops);
-  }, [device, pin, pinAddress, restStops]);
+    const ac = new AbortController();
+    restAbort.current = ac;
+    setRestStopsLoading(true);
+    void fetchNearbyRestStops(
+      {
+        address: pinAddress ?? "Current location",
+        latitude: origin.latitude,
+        longitude: origin.longitude,
+      },
+      ac.signal,
+    )
+      .then((stops) => {
+        if (!ac.signal.aborted) setRestStops(stops);
+      })
+      .catch(() => {
+        if (!ac.signal.aborted) setRestStops([]);
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setRestStopsLoading(false);
+      });
+  }, [device, hideRestStops, pin, pinAddress, restStopsOn]);
 
   const chooseRestStop = useCallback(
     (point: MapPoint) => {
@@ -619,11 +689,8 @@ function DriverFlow({
           place.latitude === point.latitude &&
           place.longitude === point.longitude,
       );
-      pinKnown.current = true;
-      setPin(point);
-      setPinAddress(stop?.address ?? point.label ?? null);
-      setPinLocating(false);
-      setRecenterAt(Date.now());
+      if (!stop) return;
+      setSelectedRestStop(stop);
     },
     [restStops],
   );
@@ -668,14 +735,29 @@ function DriverFlow({
   }, [perform]);
 
   /**
-   * Trends read as a map, or as a list. Same aside either way — the rung is
-   * the state, so there is no boolean here naming a screen.
+   * Trends read as a map, or as a list. Overlay is the list — a swipe to the
+   * top snap, or "See charts", is the same action.
    */
   const chartsOpen =
-    panel === "trends" && surfaces.layout.primary?.presentation === "expanded";
+    panel === "trends" && surfaces.layout.primary?.presentation === "overlay";
   const seeCharts = useCallback(() => {
     perform(chartsOpen ? "closeTrendCharts" : "openTrendCharts");
   }, [chartsOpen, perform]);
+
+  const finishFare = useCallback(() => {
+    setFinished(null);
+    const next = currentJob(liveJobs);
+    if (next) {
+      setFocusTripId(next.id);
+      const nextScene = driverSceneForTripStatus(next.status);
+      if (nextScene) {
+        setScene(nextScene);
+        return;
+      }
+    }
+    go("done");
+    perform("resumeIdle");
+  }, [go, liveJobs, perform]);
 
   /**
    * Coming back to the idle canvas re-frames it. An offer and a job hand the
@@ -756,10 +838,10 @@ function DriverFlow({
                 center={
                   pinning
                     ? (pin ?? driverPoint)
-                    : focus ??
+                    : (focus ??
                       (scene === "complete"
                         ? (target ?? driverPoint)
-                        : driverPoint)
+                        : driverPoint))
                 }
                 interactive={surfaces.layout.map?.interaction === "active"}
                 // A res-8 cell is ~460 m across: at the shared home zoom one
@@ -769,7 +851,7 @@ function DriverFlow({
                 onCameraChange={pinning ? setPin : setCamera}
                 onSelectPoint={pinning ? chooseRestStop : undefined}
                 points={pinning ? restStopPoints : points}
-                route={pinning ? undefined : route ?? undefined}
+                route={pinning ? undefined : (route ?? undefined)}
                 coverage={showDemand ? coverage : undefined}
                 pinLabel={
                   pinning
@@ -788,18 +870,30 @@ function DriverFlow({
                 <div className="pointer-events-none absolute inset-x-3 bottom-[calc(var(--sheet-snap,0)*100dvh_+_0.75rem)] z-10 flex items-end justify-end">
                   <MapControl
                     label={
-                      restStops
-                        ? "Hide nearby rest stops"
-                        : "Show nearby rest stops"
+                      restStopsLoading
+                        ? "Looking for rest stops"
+                        : restStopsOn
+                          ? "Hide nearby rest stops"
+                          : "Show nearby rest stops"
                     }
+                    busy={restStopsLoading}
                     onPress={toggleRestStops}
                     className={
-                      restStops
+                      restStopsOn
                         ? "bg-lime pointer-events-auto"
                         : "pointer-events-auto"
                     }
                   >
-                    <Icon icon={Coffee01Icon} size={20} aria-hidden="true" />
+                    <Icon
+                      icon={restStopsLoading ? Loading03Icon : Coffee01Icon}
+                      size={20}
+                      className={
+                        restStopsLoading
+                          ? "motion-safe:animate-spin"
+                          : undefined
+                      }
+                      aria-hidden="true"
+                    />
                   </MapControl>
                 </div>
               ) : driving || offer ? (
@@ -831,8 +925,14 @@ function DriverFlow({
                   {jobChip ? (
                     <p className="bg-card/95 ring-border absolute inset-x-3 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.25rem)] z-10 truncate rounded-full px-4 py-2 text-[15px] font-medium tracking-tight shadow-[0_4px_16px_rgba(26,24,20,0.12)] ring-1 backdrop-blur-sm">
                       {splitAddress(jobChip.pickupAddress).line}
-                      <span className="text-muted-foreground"> → </span>
-                      {splitAddress(jobChip.destinationAddress).line}
+                      {/* A visit stays at one address; an arrow back to it
+                          would read as a second leg. */}
+                      {isHelpProduct(jobChip.productId) ? null : (
+                        <>
+                          <span className="text-muted-foreground"> → </span>
+                          {splitAddress(jobChip.destinationAddress).line}
+                        </>
+                      )}
                     </p>
                   ) : null}
                 </>
@@ -851,12 +951,19 @@ function DriverFlow({
                   <div className="absolute inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-10 flex items-start justify-between gap-3">
                     {trendsUp ? (
                       <MapControl label="Back" onPress={closeTrends}>
-                        <Icon icon={ArrowLeft01Icon} size={20} aria-hidden="true" />
+                        <Icon
+                          icon={ArrowLeft01Icon}
+                          size={20}
+                          aria-hidden="true"
+                        />
                       </MapControl>
                     ) : scene === "offline" ? (
                       // Off duty and looking around: the house is the way back
                       // to the page. It is not a duty control.
-                      <MapControl label="Back to home" onPress={collapseIdleMap}>
+                      <MapControl
+                        label="Back to home"
+                        onPress={collapseIdleMap}
+                      >
                         <Icon icon={Home01Icon} size={20} aria-hidden="true" />
                       </MapControl>
                     ) : (
@@ -874,7 +981,11 @@ function DriverFlow({
                         <span className="text-lime">
                           {formatMoney(todayCents)}
                         </span>
-                        <Icon icon={ArrowRight01Icon} size={16} aria-hidden="true" />
+                        <Icon
+                          icon={ArrowRight01Icon}
+                          size={16}
+                          aria-hidden="true"
+                        />
                       </Link>
                     ) : null}
 
@@ -884,7 +995,11 @@ function DriverFlow({
                         onClick={seeCharts}
                         className="bg-card ring-border focus-visible:ring-ring flex h-11 items-center gap-2 rounded-full px-4 text-[15px] font-semibold tracking-tight shadow-[0_4px_16px_rgba(26,24,20,0.12)] ring-1 focus-visible:ring-2 focus-visible:outline-none"
                       >
-                        <Icon icon={Analytics01Icon} size={18} aria-hidden="true" />
+                        <Icon
+                          icon={Analytics01Icon}
+                          size={18}
+                          aria-hidden="true"
+                        />
                         {chartsOpen ? "See map" : "See charts"}
                       </button>
                     ) : (
@@ -911,7 +1026,11 @@ function DriverFlow({
                         onPress={recenter}
                         className="pointer-events-auto"
                       >
-                        <Icon icon={GpsSignal01Icon} size={20} aria-hidden="true" />
+                        <Icon
+                          icon={GpsSignal01Icon}
+                          size={20}
+                          aria-hidden="true"
+                        />
                       </MapControl>
                     ) : scene === "online" ? (
                       <MapControl
@@ -919,7 +1038,11 @@ function DriverFlow({
                         onPress={openTrends}
                         className="pointer-events-auto"
                       >
-                        <Icon icon={Analytics01Icon} size={20} aria-hidden="true" />
+                        <Icon
+                          icon={Analytics01Icon}
+                          size={20}
+                          aria-hidden="true"
+                        />
                       </MapControl>
                     ) : (
                       <span aria-hidden="true" />
@@ -956,15 +1079,22 @@ function DriverFlow({
           pinLocating={pinning && pinLocating}
           pinActivity={pinActivity}
           pin={pin}
+          selectedRestStop={selectedRestStop}
+          restStopsEmpty={restStops?.length === 0}
+          onClearRestStop={() => setSelectedRestStop(null)}
           onCloseAside={closeAside}
           onOpenRecommended={openRecommended}
           onCloseRecommended={closeRecommended}
           onOpenTrends={openTrends}
           onOpenPreferences={() => router.push(preferences)}
           onDismissOffer={dismissOffer}
+          onFocusOffer={setOfferedId}
+          offerStack={candidate}
+          queued={queuedJobs.map(toJobTrip)}
           onOfferTaken={clearOffer}
+          onFirstAccept={setFocusTripId}
           onFinished={setFinished}
-          onResumed={() => setFinished(null)}
+          onResumed={finishFare}
           refresh={inbox.refetch}
         />
       </ServiceAppShell>
@@ -1028,13 +1158,20 @@ function DriverSurfaces({
   pinLocating,
   pinActivity,
   pin,
+  selectedRestStop,
+  restStopsEmpty,
+  onClearRestStop,
   onCloseAside,
   onOpenRecommended,
   onCloseRecommended,
   onOpenTrends,
   onOpenPreferences,
   onDismissOffer,
+  onFocusOffer,
+  offerStack,
+  queued,
   onOfferTaken,
+  onFirstAccept,
   onFinished,
   onResumed,
   refresh,
@@ -1063,13 +1200,20 @@ function DriverSurfaces({
   pinLocating: boolean;
   pinActivity: string | null;
   pin: MapPoint | null;
+  selectedRestStop: RestStop | null;
+  restStopsEmpty: boolean;
+  onClearRestStop: () => void;
   onCloseAside: () => void;
   onOpenRecommended: () => void;
   onCloseRecommended: () => void;
   onOpenTrends: () => void;
   onOpenPreferences: () => void;
   onDismissOffer: (tripId: string) => void;
+  onFocusOffer: (tripId: string) => void;
+  offerStack: OfferTrip[];
+  queued: JobTrip[];
   onOfferTaken: () => void;
+  onFirstAccept: (tripId: string) => void;
   onFinished: (trip: JobTrip) => void;
   onResumed: () => void;
   refresh: () => Promise<unknown>;
@@ -1117,7 +1261,12 @@ function DriverSurfaces({
   const accept = api.driver.accept.useMutation();
   const advance = api.driver.advance.useMutation();
 
-  const courier = job ? isCourierProduct(job.productId) : false;
+  // Job kind, derived from the row: a courier trip carrying a list is Shop.
+  // The duty machine does not grow a member for either.
+  const kind = driverJobKind(job);
+  const courier = kind === "courier" || kind === "shop";
+  const shop = kind === "shop";
+  const helpJob = kind === "help";
 
   /* ---- duty ------------------------------------------------------------ */
 
@@ -1181,29 +1330,36 @@ function DriverSurfaces({
   const acceptOffer = () => {
     if (!offer || surface.progress.locked) return;
     const tripId = offer.id;
+    const queueing = isDriving(scene);
     setFailure(null);
+    const take = async () => {
+      await accept.mutateAsync({ tripId });
+      await refresh();
+    };
+    const succeed = () => {
+      onOfferTaken();
+      if (queueing) return;
+      onFirstAccept(tripId);
+      surfaces.perform("accepted");
+      go("accepted");
+    };
+    const fail = (reason: unknown) => {
+      setFailure(errorMessage(reason));
+      onDismissOffer(tripId);
+    };
+    if (queueing) {
+      void take().then(succeed, fail);
+      return;
+    }
     void surface
       .transition({
         intent: "progress",
         from: "online",
         to: "to_pickup",
         interim: "map",
-        task: async () => {
-          await accept.mutateAsync({ tripId });
-          await refresh();
-        },
+        task: take,
       })
-      .then(
-        () => {
-          onOfferTaken();
-          surfaces.perform("accepted");
-          go("accepted");
-        },
-        (reason: unknown) => {
-          setFailure(errorMessage(reason));
-          onDismissOffer(tripId);
-        },
-      );
+      .then(succeed, fail);
   };
 
   /* ---- the job --------------------------------------------------------- */
@@ -1212,6 +1368,16 @@ function DriverSurfaces({
 
   const runAdvance = () => {
     if (!job || !action || surface.progress.locked) return;
+    // PIN is a question *about* starting, not a hint on the way to the curb.
+    if (
+      action === "start" &&
+      ridePinBlocksStart(scene, job.pinRequired) &&
+      surfaces.layout.primary?.presentation !== "overlay"
+    ) {
+      setFailure(null);
+      surfaces.perform("openPickupPin");
+      return;
+    }
     setFailure(null);
     const next =
       action === "arrive"
@@ -1228,7 +1394,10 @@ function DriverSurfaces({
           await advance.mutateAsync({
             tripId: job.id,
             action,
-            ...(courier && action === "start" ? { pickupCode } : {}),
+            ...((shop || helpJob ? false : courier || job.pinRequired) &&
+            action === "start"
+              ? { pickupCode }
+              : {}),
             ...(courier && action === "complete"
               ? {
                   submittedPin:
@@ -1270,10 +1439,8 @@ function DriverSurfaces({
 
   /** The fare is read, not dismissed into a dead end. */
   const resumeIdle = useCallback(() => {
-    surfaces.perform("resumeIdle");
-    go("done");
     onResumed();
-  }, [go, onResumed, surfaces]);
+  }, [onResumed]);
 
   useEffect(() => {
     if (scene !== "complete") return;
@@ -1287,7 +1454,7 @@ function DriverSurfaces({
     surface.progress.phase === "idle"
       ? scene
       : ((surface.progress.content as DriverAppState | null) ?? scene);
-  const question = driverAppQuestion(visible, courier);
+  const question = driverAppQuestion(visible, kind);
 
   /**
    * The rung the primary surface is on. It comes from the layout, not from a
@@ -1307,10 +1474,15 @@ function DriverSurfaces({
       : "sheet";
   })();
 
+  const pinOverlay =
+    scene === "at_pickup" && posture === "overlay" && Boolean(job?.pinRequired);
+
   return (
     <>
       <div className="sr-only" aria-live="polite">
-        {question.question} {question.action}.
+        {pinOverlay
+          ? "Ask the rider for their security PIN. Start ride."
+          : `${question.question} ${question.action}.`}
       </div>
 
       <ManagedSurface<DriverSurfaceId> id="primary">
@@ -1333,19 +1505,53 @@ function DriverSurfaces({
             label={
               aside === "heading_pin"
                 ? "Heading"
-                : panel === "trends"
-                  ? "Earnings trends"
-                  : panel === "recommended"
-                    ? "Recommended for you"
-                    : "Your duty session"
+                : pinOverlay
+                  ? "Security PIN"
+                  : panel === "trends"
+                    ? "Earnings trends"
+                    : panel === "recommended"
+                      ? "Recommended for you"
+                      : "Your duty session"
             }
             presentation={posture}
+            overlaySnap={
+              panel === "trends" || panel === "recommended" || pinOverlay
+            }
             onSnapChange={
-              panel === "recommended"
+              pinOverlay
                 ? (snap) => {
-                    if (snap < SHEET_EXPANDED_SNAP) onCloseRecommended();
+                    if (snap < SHEET_OVERLAY_SNAP) {
+                      surfaces.perform("closePickupPin");
+                    }
                   }
-                : undefined
+                : panel === "trends" || panel === "recommended"
+                  ? (snap) => {
+                      const overlay =
+                        surfaces.layout.primary?.presentation === "overlay";
+                      if (snap >= SHEET_OVERLAY_SNAP) {
+                        surfaces.perform(
+                          panel === "trends"
+                            ? "openTrendCharts"
+                            : "expandRecommended",
+                        );
+                        return;
+                      }
+                      if (
+                        panel === "recommended" &&
+                        snap < SHEET_EXPANDED_SNAP
+                      ) {
+                        onCloseRecommended();
+                        return;
+                      }
+                      if (overlay) {
+                        surfaces.perform(
+                          panel === "trends"
+                            ? "closeTrendCharts"
+                            : "collapseRecommended",
+                        );
+                      }
+                    }
+                  : undefined
             }
           >
             {loading ? <SurfaceSkeleton lines={2} /> : null}
@@ -1355,31 +1561,46 @@ function DriverSurfaces({
                 <Button
                   variant="ghost"
                   className="text-muted-foreground mb-2 -ml-2 h-11 justify-start px-2"
-                  onClick={onBackFromHeadingPin}
+                  onClick={
+                    selectedRestStop ? onClearRestStop : onBackFromHeadingPin
+                  }
                 >
                   Back
                 </Button>
-                <LocationPinScene
-                  title="Where are you heading?"
-                  address={pinAddress}
-                  locating={pinLocating}
-                  confirmLabel="Set heading"
-                  secondary={
-                    pinActivity ? (
-                      <p className="text-muted-foreground text-sm leading-snug">
-                        {pinActivity}
-                      </p>
-                    ) : undefined
-                  }
-                  onConfirm={() => {
-                    if (!pin || !pinAddress) return;
-                    chooseHeading({
-                      address: pinAddress,
-                      latitude: pin.latitude,
-                      longitude: pin.longitude,
-                    });
-                  }}
-                />
+                {selectedRestStop ? (
+                  <RestStopScene stop={selectedRestStop} />
+                ) : (
+                  <LocationPinScene
+                    title="Where are you heading?"
+                    address={pinAddress}
+                    locating={pinLocating}
+                    confirmLabel="Set heading"
+                    secondary={
+                      pinActivity || restStopsEmpty ? (
+                        <>
+                          {pinActivity ? (
+                            <p className="text-muted-foreground text-sm leading-snug">
+                              {pinActivity}
+                            </p>
+                          ) : null}
+                          {restStopsEmpty ? (
+                            <p className="text-muted-foreground text-sm leading-snug">
+                              No rest stops nearby.
+                            </p>
+                          ) : null}
+                        </>
+                      ) : undefined
+                    }
+                    onConfirm={() => {
+                      if (!pin || !pinAddress) return;
+                      chooseHeading({
+                        address: pinAddress,
+                        latitude: pin.latitude,
+                        longitude: pin.longitude,
+                      });
+                    }}
+                  />
+                )}
               </>
             ) : null}
 
@@ -1424,18 +1645,31 @@ function DriverSurfaces({
                 one: no address, no rider, no PIN before the row exists. */}
             {!loading && aside !== "heading_pin" && isDriving(visible) ? (
               job ? (
-                <DriverJobScene
-                  scene={visible as "to_pickup" | "at_pickup" | "on_trip"}
-                  trip={job}
-                  courier={courier}
-                  pickupCode={pickupCode}
-                  onPickupCode={setPickupCode}
-                  deliveryCode={deliveryCode}
-                  onDeliveryCode={setDeliveryCode}
-                  busy={surface.progress.locked}
-                  error={failure}
-                  onAdvance={runAdvance}
-                />
+                pinOverlay ? (
+                  <DriverPickupPinScene
+                    riderName={job.riderName}
+                    value={pickupCode}
+                    onChange={setPickupCode}
+                    busy={surface.progress.locked}
+                    error={failure}
+                    onBack={() => surfaces.perform("closePickupPin")}
+                    onConfirm={runAdvance}
+                  />
+                ) : (
+                  <DriverJobScene
+                    scene={visible as "to_pickup" | "at_pickup" | "on_trip"}
+                    trip={job}
+                    queued={queued}
+                    kind={kind}
+                    pickupCode={pickupCode}
+                    onPickupCode={setPickupCode}
+                    deliveryCode={deliveryCode}
+                    onDeliveryCode={setDeliveryCode}
+                    busy={surface.progress.locked}
+                    error={failure}
+                    onAdvance={runAdvance}
+                  />
+                )
               ) : (
                 <SurfaceSkeleton lines={3} />
               )
@@ -1448,7 +1682,6 @@ function DriverSurfaces({
               <DriverCompleteScene
                 trip={job}
                 todayCents={todayCents}
-                courier={courier}
                 onDone={resumeIdle}
               />
             ) : null}
@@ -1465,11 +1698,19 @@ function DriverSurfaces({
           if (!next && offer) onDismissOffer(offer.id);
         }}
         locked={surface.progress.locked}
-        label={offer && isCourierProduct(offer.productId) ? "Delivery offer" : "Ride offer"}
+        label={
+          offer && isHelpProduct(offer.productId)
+            ? "Visit offer"
+            : offer && isCourierProduct(offer.productId)
+              ? "Delivery offer"
+              : "Ride offer"
+        }
       >
         {offer ? (
           <DriverOfferScene
             trip={offer}
+            stack={offerStack}
+            onFocus={onFocusOffer}
             secondsLeft={left}
             totalSeconds={OFFER_SECONDS}
             busy={surface.progress.locked}
@@ -1483,10 +1724,7 @@ function DriverSurfaces({
         id="interrupt"
         open={aside === "heading" || aside === "safety"}
         onOpenChange={(next) => {
-          if (
-            !next &&
-            (aside === "heading" || aside === "safety")
-          ) {
+          if (!next && (aside === "heading" || aside === "safety")) {
             onCloseAside();
           }
         }}
@@ -1534,7 +1772,7 @@ function DriverSurfaces({
                     })
                   }
                   disabled={setHeading.isPending}
-                  className="text-muted-foreground hover:bg-accent mt-4 flex min-h-12 w-full items-center rounded-2xl px-2 text-left text-[15px] focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none"
+                  className="text-muted-foreground hover:bg-accent focus-visible:ring-ring mt-4 flex min-h-12 w-full items-center rounded-2xl px-2 text-left text-[15px] focus-visible:ring-2 focus-visible:outline-none"
                 >
                   Anywhere
                 </button>
@@ -1542,9 +1780,7 @@ function DriverSurfaces({
             }
           />
         ) : null}
-        {aside === "safety" ? (
-          <DriverSafetyToolkit dashcam={dashcam} />
-        ) : null}
+        {aside === "safety" ? <DriverSafetyToolkit dashcam={dashcam} /> : null}
       </AdaptiveSurface.Interrupt>
     </>
   );
@@ -1570,9 +1806,9 @@ function toJobTrip(trip: ActiveTrip): JobTrip {
     pickupAddress: trip.pickupAddress,
     pickupMeetingPoint: trip.pickupMeetingPoint,
     destinationAddress: trip.destinationAddress,
-    // Courier codes stay with the merchant and the recipient; the driver
-    // types what they are shown.
-    pickupPin: isCourierProduct(trip.productId) ? null : trip.pickupPin,
+    itemList: trip.itemList,
+    scheduledAt: trip.scheduledAt,
+    pinRequired: trip.pinRequired,
     riderName: trip.riderName,
     riderPhone: trip.riderPhone,
     recipientName: trip.recipientName,

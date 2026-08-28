@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useSyncExternalStore, type ReactNode } from "react";
 import Link from "next/link";
 import {
   Analytics01Icon,
@@ -25,9 +25,24 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { courierOrderLabel, isCourierProduct } from "@/lib/limecab/courier";
+import {
+  helpVisitLabel,
+  isCareProduct,
+  isHelpProduct,
+} from "@/lib/limecab/help";
+import {
+  parseShopList,
+  shopItemCountLabel,
+} from "@/lib/limecab/shop-list";
 import { daypart } from "@/lib/limecab/daypart";
-import { driverAppQuestion, type DriverAppState } from "@/lib/limecab/driver-state";
+import {
+  driverAppQuestion,
+  driverJobKind,
+  type DriverAppState,
+  type DriverJobKind,
+} from "@/lib/limecab/driver-state";
 import { productLabel } from "@/lib/limecab/format";
+import type { RestStop } from "@/lib/limecab/rest-stops";
 import { formatMoney, splitAddress } from "@/lib/service-app/services";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +57,10 @@ import { cn } from "@/lib/utils";
 export type OfferTrip = {
   id: string;
   productId: string;
+  /** Lime Shop's list, as stored. Null on every other job. */
+  itemList?: string | null;
+  /** When a Help visit is due. Null on a job that starts now. */
+  scheduledAt?: Date | string | null;
   totalCents: number;
   distanceMiles: number;
   tripMinutes: number;
@@ -53,7 +72,8 @@ export type OfferTrip = {
 export type JobTrip = OfferTrip & {
   status: string;
   pickupMeetingPoint: string | null;
-  pickupPin: string | null;
+  /** True when the rider has a PIN. The digits never leave the server. */
+  pinRequired: boolean;
   riderName: string | null;
   riderPhone: string | null;
   recipientName: string | null;
@@ -251,7 +271,7 @@ function PeekIcon({
       aria-pressed={selected || undefined}
       onClick={onPress}
       className={cn(
-        "focus-visible:ring-ring flex size-11 shrink-0 items-center justify-center rounded-full touch-manipulation focus-visible:ring-2 focus-visible:outline-none",
+        "focus-visible:ring-ring flex size-11 shrink-0 touch-manipulation items-center justify-center rounded-full focus-visible:ring-2 focus-visible:outline-none",
         selected ? "bg-accent text-accent-foreground" : "hover:bg-muted",
       )}
     >
@@ -374,7 +394,7 @@ export function DriverRecommendedScene({
               onClick={onGoOffline}
               disabled={busy}
               aria-busy={busy || undefined}
-              className="border-destructive text-destructive hover:bg-destructive/5 focus-visible:ring-destructive flex size-[72px] items-center justify-center rounded-full border-[3px] touch-manipulation focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:opacity-70"
+              className="border-destructive text-destructive hover:bg-destructive/5 focus-visible:ring-destructive flex size-[72px] touch-manipulation items-center justify-center rounded-full border-[3px] focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:opacity-70"
             >
               <Icon
                 icon={busy ? Loading03Icon : HandIcon}
@@ -469,7 +489,9 @@ export function DriverTrendsScene({
           {/* Today first: a driver scrolling to find Friday on a Friday is a
               chip row that has been sorted for the calendar, not for them. */}
           <div className="-mx-5 mt-4 flex gap-2 overflow-x-auto px-5 pb-1">
-            {DAY_NAMES.map((_, offset) => (new Date().getDay() + offset) % 7).map((index) => (
+            {DAY_NAMES.map(
+              (_, offset) => (new Date().getDay() + offset) % 7,
+            ).map((index) => (
               <button
                 key={index}
                 type="button"
@@ -491,7 +513,10 @@ export function DriverTrendsScene({
               <TrendsEmptyCard />
             ) : (
               cells.map((cell) => (
-                <div key={cell.h3} className="ring-border rounded-2xl p-4 ring-1">
+                <div
+                  key={cell.h3}
+                  className="ring-border rounded-2xl p-4 ring-1"
+                >
                   <div className="flex items-start gap-3">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[19px] font-semibold tracking-[-0.02em]">
@@ -537,7 +562,9 @@ export function DriverTrendsScene({
               Hourly trends
             </p>
             <p className="text-muted-foreground mt-0.5 text-[13px]">
-              {here ? "This hour is highlighted" : "Trends fill in as you complete trips"}
+              {here
+                ? "This hour is highlighted"
+                : "Trends fill in as you complete trips"}
             </p>
             <HourlyBars
               hours={here?.buckets[day] ?? []}
@@ -639,22 +666,59 @@ export function HourlyBars({
  */
 export function DriverOfferScene({
   trip,
+  stack = [],
   secondsLeft,
   totalSeconds,
   busy,
+  onFocus,
   onAccept,
   onDecline,
 }: {
   trip: OfferTrip;
+  stack?: OfferTrip[];
   secondsLeft: number;
   totalSeconds: number;
   busy: boolean;
+  onFocus?: (tripId: string) => void;
   onAccept: () => void;
   onDecline: () => void;
 }) {
   const courier = isCourierProduct(trip.productId);
+  const shopItems = parseShopList(trip.itemList);
+  const help = isHelpProduct(trip.productId);
+  const care = isCareProduct(trip.productId);
+  const behind = stack.filter((entry) => entry.id !== trip.id);
   return (
     <>
+      {behind.length > 0 ? (
+        <div className="mb-3">
+          <p className="text-muted-foreground mb-2 text-[11px] font-medium tracking-[0.12em] uppercase">
+            {stack.length} rides
+          </p>
+          <div className="flex gap-1.5 overflow-x-auto pb-1">
+            {stack.map((entry) => {
+              const front = entry.id === trip.id;
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  aria-pressed={front}
+                  aria-label={`${formatMoney(entry.totalCents)}, ${entry.arrivalMinutes} minutes away`}
+                  onClick={() => onFocus?.(entry.id)}
+                  className={cn(
+                    "focus-visible:ring-ring shrink-0 rounded-full px-3 py-1.5 text-[13px] font-semibold tracking-tight tabular-nums ring-1 focus-visible:ring-2 focus-visible:outline-none",
+                    front
+                      ? "bg-lime text-lime-foreground ring-lime-foreground/20"
+                      : "bg-card ring-border",
+                  )}
+                >
+                  {formatMoney(entry.totalCents)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
       <div className="flex items-end justify-between gap-3">
         <p className="text-[52px] leading-none font-semibold tracking-[-0.04em] tabular-nums">
           {formatMoney(trip.totalCents)}
@@ -664,21 +728,53 @@ export function DriverOfferScene({
         </p>
       </div>
 
-      <p className="mt-2 text-[17px] font-medium tracking-tight tabular-nums">
-        {productLabel(trip.productId)} · {trip.distanceMiles.toFixed(1)} mi ·{" "}
-        {trip.tripMinutes} min
-      </p>
-      {/* The second decision input: how much unpaid driving comes first. */}
-      <p className="text-lime mt-1 text-[19px] font-semibold tracking-tight tabular-nums">
-        {trip.arrivalMinutes} min away
-      </p>
+      {/* A visit is decided on fare, then Care-or-tasks, then the clock —
+          it has no miles and no "4 min away" to weigh. */}
+      {help ? (
+        <>
+          <p
+            className={cn(
+              "mt-2 tracking-tight",
+              care
+                ? "text-[26px] leading-tight font-semibold"
+                : "text-[17px] font-medium",
+            )}
+          >
+            {care ? "Care · in the home" : "Help · light tasks"}
+          </p>
+          <p className="text-lime mt-1 text-[19px] font-semibold tracking-tight tabular-nums">
+            {scheduledLabel(trip.scheduledAt) ?? "Scheduled visit"}
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="mt-2 text-[17px] font-medium tracking-tight tabular-nums">
+            {shopItems.length > 0
+              ? `Shop · ${shopItemCountLabel(shopItems.length)}`
+              : productLabel(trip.productId)}{" "}
+            · {trip.distanceMiles.toFixed(1)} mi · {trip.tripMinutes} min
+          </p>
+          {/* The second decision input: how much unpaid driving comes first. */}
+          <p className="text-lime mt-1 text-[19px] font-semibold tracking-tight tabular-nums">
+            {trip.arrivalMinutes} min away
+          </p>
+        </>
+      )}
 
-      <RouteRail
-        pickup={trip.pickupAddress}
-        destination={trip.destinationAddress}
-        courier={courier}
-        className="mt-4"
-      />
+      {/* One address for a visit: the rail would draw a road from the house
+          to itself. */}
+      {help ? (
+        <p className="mt-4 text-[17px] leading-snug font-medium tracking-tight">
+          {trip.pickupAddress}
+        </p>
+      ) : (
+        <RouteRail
+          pickup={trip.pickupAddress}
+          destination={trip.destinationAddress}
+          courier={courier}
+          className="mt-4"
+        />
+      )}
 
       {/* A refused accept dismisses the offer, so the reason belongs on the
           peek the driver lands back on — never on the next ride's card. */}
@@ -723,7 +819,8 @@ export function DriverOfferScene({
 export function DriverJobScene({
   scene,
   trip,
-  courier,
+  queued = [],
+  kind,
   pickupCode,
   onPickupCode,
   deliveryCode,
@@ -734,7 +831,8 @@ export function DriverJobScene({
 }: {
   scene: Extract<DriverAppState, "to_pickup" | "at_pickup" | "on_trip">;
   trip: JobTrip;
-  courier: boolean;
+  queued?: JobTrip[];
+  kind: DriverJobKind;
   pickupCode: string;
   onPickupCode: (next: string) => void;
   deliveryCode: string;
@@ -743,16 +841,31 @@ export function DriverJobScene({
   error: string | null;
   onAdvance: () => void;
 }) {
-  const question = driverAppQuestion(scene, courier);
-  const heading = scene === "on_trip" ? trip.destinationAddress : trip.pickupAddress;
+  const question = driverAppQuestion(scene, kind);
+  const courier = kind === "courier" || kind === "shop";
+  const shop = kind === "shop";
+  const help = kind === "help";
+  const care = isCareProduct(trip.productId);
+  const heading =
+    scene === "on_trip" && kind !== "help"
+      ? trip.destinationAddress
+      : trip.pickupAddress;
   const proof = trip.deliveryProof;
-  const showPin = !courier && Boolean(trip.pickupPin) && scene !== "on_trip";
+  // The sheet *is* the job: a Shop courier who cannot read the list has
+  // nothing to buy. The server refuses to save a Shop trip without one.
+  const shopItems = parseShopList(trip.itemList);
 
   return (
     <>
       <p className="text-lime text-xs font-semibold tracking-[0.14em] uppercase">
-        {courier ? courierOrderLabel(trip.id) : productLabel(trip.productId)} ·{" "}
-        {formatMoney(trip.totalCents)}
+        {help
+          ? care
+            ? "Care visit"
+            : "Help · light tasks"
+          : courier
+            ? courierOrderLabel(trip.id)
+            : productLabel(trip.productId)}{" "}
+        · {formatMoney(trip.totalCents)}
       </p>
       <h2 className="mt-1 text-[26px] leading-tight font-semibold tracking-[-0.03em]">
         {question.question}
@@ -772,7 +885,13 @@ export function DriverJobScene({
           <p className="text-[19px] leading-snug font-medium tracking-tight">
             {heading}
           </p>
-          {scene !== "on_trip" && trip.pickupMeetingPoint ? (
+          {queued.length > 0 ? (
+            <p className="text-muted-foreground mt-2 text-[15px] leading-snug">
+              {queued.length} queued · next{" "}
+              {splitAddress(queued[0]!.pickupAddress).line}
+            </p>
+          ) : null}
+          {scene !== "on_trip" && !help && trip.pickupMeetingPoint ? (
             <p className="text-muted-foreground mt-0.5 text-[15px] leading-snug">
               {trip.pickupMeetingPoint}
             </p>
@@ -780,29 +899,19 @@ export function DriverJobScene({
         </div>
       </div>
 
-      {showPin ? (
-        <div className="bg-lime text-lime-foreground mt-3 flex items-center justify-between gap-4 rounded-2xl px-4 py-3">
-          <div className="min-w-0">
-            <p className="text-xs font-semibold tracking-[0.14em] uppercase">
-              Pickup PIN
-            </p>
-            <p className="mt-0.5 text-[15px] opacity-80">
-              Read it back at the curb.
-            </p>
-          </div>
-          <p className="shrink-0 text-4xl font-bold tracking-[0.1em] tabular-nums">
-            {trip.pickupPin}
-          </p>
-        </div>
-      ) : null}
-
       {/* Rider identity: who to look for, and how to reach them. */}
       {!courier && trip.riderName ? (
         <ProviderCard
           className="mt-3"
           compact
           provider={{ id: trip.id, name: trip.riderName }}
-          eta={scene === "at_pickup" ? "Waiting at the curb" : null}
+          eta={
+            scene !== "at_pickup"
+              ? null
+              : help
+                ? "Expecting you at home"
+                : "Waiting at the curb"
+          }
           actions={
             // No masked numbers in this build, so the affordance only exists
             // when there is a real number behind it.
@@ -821,6 +930,52 @@ export function DriverJobScene({
         />
       ) : null}
 
+      {help ? (
+        <div className="bg-muted/60 mt-3 rounded-2xl px-4 py-3">
+          <p className="text-muted-foreground text-xs font-semibold tracking-[0.14em] uppercase">
+            {care ? "Care visit" : "The visit"}
+          </p>
+          {scheduledLabel(trip.scheduledAt) ? (
+            <p className="mt-0.5 text-[17px] font-medium tracking-tight tabular-nums">
+              {scheduledLabel(trip.scheduledAt)}
+            </p>
+          ) : null}
+          {/* What needs doing, as the rider wrote it. */}
+          {trip.pickupMeetingPoint ? (
+            <p className="text-muted-foreground mt-1 text-[15px] leading-snug">
+              {trip.pickupMeetingPoint}
+            </p>
+          ) : null}
+          {care ? (
+            <p className="text-muted-foreground mt-1.5 text-[15px] leading-snug">
+              Care rules apply. Not medical care. Call 911 in an emergency.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {shop ? (
+        <div className="bg-muted/60 mt-3 rounded-2xl px-4 py-3">
+          <p className="text-muted-foreground text-xs font-semibold tracking-[0.14em] uppercase">
+            Shopping list · {shopItemCountLabel(shopItems.length)}
+          </p>
+          <ul className="mt-2 flex flex-col gap-2">
+            {shopItems.map((item, index) => (
+              <li key={index}>
+                <p className="text-[17px] leading-snug font-medium tracking-tight">
+                  {item.label}
+                </p>
+                {item.note ? (
+                  <p className="text-muted-foreground text-[15px] leading-snug">
+                    {item.note}
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {courier && trip.recipientName ? (
         <div className="bg-muted/60 mt-3 rounded-2xl px-4 py-3">
           <p className="text-muted-foreground text-xs font-semibold tracking-[0.14em] uppercase">
@@ -830,9 +985,11 @@ export function DriverJobScene({
             {trip.recipientName}
           </p>
           <p className="text-muted-foreground text-[15px] tabular-nums">
-            {trip.packageCount === 1
-              ? "1 package"
-              : `${trip.packageCount} packages`}
+            {shop
+              ? shopItemCountLabel(shopItems.length)
+              : trip.packageCount === 1
+                ? "1 package"
+                : `${trip.packageCount} packages`}
             {proof === "door"
               ? " · leave at door"
               : proof === "signature"
@@ -847,7 +1004,7 @@ export function DriverJobScene({
       <SheetActions>
         {/* The code field *is* the answer to this scene's question, so it
             only exists on the scene that asks it. */}
-        {courier && scene === "at_pickup" ? (
+        {courier && !shop && scene === "at_pickup" ? (
           <CodeField
             label="Merchant pickup code"
             value={pickupCode}
@@ -880,21 +1037,97 @@ export function DriverJobScene({
   );
 }
 
+/* ---------------------------------------------------------- pickup pin */
+
+/**
+ * Start ride, when this rider has a PIN. The job sheet has grown into an
+ * overlay: one question, the digits the rider reads out, and the same
+ * primary. The PIN itself is never on this screen.
+ */
+export function DriverPickupPinScene({
+  riderName,
+  value,
+  onChange,
+  busy,
+  error,
+  onBack,
+  onConfirm,
+}: {
+  riderName: string | null;
+  value: string;
+  onChange: (next: string) => void;
+  busy: boolean;
+  error: string | null;
+  onBack: () => void;
+  onConfirm: () => void;
+}) {
+  const who = riderName ?? "the rider";
+  return (
+    <>
+      <div className="flex items-center gap-3">
+        <PeekIcon label="Back to the job" onPress={onBack}>
+          <Icon icon={ArrowDown01Icon} size={22} aria-hidden="true" />
+        </PeekIcon>
+        <p className="min-w-0 flex-1 text-center text-[21px] font-semibold tracking-[-0.02em]">
+          Security PIN
+        </p>
+        <span className="size-11 shrink-0" aria-hidden="true" />
+      </div>
+
+      <p className="text-lime mt-6 text-xs font-semibold tracking-[0.14em] uppercase">
+        Before you start
+      </p>
+      <h2 className="mt-1 text-[26px] leading-tight font-semibold tracking-[-0.03em]">
+        Ask {who} for their PIN
+      </h2>
+      <p className="text-muted-foreground mt-2 text-[17px] leading-snug">
+        They have it in the app. Enter it to start the ride.
+      </p>
+
+      <div className="mt-6">
+        <CodeField
+          label="Rider PIN"
+          value={value}
+          onChange={onChange}
+          autoFocus
+        />
+      </div>
+
+      <SheetActions>
+        {error ? (
+          <p role="alert" className="text-destructive pb-1 text-[15px]">
+            {error}
+          </p>
+        ) : null}
+        <Button
+          size="lg"
+          className="h-16 w-full text-[19px]"
+          aria-busy={busy || undefined}
+          disabled={busy || value.trim().length < 4}
+          onClick={onConfirm}
+        >
+          Start ride
+        </Button>
+      </SheetActions>
+    </>
+  );
+}
+
 /* -------------------------------------------------------------- complete */
 
 /** The fare, for a beat, then straight back into the hunt. */
 export function DriverCompleteScene({
   trip,
   todayCents,
-  courier,
   onDone,
 }: {
   trip: JobTrip;
   todayCents: number;
-  courier: boolean;
   onDone: () => void;
 }) {
-  const question = driverAppQuestion("complete", courier);
+  const kind = driverJobKind(trip);
+  const courier = kind !== "ride";
+  const question = driverAppQuestion("complete", kind);
   return (
     <>
       <p className="text-lime text-xs font-semibold tracking-[0.14em] uppercase">
@@ -910,6 +1143,13 @@ export function DriverCompleteScene({
         {formatMoney(todayCents)}
         <span className="text-muted-foreground ml-1 font-normal">today</span>
       </p>
+      {/* Honest-empty: there is no reimbursement path in this build, so there
+          is no "I spent $42" field to fill in and nothing to upload. */}
+      {kind === "shop" ? (
+        <p className="text-muted-foreground mt-2 text-[15px] leading-snug">
+          Item cost stays between you and the store in this build.
+        </p>
+      ) : null}
 
       <SheetActions>
         <Button size="lg" className="h-16 w-full text-[19px]" onClick={onDone}>
@@ -926,10 +1166,12 @@ function CodeField({
   label,
   value,
   onChange,
+  autoFocus = false,
 }: {
   label: string;
   value: string;
   onChange: (next: string) => void;
+  autoFocus?: boolean;
 }) {
   return (
     <label className="block pb-2">
@@ -939,9 +1181,10 @@ function CodeField({
       <Input
         inputMode="numeric"
         autoComplete="one-time-code"
+        autoFocus={autoFocus}
         maxLength={8}
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => onChange(event.target.value.replace(/\D/g, ""))}
         placeholder="0000"
         className="mt-1.5 h-14 rounded-2xl text-center text-2xl font-semibold tracking-[0.2em] tabular-nums"
       />
@@ -949,22 +1192,120 @@ function CodeField({
   );
 }
 
+export type { RestStop };
+
 /**
- * No turn-by-turn in this build. Handing the address to the phone's own maps
- * app is what a lot of drivers do anyway, and it is honest about the gap.
+ * The visit window, as the driver reads it. A row's timestamp arrives as a
+ * Date or as JSON's string; neither is invented when it is absent.
  */
-function NavigateLink({
+function scheduledLabel(at: Date | string | null | undefined): string | null {
+  if (!at) return null;
+  const when = at instanceof Date ? at : new Date(at);
+  if (Number.isNaN(when.getTime())) return null;
+  return helpVisitLabel(when);
+}
+
+const CATEGORY_LABEL: Record<string, string> = {
+  coffee: "Coffee",
+  rest_area: "Rest area",
+  grocery: "Grocery",
+  supermarket: "Supermarket",
+  pharmacy: "Pharmacy",
+};
+
+function formatStopDistance(meters: number): string {
+  return meters < 161
+    ? `${Math.round(meters)} m`
+    : `${(meters / 1609.344).toFixed(1)} mi`;
+}
+
+function mapsHref({
   address,
+  latitude,
+  longitude,
+  ios,
+}: {
+  address: string;
+  latitude?: number;
+  longitude?: number;
+  ios: boolean;
+}): string {
+  const hasCoords =
+    latitude != null &&
+    longitude != null &&
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude);
+  const dest = hasCoords
+    ? `${latitude},${longitude}`
+    : encodeURIComponent(address);
+  return ios
+    ? `https://maps.apple.com/?daddr=${dest}&dirflg=d`
+    : `https://www.google.com/maps/dir/?api=1&destination=${dest}`;
+}
+
+/**
+ * Confirm strip for a rest-stop tap. One question: this stop? Primary hands
+ * off to the phone's maps app — there is no in-app route.
+ */
+export function RestStopScene({ stop }: { stop: RestStop }) {
+  const name = stop.shortName ?? splitAddress(stop.address).line;
+  const meta = [
+    stop.address,
+    stop.category ? CATEGORY_LABEL[stop.category] : null,
+    stop.distanceMeters != null
+      ? formatStopDistance(stop.distanceMeters)
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <div className="flex min-h-full flex-col gap-3">
+      <p className="text-muted-foreground text-[11px] font-medium tracking-[0.12em] uppercase">
+        This stop?
+      </p>
+      <p className="min-h-11 text-[15px] leading-snug font-medium tracking-tight">
+        {name}
+      </p>
+      <p className="text-muted-foreground -mt-1 text-sm leading-snug">{meta}</p>
+      <SheetActions>
+        <NavigateLink
+          address={stop.address}
+          latitude={stop.latitude}
+          longitude={stop.longitude}
+          className="bg-primary text-primary-foreground hover:bg-primary/80 h-12 w-full justify-center ring-0"
+        />
+      </SheetActions>
+    </div>
+  );
+}
+
+/**
+ * No turn-by-turn in this build. Handing the destination to the phone's own
+ * maps app is what a lot of drivers do anyway, and it is honest about the gap.
+ */
+export function NavigateLink({
+  address,
+  latitude,
+  longitude,
   className,
 }: {
   address: string;
+  latitude?: number;
+  longitude?: number;
   className?: string;
 }) {
+  const ios = useSyncExternalStore(
+    () => () => undefined,
+    () => /iPad|iPhone|iPod/.test(navigator.userAgent),
+    () => false,
+  );
   return (
     <a
-      href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`}
+      href={mapsHref({ address, latitude, longitude, ios })}
       target="_blank"
       rel="noreferrer"
+      aria-label="Open in Maps"
       className={cn(
         "ring-border hover:bg-muted focus-visible:ring-ring flex min-h-11 w-fit items-center gap-2 rounded-full px-4 text-[15px] font-semibold tracking-tight ring-1 focus-visible:ring-2 focus-visible:outline-none",
         className,
@@ -1026,12 +1367,14 @@ export function MapControl({
   label,
   href,
   onPress,
+  busy,
   className,
   children,
 }: {
   label: string;
   href?: string;
   onPress?: () => void;
+  busy?: boolean;
   className?: string;
   children: ReactNode;
 }) {
@@ -1047,7 +1390,15 @@ export function MapControl({
     );
   }
   return (
-    <button type="button" aria-label={label} onClick={onPress} className={classes}>
+    <button
+      type="button"
+      aria-label={label}
+      // Absent rather than "false": an idle control is not busy, and
+      // `busy ?? undefined` would keep the attribute on every button.
+      aria-busy={busy ? true : undefined}
+      onClick={onPress}
+      className={classes}
+    >
       {children}
     </button>
   );

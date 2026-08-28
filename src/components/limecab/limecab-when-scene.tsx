@@ -10,26 +10,41 @@ import {
 } from "@/lib/limecab/reserve";
 import { cn } from "@/lib/utils";
 
-/** One question: when do you want to be picked up? */
+/**
+ * One question: when?
+ *
+ * Reserve asks it about a pickup, Lime Help about a visit. Same clock — the
+ * copy and the list of legal times come in, so there is one half-hour picker
+ * and not two.
+ */
 export function LimeCabWhenScene({
   value,
   onChange,
   onContinue,
+  title = "When do you want to be picked up?",
+  description = "Today or tomorrow, next half-hours. Not a calendar.",
+  action = "See price",
+  slotsFor = (day) => upcomingHalfHours(day),
+  emptyDayNote = "No times left today. Try tomorrow.",
 }: {
   value: Date | null;
   onChange: (next: Date) => void;
   onContinue: () => void;
+  title?: string;
+  description?: string;
+  action?: string;
+  /** Which instants this service will actually accept for that day. */
+  slotsFor?: (day: "today" | "tomorrow") => Date[];
+  emptyDayNote?: string;
 }) {
   const [day, setDay] = useState<"today" | "tomorrow">("today");
-  const slots = useMemo(() => upcomingHalfHours(day), [day]);
+  const slots = useMemo(() => slotsFor(day), [day, slotsFor]);
 
   return (
     <div className="flex min-h-full flex-col">
-      <h2 className="text-[17px] font-medium tracking-tight">
-        When do you want to be picked up?
-      </h2>
+      <h2 className="text-[17px] font-medium tracking-tight">{title}</h2>
       <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
-        Today or tomorrow, next half-hours. Not a calendar.
+        {description}
       </p>
 
       <div className="bg-accent mt-5 flex gap-1 rounded-xl p-1" role="group">
@@ -51,6 +66,12 @@ export function LimeCabWhenScene({
           </button>
         ))}
       </div>
+
+      {slots.length === 0 ? (
+        <p className="text-muted-foreground mt-4 text-sm leading-relaxed">
+          {emptyDayNote}
+        </p>
+      ) : null}
 
       <ul className="mt-3 flex flex-col gap-1">
         {slots.map((slot) => {
@@ -76,7 +97,7 @@ export function LimeCabWhenScene({
 
       {value ? (
         <SheetActions>
-          <PrimaryAction onClick={onContinue}>See price</PrimaryAction>
+          <PrimaryAction onClick={onContinue}>{action}</PrimaryAction>
         </SheetActions>
       ) : (
         <p className="text-muted-foreground mt-5 text-sm leading-relaxed">

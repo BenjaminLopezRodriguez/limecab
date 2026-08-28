@@ -234,13 +234,22 @@ function Itinerary({
           />
         </div>
       ))}
-      <div aria-hidden="true" className="border-border ml-[5px] h-4 border-l" />
-      <ItineraryRow
-        kind="destination"
-        label={destinationLabel}
-        value={destination}
-        onPress={onEditDestination}
-      />
+      {/* A visit has one address: pickup and destination are the same house,
+          and drawing a line from it to itself would invent a journey. */}
+      {destination ? (
+        <>
+          <div
+            aria-hidden="true"
+            className="border-border ml-[5px] h-4 border-l"
+          />
+          <ItineraryRow
+            kind="destination"
+            label={destinationLabel}
+            value={destination}
+            onPress={onEditDestination}
+          />
+        </>
+      ) : null}
     </div>
   );
 }

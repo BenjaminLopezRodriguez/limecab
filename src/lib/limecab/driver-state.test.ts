@@ -3,10 +3,13 @@ import { test } from "node:test";
 
 import {
   DRIVER_APP_STATES,
+  currentJob,
   driverAppQuestion,
+  driverJobKind,
   driverSceneForTripStatus,
   driverSceneFromInbox,
   isDriving,
+  rankLiveJobs,
   reduceDriverAppState,
   type DriverAppEvent,
   type DriverAppState,
@@ -67,8 +70,8 @@ test("duty cannot be dropped mid-job", () => {
 
 test("every scene owns a question and a primary action", () => {
   for (const state of DRIVER_APP_STATES) {
-    for (const courier of [false, true]) {
-      const { question, action, exit } = driverAppQuestion(state, courier);
+    for (const kind of ["ride", "courier", "shop", "help"] as const) {
+      const { question, action, exit } = driverAppQuestion(state, kind);
       assert.ok(question.length > 0, `${state} question`);
       assert.ok(action.length > 0, `${state} action`);
       assert.ok(exit.length > 0, `${state} exit`);
@@ -102,4 +105,67 @@ test("driverSceneFromInbox matches duty and active trip", () => {
     }),
     "to_pickup",
   );
+  assert.equal(
+    driverSceneFromInbox({
+      driver: { available: true },
+      active: [
+        { status: "matched", requestedAt: "2026-01-02" },
+        { status: "in_progress", requestedAt: "2026-01-01" },
+      ],
+    }),
+    "on_trip",
+  );
+});
+
+test("rankLiveJobs keeps the current leg in front of queued accepts", () => {
+  const ranked = rankLiveJobs([
+    { id: "b", status: "matched", requestedAt: "2026-01-02" },
+    { id: "a", status: "matched", requestedAt: "2026-01-01" },
+    { id: "c", status: "in_progress", requestedAt: "2026-01-03" },
+  ]);
+  assert.deepEqual(
+    ranked.map((job) => job.id),
+    ["c", "a", "b"],
+  );
+  assert.equal(currentJob(ranked)?.id, "c");
+});
+
+test("accepting while already on a job does not leave that job", () => {
+  assert.equal(reduceDriverAppState("to_pickup", "accepted"), "to_pickup");
+  assert.equal(reduceDriverAppState("on_trip", "accepted"), "on_trip");
+});
+
+test("a courier trip carrying a list is a Shop job", () => {
+  assert.equal(driverJobKind({ productId: "lime" }), "ride");
+  assert.equal(driverJobKind({ productId: "courier-small" }), "courier");
+  assert.equal(
+    driverJobKind({ productId: "courier-small", itemList: "[]" }),
+    "courier",
+  );
+  assert.equal(
+    driverJobKind({
+      productId: "courier-small",
+      itemList: '[{"label":"Milk"}]',
+    }),
+    "shop",
+  );
+  assert.equal(driverJobKind(null), "ride");
+});
+
+test("Shop asks for the list at the store, never for a pickup code", () => {
+  const shop = driverAppQuestion("at_pickup", "shop");
+  assert.match(shop.question, /list/i);
+  assert.equal(shop.action, "Got the list");
+  assert.equal(driverAppQuestion("at_pickup", "courier").action, "Scan pickup");
+});
+
+test("a Help product is a visit, whatever else is on the row", () => {
+  assert.equal(driverJobKind({ productId: "lime-help" }), "help");
+  assert.equal(driverJobKind({ productId: "lime-care" }), "help");
+});
+
+test("a visit arrives, starts and completes — it is never a pickup", () => {
+  assert.equal(driverAppQuestion("at_pickup", "help").action, "Start visit");
+  assert.equal(driverAppQuestion("on_trip", "help").action, "Complete visit");
+  assert.match(driverAppQuestion("to_pickup", "help").question, /house/i);
 });

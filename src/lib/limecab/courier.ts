@@ -7,6 +7,7 @@
  */
 
 import type { RideProduct } from "./domain.ts";
+import { HELP_PRODUCTS } from "./help.ts";
 import type {
   ServiceOption,
   ServiceOptionValues,
@@ -139,6 +140,26 @@ export const COURIER_OPTIONS: ServiceOption[] = [
   },
 ];
 
+/**
+ * Lime Shop's options. Same courier rails minus the questions a list already
+ * answers: there is no "already packed vs buy for me" to ask (the list *is*
+ * buy-for-me), no one-line item field, and no package count — the list is the
+ * count. Size still picks the `courier-*` product.
+ */
+export const SHOP_OPTIONS: ServiceOption[] = COURIER_OPTIONS.filter((option) =>
+  ["size", "recipientName", "recipientPhone", "proof", "instructions"].includes(
+    option.id,
+  ),
+).map((option) =>
+  option.id === "size"
+    ? {
+        ...option,
+        label: "How much is it?",
+        description: "A courier buys the list, then brings it to the drop-off.",
+      }
+    : option,
+);
+
 const SIZE_PRODUCT: Record<PackageSize, string> = {
   small: "courier-small",
   medium: "courier-medium",
@@ -150,12 +171,14 @@ export function isCourierProduct(id: string | null | undefined): boolean {
   return COURIER_PRODUCTS.some((product) => product.id === id);
 }
 
+/** Every id the app can book: courier sizes, Help visits, then the rides. */
 export function findBookableProduct(
   id: string,
   rides: readonly RideProduct[] = [],
 ): RideProduct | undefined {
   return (
     COURIER_PRODUCTS.find((product) => product.id === id) ??
+    HELP_PRODUCTS.find((product) => product.id === id) ??
     rides.find((product) => product.id === id)
   );
 }
@@ -197,10 +220,24 @@ export function courierDraftReady(draft: CourierDraft): boolean {
   return draft.recipientName.length > 0 && digitCount(draft.recipientPhone) >= 7;
 }
 
-export function courierMeetingPoint(values: ServiceOptionValues): string {
+/**
+ * The line the driver reads under the address. `itemCount` is Shop's: a list
+ * is items, not sealed packages, and the sheet must not say "1 package" over
+ * a list of six.
+ */
+export function courierMeetingPoint(
+  values: ServiceOptionValues,
+  itemCount?: number,
+): string {
   const draft = courierDraftFromOptions(values);
   const count =
-    draft.quantity === 1 ? "1 package" : `${draft.quantity} packages`;
+    itemCount !== undefined
+      ? itemCount === 1
+        ? "1 item"
+        : `${itemCount} items`
+      : draft.quantity === 1
+        ? "1 package"
+        : `${draft.quantity} packages`;
   const who = draft.recipientName || "recipient";
   const handoff =
     draft.proof === "door"

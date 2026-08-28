@@ -29,9 +29,17 @@ export const DRIVER_MAP_MODE: Record<string, MapMode> = {
 
 /** The offer takes the screen; everything under it is held, not torn down. */
 const OFFER_UP = {
-  map: { emphasis: "background", presentation: "tracking", interaction: "passive" },
+  map: {
+    emphasis: "background",
+    presentation: "tracking",
+    interaction: "passive",
+  },
   primary: { emphasis: "suspended" },
-  offer: { emphasis: "interrupt", presentation: "sheet", interaction: "active" },
+  offer: {
+    emphasis: "interrupt",
+    presentation: "sheet",
+    interaction: "active",
+  },
 } as const;
 
 /**
@@ -88,7 +96,11 @@ const RECOMMENDED = {
  */
 const TRENDS = {
   map: { emphasis: "primary", presentation: "idle", interaction: "active" },
-  primary: { emphasis: "primary", presentation: "sheet", interaction: "active" },
+  primary: {
+    emphasis: "primary",
+    presentation: "sheet",
+    interaction: "active",
+  },
 } as const;
 
 /** A question *about* the duty session: the peek is held behind it. */
@@ -144,7 +156,7 @@ export const driverSurfaces = createSurfaceManager({
     },
     primary: {
       role: "primary",
-      presentations: ["launcher", "peek", "sheet", "expanded"],
+      presentations: ["launcher", "peek", "sheet", "expanded", "overlay"],
       initial: {
         emphasis: "primary",
         presentation: "peek",
@@ -188,14 +200,46 @@ export const driverSurfaces = createSurfaceManager({
     openTrends: { intent: "interrupt", surfaces: TRENDS },
     closeTrends: { intent: "return", surfaces: {} },
 
-    /** Trends, read as a list instead of as a map. Same aside, taller. */
+    /** Trends, read as a list. Overlay — the map recedes, the list is the question. */
     openTrendCharts: {
       intent: "expand",
-      surfaces: { primary: { emphasis: "primary", presentation: "expanded" } },
+      surfaces: {
+        map: {
+          emphasis: "background",
+          presentation: "idle",
+          interaction: "passive",
+        },
+        primary: {
+          emphasis: "primary",
+          presentation: "overlay",
+          interaction: "active",
+        },
+      },
     },
     closeTrendCharts: {
       intent: "collapse",
-      surfaces: { primary: { emphasis: "primary", presentation: "sheet" } },
+      surfaces: TRENDS,
+    },
+
+    /** Recommended, opened out to the viewport. Same list, overlay chrome. */
+    expandRecommended: {
+      intent: "expand",
+      surfaces: {
+        map: {
+          emphasis: "background",
+          presentation: "idle",
+          interaction: "passive",
+        },
+        primary: {
+          emphasis: "primary",
+          presentation: "overlay",
+          interaction: "active",
+        },
+      },
+    },
+    collapseRecommended: {
+      intent: "collapse",
+      surfaces: RECOMMENDED,
     },
 
     /** A ride the driver can take. The whole screen turns to it. */
@@ -216,7 +260,11 @@ export const driverSurfaces = createSurfaceManager({
           presentation: "tracking",
           interaction: "passive",
         },
-        primary: { emphasis: "primary", presentation: "sheet", interaction: "active" },
+        primary: {
+          emphasis: "primary",
+          presentation: "sheet",
+          interaction: "active",
+        },
         offer: { emphasis: "hidden" },
       },
     },
@@ -227,6 +275,39 @@ export const driverSurfaces = createSurfaceManager({
       surfaces: {
         map: { emphasis: "background", presentation: "tracking" },
         primary: { emphasis: "primary", presentation: "sheet" },
+      },
+    },
+
+    /**
+     * Start ride, and this rider has a PIN. The job sheet grows into an
+     * overlay so the driver can type what they are told — never the digits.
+     */
+    openPickupPin: {
+      intent: "expand",
+      surfaces: {
+        map: {
+          emphasis: "background",
+          presentation: "tracking",
+          interaction: "passive",
+        },
+        primary: {
+          emphasis: "primary",
+          presentation: "overlay",
+          interaction: "active",
+        },
+        offer: { emphasis: "hidden" },
+      },
+    },
+    /** Back from the PIN overlay revises the curb sheet. */
+    closePickupPin: {
+      intent: "collapse",
+      surfaces: {
+        map: { emphasis: "background", presentation: "tracking" },
+        primary: {
+          emphasis: "primary",
+          presentation: "sheet",
+          interaction: "active",
+        },
       },
     },
 
@@ -281,22 +362,38 @@ export const DRIVER_SCENE_SURFACES: Record<
   online: IDLE,
   to_pickup: {
     map: { emphasis: "background", presentation: "tracking" },
-    primary: { emphasis: "primary", presentation: "sheet", interaction: "active" },
+    primary: {
+      emphasis: "primary",
+      presentation: "sheet",
+      interaction: "active",
+    },
     offer: { emphasis: "hidden" },
   },
   at_pickup: {
     map: { emphasis: "background", presentation: "tracking" },
-    primary: { emphasis: "primary", presentation: "sheet", interaction: "active" },
+    primary: {
+      emphasis: "primary",
+      presentation: "sheet",
+      interaction: "active",
+    },
     offer: { emphasis: "hidden" },
   },
   on_trip: {
     map: { emphasis: "background", presentation: "trip" },
-    primary: { emphasis: "primary", presentation: "sheet", interaction: "active" },
+    primary: {
+      emphasis: "primary",
+      presentation: "sheet",
+      interaction: "active",
+    },
     offer: { emphasis: "hidden" },
   },
   complete: {
     map: { emphasis: "background", presentation: "receipt" },
-    primary: { emphasis: "primary", presentation: "sheet", interaction: "active" },
+    primary: {
+      emphasis: "primary",
+      presentation: "sheet",
+      interaction: "active",
+    },
     offer: { emphasis: "hidden" },
   },
 };

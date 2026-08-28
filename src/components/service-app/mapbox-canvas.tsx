@@ -11,6 +11,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 
 import { LocationPinMarker } from "@/components/service-app/location-pin-marker";
 import { CarMarker } from "@/components/service-app/car-marker";
+import { RestStopMarker } from "@/components/service-app/rest-stop-marker";
 import {
   onOverlayChange,
   readMapPadding,
@@ -346,17 +347,18 @@ export function MapboxCanvas({
             longitude={point.longitude}
             latitude={point.latitude}
             anchor="center"
-            rotationAlignment="map"
+            rotationAlignment={point.kind === "poi" ? "viewport" : "map"}
+            style={point.selected ? { zIndex: 1 } : undefined}
           >
             {point.kind === "poi" ? (
-              <button
-                type="button"
-                onClick={() => onSelectPoint?.(point)}
-                className="bg-card/95 ring-border flex max-w-[9.5rem] items-center gap-1 rounded-full px-2 py-1 text-left text-[11px] font-semibold tracking-tight shadow-[0_4px_16px_rgba(26,24,20,0.16)] ring-1"
-              >
-                <span className="bg-lime size-2 shrink-0 rounded-full" />
-                <span className="truncate">{point.label ?? "Stop"}</span>
-              </button>
+              <RestStopMarker
+                label={point.label ?? "Stop"}
+                selected={point.selected}
+                category={point.category}
+                onSelect={
+                  onSelectPoint ? () => onSelectPoint(point) : undefined
+                }
+              />
             ) : point.kind === "provider" || point.kind === "marker" ? (
               <CarMarker
                 heading={point.heading ?? 0}

@@ -172,7 +172,7 @@ function OptionRow({
   const text = typeof value === "string" ? value : "";
   const rows = option.kind === "text" ? (option.rows ?? 3) : 3;
   const fieldClass =
-    "bg-card ring-border placeholder:text-muted-foreground focus-visible:ring-ring mt-2 w-full rounded-xl px-3 py-2.5 text-[15px] leading-relaxed ring-1 focus-visible:ring-2 focus-visible:outline-none";
+    "bg-card ring-border placeholder:text-muted-foreground focus-visible:ring-ring mt-2 w-full rounded-xl px-3 py-2.5 text-base leading-relaxed ring-1 focus-visible:ring-2 focus-visible:outline-none";
   return (
     <div>
       <label

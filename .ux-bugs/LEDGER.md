@@ -240,3 +240,36 @@ them. `page.tsx` stays the register/load gate.
 | D11 | search-lists-all-customs | limecab-app.tsx searchPlaces | Empty query: Home/Work slots + H3 nearby customs + recents only |
 | D12 | pickup-no-reseed | limecab-app.tsx reset | `resetPickupSeed()` clears one-shot geolocation after a trip |
 | D13 | demand-stuck-on-pan | driver-app.tsx recenter | `setCamera(null)` on recenter / collapseIdleMap |
+
+## 2026-08-28 — Fix Session (listed sheet overlay)
+
+### Bugs found
+| ID | Slug | File | Severity | Status |
+|----|------|------|----------|--------|
+| L10 | listed-sheet-no-overlay-snap | service-sheet.tsx / driver-app.tsx | P1 | fixed 2026-08-28 |
+
+### Bugs fixed
+| ID | Slug | File | Fix |
+|----|------|------|-----|
+| L10 | listed-sheet-no-overlay-snap | service-sheet, driver-surfaces, driver-app | Full swipe on Trends / Recommended promotes to overlay (snap 1). Swipe down returns. |
+
+### Recurring patterns
+- A listed sheet's top snap is overlay, not a taller copy of the peek. `overlaySnap` lifts the 6rem drawer cap so that snap is reachable.
+
+## 2026-08-28 — Fix Session (iOS input zoom)
+
+Ledger: 0 open from this session.
+Top categories: platform / forms.
+
+### Bugs found
+| ID | Slug | File | Severity | Status |
+|----|------|------|----------|--------|
+| M4 | ios-input-auto-zoom | location-search.tsx / input.tsx | P1 | fixed 2026-08-28 |
+
+### Bugs fixed
+| ID | Slug | File | Fix |
+|----|------|------|-----|
+| M4 | ios-input-auto-zoom | input.tsx, location-search, raw textareas | Fields stay ≥16px on iOS (Safari zooms below that). No maximum-scale lock |
+
+### Recurring patterns
+- `text-[15px]` / `md:text-sm` on an input is an iOS zoom. Keep `text-base` on fields.

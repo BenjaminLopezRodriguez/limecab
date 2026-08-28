@@ -1,5 +1,15 @@
 import { TRPCError } from "@trpc/server";
-import { and, count, desc, eq, gte, inArray, isNull, notInArray, or } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  notInArray,
+  or,
+} from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -7,6 +17,19 @@ import {
   courierStartAllowed,
   isCourierProduct,
 } from "@/lib/limecab/courier";
+import {
+  careAckCurrent,
+  CARE_RULES,
+  CARE_RULES_VERSION,
+  isCareProduct,
+  isHelpProduct,
+} from "@/lib/limecab/help";
+import { RIDER_SAFETY } from "@/lib/limecab/mock";
+import {
+  redactTripPins,
+  ridePinRequired,
+  rideStartAllowed,
+} from "@/lib/limecab/pickup-pin";
 import { distanceMiles } from "@/lib/limecab/domain";
 import {
   cellCenter,
@@ -15,7 +38,9 @@ import {
   toDriverCell,
   viewportCells,
 } from "@/lib/limecab/h3";
+import { currentJob } from "@/lib/limecab/driver-state";
 import { offerHeadsToward } from "@/lib/limecab/heading";
+import { rankOpenOffers } from "@/lib/limecab/pool-match";
 import { splitAddress } from "@/lib/service-app/services";
 import { civilDateInZone, mondayCivilDateInZone } from "@/lib/limecab/week";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
@@ -162,7 +187,8 @@ export const driverRouter = createTRPCRouter({
     const driver = await ctx.db.query.drivers.findFirst({
       where: eq(drivers.userId, ctx.session.user.id),
     });
-    if (!driver) return { driver: null, completedTrips: 0, todayCents: 0, weekCents: 0 };
+    if (!driver)
+      return { driver: null, completedTrips: 0, todayCents: 0, weekCents: 0 };
 
     const [row] = await ctx.db
       .select({ n: count() })
@@ -241,17 +267,16 @@ export const driverRouter = createTRPCRouter({
     const disk = hasFreshFix(driver)
       ? cellDisk(driver.lastH3!, MARKETPLACE_K)
       : null;
-    const openWhere =
-      disk?.length
-        ? and(
-            eq(trips.status, "requested"),
-            isNull(trips.driverId),
-            // ponytail: rollout clause, added 2026-08-27. Trips requested
-            // before `pickupH3` existed have none; drop the `isNull` leg once
-            // no null-pickupH3 `requested` rows remain.
-            or(inArray(trips.pickupH3, disk), isNull(trips.pickupH3)),
-          )
-        : and(eq(trips.status, "requested"), isNull(trips.driverId));
+    const openWhere = disk?.length
+      ? and(
+          eq(trips.status, "requested"),
+          isNull(trips.driverId),
+          // ponytail: rollout clause, added 2026-08-27. Trips requested
+          // before `pickupH3` existed have none; drop the `isNull` leg once
+          // no null-pickupH3 `requested` rows remain.
+          or(inArray(trips.pickupH3, disk), isNull(trips.pickupH3)),
+        )
+      : and(eq(trips.status, "requested"), isNull(trips.driverId));
 
     const [openAll, activeRows, completed] = await Promise.all([
       ctx.db.query.trips.findMany({
@@ -272,19 +297,34 @@ export const driverRouter = createTRPCRouter({
 
     // The driver's own filters, applied where the offers are chosen. A switch
     // that does not reach this line has no business being on the screen.
-    const open = openAll.filter(
-      (trip) =>
-        offerHeadsToward(trip, heading) &&
-        (driver.courierJobs || !isCourierProduct(trip.productId)) &&
-        (driver.acceptXl || trip.productId !== "lime-xl") &&
-        (driver.longTrips || trip.distanceMiles <= LONG_TRIP_MILES),
-    );
+    const open = rankOpenOffers(
+      openAll.filter((trip) => {
+        // A visit is not a ride: it has no XL class and no distance to be
+        // long, so the ride filters do not decide whether it is offered.
+        if (isHelpProduct(trip.productId)) {
+          if (!driver.helpJobs) return false;
+          // Care needs a current acknowledgement, not just the Help flag: a
+          // driver whose rules went stale stops seeing Care immediately.
+          if (isCareProduct(trip.productId) && !careAckCurrent(driver)) {
+            return false;
+          }
+          return offerHeadsToward(trip, heading);
+        }
+        return (
+          offerHeadsToward(trip, heading) &&
+          (driver.courierJobs || !isCourierProduct(trip.productId)) &&
+          (driver.acceptXl || trip.productId !== "lime-xl") &&
+          (driver.longTrips || trip.distanceMiles <= LONG_TRIP_MILES)
+        );
+      }),
+      currentJob(activeRows),
+    ).map((trip) => redactTripPins(trip, false, RIDER_SAFETY.pickupPin));
     const take = takeFromCompleted(completed);
 
     // First name only: it is what a driver reads at a glance, and the rest is
-    // not theirs to have.
+    // not theirs to have. The PIN digits stay on the server.
     const active = activeRows.map(({ user, ...trip }) => ({
-      ...trip,
+      ...redactTripPins(trip, true, RIDER_SAFETY.pickupPin),
       riderName: firstName(user?.name),
       riderPhone: user?.phone ?? null,
     }));
@@ -357,7 +397,9 @@ export const driverRouter = createTRPCRouter({
       // One glyph per occupied cell. Positions are centroids, so two drivers
       // in the same cell would otherwise stack into one marker anyway — this
       // just says so rather than piling identical points on the canvas.
-      const cells = new Set(rows.flatMap((row) => (isCell(row.lastH3) ? [row.lastH3] : [])));
+      const cells = new Set(
+        rows.flatMap((row) => (isCell(row.lastH3) ? [row.lastH3] : [])),
+      );
       return [...cells].map((cell) => cellCenter(cell));
     }),
 
@@ -435,7 +477,8 @@ export const driverRouter = createTRPCRouter({
         if (city) entry.names.set(city, (entry.names.get(city) ?? 0) + 1);
         cellsByIndex.set(h3, entry);
       };
-      for (const row of openRows) bump(row.pickupH3, row.pickupAddress, "openCount");
+      for (const row of openRows)
+        bump(row.pickupH3, row.pickupAddress, "openCount");
       for (const row of recentRows)
         bump(row.pickupH3, row.pickupAddress, "weekCount");
 
@@ -551,7 +594,10 @@ export const driverRouter = createTRPCRouter({
             };
           })
           // Where they are first, then where they work most.
-          .sort((a, b) => Number(b.current) - Number(a.current) || b.total - a.total)
+          .sort(
+            (a, b) =>
+              Number(b.current) - Number(a.current) || b.total - a.total,
+          )
           .slice(0, TRENDS_CELL_CAP),
       };
     }),
@@ -567,12 +613,94 @@ export const driverRouter = createTRPCRouter({
         acceptXl: z.boolean().optional(),
         longTrips: z.boolean().optional(),
         courierJobs: z.boolean().optional(),
+        /**
+         * Help is consent, not a filter. Turning it on stamps the moment the
+         * driver read what Help is; turning it off clears that stamp, so
+         * re-enabling walks the explainer again.
+         */
+        helpJobs: z.boolean().optional(),
+        /**
+         * Only ever `false` here. Enabling Care is `acknowledgeCareRules`,
+         * which is the only path that can write a rules version — a lone
+         * `careJobs: true` from a client is not consent and is refused.
+         */
+        careJobs: z.literal(false).optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const helpOff = input.helpJobs === false;
       const [driver] = await ctx.db
         .update(drivers)
-        .set(input)
+        .set({
+          ...input,
+          ...(input.helpJobs === undefined
+            ? {}
+            : { helpAcknowledgedAt: input.helpJobs ? new Date() : null }),
+          // Care lives inside Help: dropping Help drops Care with it, and the
+          // acknowledgement goes with the flag rather than lingering.
+          ...(input.careJobs === false || helpOff
+            ? {
+                careJobs: false,
+                careRulesVersion: null,
+                careAcknowledgedAt: null,
+              }
+            : {}),
+        })
+        .where(eq(drivers.userId, ctx.session.user.id))
+        .returning();
+      if (!driver) throw new TRPCError({ code: "NOT_FOUND" });
+      return driver;
+    }),
+
+  /**
+   * Care, enabled. The rider-facing product does not gate on this — the
+   * *driver* gate is the inbox — so this is the only writer of the three
+   * columns, and it writes them together or not at all.
+   *
+   * The client sends which rules it showed. A stale build cannot enable Care
+   * against rules its driver never read.
+   */
+  acknowledgeCareRules: protectedProcedure
+    .input(
+      z.object({
+        version: z.string().min(1).max(16),
+        /** How many rules the driver acknowledged, one at a time. */
+        acknowledged: z.number().int().min(0).max(64),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.version !== CARE_RULES_VERSION) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "The Care rules have changed. Read them again to continue.",
+        });
+      }
+      if (input.acknowledged < CARE_RULES.length) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Every Care rule has to be acknowledged.",
+        });
+      }
+
+      const current = await ctx.db.query.drivers.findFirst({
+        where: eq(drivers.userId, ctx.session.user.id),
+        columns: { helpJobs: true },
+      });
+      if (!current) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!current.helpJobs) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Enable Help before Care.",
+        });
+      }
+
+      const [driver] = await ctx.db
+        .update(drivers)
+        .set({
+          careJobs: true,
+          careRulesVersion: CARE_RULES_VERSION,
+          careAcknowledgedAt: new Date(),
+        })
         .where(eq(drivers.userId, ctx.session.user.id))
         .returning();
       if (!driver) throw new TRPCError({ code: "NOT_FOUND" });
@@ -633,14 +761,9 @@ export const driverRouter = createTRPCRouter({
       throw new TRPCError({ code: "NOT_FOUND" });
     }
 
-    // Ride PINs are shown so the driver can read them back. Courier codes
-    // stay with the merchant and recipient — the driver types what they see.
-    const courier = isCourierProduct(trip.productId);
-    return {
-      ...trip,
-      pickupPin: isAssigned && !courier ? trip.pickupPin : null,
-      deliveryPin: null,
-    };
+    // The PIN digits stay on the server. Assigned rides only learn that a
+    // PIN is required — never what it is.
+    return redactTripPins(trip, isAssigned, RIDER_SAFETY.pickupPin);
   }),
 
   accept: protectedProcedure
@@ -704,8 +827,29 @@ export const driverRouter = createTRPCRouter({
       }
 
       const courier = isCourierProduct(trip.productId);
-      if (courier && action === "start") {
+      // Shop has no sealed package to take custody of: the courier bought the
+      // list themselves, so there is no merchant code to read back.
+      const shop = courier && Boolean(trip.itemList);
+      if (courier && !shop && action === "start") {
         const gate = courierStartAllowed(input.pickupCode, trip.pickupPin);
+        if (!gate.ok) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: gate.message,
+          });
+        }
+      }
+      if (!courier && action === "start") {
+        const required = ridePinRequired({
+          productId: trip.productId,
+          pickupPin: trip.pickupPin,
+          enabled: RIDER_SAFETY.pickupPin,
+        });
+        const gate = rideStartAllowed(
+          input.pickupCode,
+          trip.pickupPin,
+          required,
+        );
         if (!gate.ok) {
           throw new TRPCError({
             code: "PRECONDITION_FAILED",
