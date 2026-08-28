@@ -24,7 +24,9 @@ export async function GET(request: Request) {
     `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json`,
   );
   endpoint.searchParams.set("types", "address,poi,place,locality,neighborhood");
-  endpoint.searchParams.set("limit", "5");
+  // No `limit`: reverse geocoding rejects it (422) unless it is paired with a
+  // single `types` value, and we want several types so `pickClosestPlace` has
+  // something to choose from. Mapbox already returns one feature per type.
   endpoint.searchParams.set("access_token", token);
 
   const res = await mapboxFetch(endpoint, request);

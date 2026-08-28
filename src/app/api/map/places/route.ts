@@ -133,7 +133,9 @@ async function reverse(
     `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json`,
   );
   endpoint.searchParams.set("types", "address,poi,place,locality,neighborhood");
-  endpoint.searchParams.set("limit", "1");
+  // Same 422 as /api/map/reverse: `limit` is only legal on a reverse lookup
+  // when a single `types` value is given. Without it Mapbox returns the
+  // closest feature first, which is what this reads anyway.
   endpoint.searchParams.set("access_token", token);
   const res = await mapboxFetch(endpoint, request);
   if (!res.ok) {
