@@ -578,7 +578,7 @@ export function MapControl({
   children: ReactNode;
 }) {
   const classes = cn(
-    "bg-card ring-border focus-visible:ring-ring inline-flex size-11 items-center justify-center rounded-full shadow-[0_4px_16px_rgba(26,24,20,0.12)] ring-1 touch-manipulation focus-visible:ring-2 focus-visible:outline-none",
+    "bg-card ring-border focus-visible:ring-ring relative inline-flex size-11 items-center justify-center rounded-full shadow-[0_4px_16px_rgba(26,24,20,0.12)] ring-1 touch-manipulation focus-visible:ring-2 focus-visible:outline-none",
     className,
   );
   if (href) {

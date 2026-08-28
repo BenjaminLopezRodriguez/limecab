@@ -51,6 +51,7 @@ export const COURIER_PRODUCTS: RideProduct[] = [
 
 export type PackageSize = "small" | "medium" | "large";
 export type DeliveryProof = "hand" | "door" | "signature";
+export type CourierFulfillment = "packed" | "buy";
 
 export type CourierDraft = {
   size: PackageSize;
@@ -59,9 +60,21 @@ export type CourierDraft = {
   recipientPhone: string;
   proof: DeliveryProof;
   instructions: string;
+  fulfillment: CourierFulfillment;
+  itemDescription: string;
 };
 
 export const COURIER_OPTIONS: ServiceOption[] = [
+  {
+    id: "fulfillment",
+    kind: "choice",
+    label: "What's at pickup?",
+    choices: [
+      { value: "packed", label: "Already packed" },
+      { value: "buy", label: "Buy for me" },
+    ],
+    defaultValue: "packed",
+  },
   {
     id: "size",
     kind: "choice",
@@ -73,6 +86,14 @@ export const COURIER_OPTIONS: ServiceOption[] = [
       { value: "large", label: "Large", hint: "XL" },
     ],
     defaultValue: "small",
+  },
+  {
+    id: "itemDescription",
+    kind: "text",
+    label: "What should they buy?",
+    placeholder: "Snake plant, about 12 inches",
+    maxLength: 160,
+    rows: 2,
   },
   {
     id: "quantity",
@@ -161,10 +182,18 @@ export function courierDraftFromOptions(
     proof: parseProof(values.proof),
     instructions:
       typeof values.instructions === "string" ? values.instructions.trim() : "",
+    fulfillment: values.fulfillment === "buy" ? "buy" : "packed",
+    itemDescription:
+      typeof values.itemDescription === "string"
+        ? values.itemDescription.trim()
+        : "",
   };
 }
 
 export function courierDraftReady(draft: CourierDraft): boolean {
+  if (draft.fulfillment === "buy" && draft.itemDescription.length === 0) {
+    return false;
+  }
   return draft.recipientName.length > 0 && digitCount(draft.recipientPhone) >= 7;
 }
 
@@ -179,9 +208,13 @@ export function courierMeetingPoint(values: ServiceOptionValues): string {
       : draft.proof === "signature"
         ? `Signature from ${who}`
         : `Hand to ${who}`;
+  const buy =
+    draft.fulfillment === "buy" && draft.itemDescription
+      ? `Buy: ${draft.itemDescription} · `
+      : "";
   return draft.instructions
-    ? `${count} · ${handoff} · ${draft.instructions}`
-    : `${count} · ${handoff}`;
+    ? `${buy}${count} · ${handoff} · ${draft.instructions}`
+    : `${buy}${count} · ${handoff}`;
 }
 
 export function courierOrderLabel(tripId: string): string {

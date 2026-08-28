@@ -38,7 +38,10 @@ export function LimeCabStatusScene({
   cancelError,
   cancellable,
   labels = { provider: "driver", service: "ride" },
+  shareLabel = "Share trip",
+  liveSubtitle,
   onOpenDetail,
+  onShareTrip,
   onBackToQuote,
   onCancel,
 }: {
@@ -55,7 +58,10 @@ export function LimeCabStatusScene({
   cancelError?: string | null;
   cancellable: boolean;
   labels?: StatusLabels;
+  shareLabel?: string;
+  liveSubtitle?: string;
   onOpenDetail: (kind: DetailKind) => void;
+  onShareTrip?: () => void;
   onBackToQuote: () => void;
   onCancel: () => void;
 }) {
@@ -71,9 +77,10 @@ export function LimeCabStatusScene({
         status={status}
         labels={labels}
         subtitle={
-          product && destination
+          liveSubtitle ??
+          (product && destination
             ? `${product.name} · ${destinationLine}`
-            : undefined
+            : undefined)
         }
         actions={
           hasDetails ? (
@@ -158,6 +165,10 @@ export function LimeCabStatusScene({
                     Safety
                   </DetailButton>
                 </div>
+              ) : null}
+
+              {onShareTrip && showDriver && trip ? (
+                <DetailButton onPress={onShareTrip}>{shareLabel}</DetailButton>
               ) : null}
             </div>
           ) : undefined

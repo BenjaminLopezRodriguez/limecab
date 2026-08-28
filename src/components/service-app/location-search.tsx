@@ -32,6 +32,8 @@ export function LocationSearch({
   end,
   fieldsClassName,
   inputClassName,
+  normalizeQuery,
+  renderResults,
 }: {
   adapter: GeocodeAdapter;
   value?: string;
@@ -54,6 +56,20 @@ export function LocationSearch({
   end?: React.ReactNode;
   fieldsClassName?: string;
   inputClassName?: string;
+  /** Rewrite the typed string before suggesting, without changing the field. */
+  normalizeQuery?: (query: string) => string;
+  /**
+   * Replace the default suggestion list. Return `undefined` to keep it.
+   * Product grouping belongs in the caller, not here.
+   */
+  renderResults?: (input: {
+    suggestions: LocationSuggestion[];
+    query: string;
+    choose: (suggestion: LocationSuggestion) => void;
+    active: number;
+    listId: string;
+    setActive: (index: number) => void;
+  }) => React.ReactNode | undefined;
 }) {
   const listId = React.useId();
   const [text, setText] = React.useState(value);
@@ -73,9 +89,10 @@ export function LocationSearch({
   }
 
   const query = open ? text.trim() : "";
+  const lookup = normalizeQuery ? normalizeQuery(query) : query;
 
   React.useEffect(() => {
-    if (query.length < 3) {
+    if (lookup.length < 3) {
       setSuggestions([]);
       return;
     }
@@ -83,7 +100,7 @@ export function LocationSearch({
     const timer = setTimeout(() => {
       void (async () => {
         try {
-          const results = await adapter.suggest(query, controller.signal);
+          const results = await adapter.suggest(lookup, controller.signal);
           setSuggestions(results);
           setActive(-1);
         } catch {
@@ -95,7 +112,7 @@ export function LocationSearch({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [adapter, query]);
+  }, [adapter, lookup]);
 
   const commitRaw = () => {
     const address = text.trim();
@@ -183,7 +200,7 @@ export function LocationSearch({
             className={cn(
             "h-12 rounded-full text-[15px]",
               inputClassName,
-              end && "pr-11",
+              end && "pr-20",
             )}
           />
           {end ? (
@@ -194,56 +211,66 @@ export function LocationSearch({
         </div>
         {after}
       </div>
-      {listOpen ? (
-        <ul
-          id={listId}
-          role="listbox"
-          aria-label="Address suggestions"
-          className={
-            layout === "scene"
-              ? "-mx-2 mt-2 overflow-hidden"
-              : "bg-popover border-border absolute top-[calc(100%+6px)] right-0 left-0 z-20 overflow-hidden rounded-2xl border py-1 shadow-lg"
-          }
-        >
-          {suggestions.map((suggestion, index) => (
-            <li
-              key={suggestion.id}
-              id={`${listId}-${index}`}
-              role="option"
-              aria-selected={index === active}
+      {listOpen
+        ? (renderResults?.({
+            suggestions,
+            query: query,
+            choose: (suggestion) => void choose(suggestion),
+            active,
+            listId,
+            setActive,
+          }) ??
+          (suggestions.length > 0 ? (
+            <ul
+              id={listId}
+              role="listbox"
+              aria-label="Address suggestions"
+              className={
+                layout === "scene"
+                  ? "-mx-2 mt-2 overflow-hidden"
+                  : "bg-popover border-border absolute top-[calc(100%+6px)] right-0 left-0 z-20 overflow-hidden rounded-2xl border py-1 shadow-lg"
+              }
             >
-              <button
-                type="button"
-                tabIndex={-1}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => void choose(suggestion)}
-                onMouseEnter={() => setActive(index)}
-                className={cn(
-                  "flex min-h-14 w-full items-center gap-3 rounded-2xl px-2 py-2 text-left",
-                  index === active && "bg-accent",
-                )}
-              >
-                <span
-                  aria-hidden="true"
-                  className="bg-muted text-muted-foreground flex size-10 shrink-0 items-center justify-center rounded-full"
+              {suggestions.map((suggestion, index) => (
+                <li
+                  key={suggestion.id}
+                  id={`${listId}-${index}`}
+                  role="option"
+                  aria-selected={index === active}
                 >
-                  <Icon icon={Location01Icon} size={18} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[15px] font-medium tracking-tight">
-                    {suggestion.address}
-                  </span>
-                  {suggestion.context ? (
-                    <span className="text-muted-foreground block truncate text-sm">
-                      {suggestion.context}
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => void choose(suggestion)}
+                    onMouseEnter={() => setActive(index)}
+                    className={cn(
+                      "flex min-h-14 w-full items-center gap-3 rounded-2xl px-2 py-2 text-left",
+                      index === active && "bg-accent",
+                    )}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="bg-muted text-muted-foreground flex size-10 shrink-0 items-center justify-center rounded-full"
+                    >
+                      <Icon icon={Location01Icon} size={18} />
                     </span>
-                  ) : null}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15px] font-medium tracking-tight">
+                        {suggestion.address}
+                      </span>
+                      {suggestion.context ? (
+                        <span className="text-muted-foreground block truncate text-sm">
+                          {suggestion.context}
+                        </span>
+                      ) : null}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null))
+        : null}
     </div>
   );
 }

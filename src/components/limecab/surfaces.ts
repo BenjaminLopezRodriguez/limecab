@@ -95,6 +95,61 @@ export const limeCabSurfaces = createSurfaceManager({
         search: { emphasis: "primary", presentation: "fullscreen" },
       },
     },
+    /**
+     * Mic on Home or search. Same scene as Where? — listening lives inside
+     * search, not a second ServiceAppState.
+     */
+    openVoiceBooking: {
+      intent: "expand",
+      surfaces: {
+        map: { emphasis: "background", presentation: "locating" },
+        primary: { emphasis: "hidden" },
+        search: { emphasis: "primary", presentation: "fullscreen" },
+      },
+    },
+    /** Parser committed a place. Same landing as typing a destination. */
+    voiceResolved: {
+      intent: "progress",
+      surfaces: {
+        map: { emphasis: "background", presentation: "route" },
+        primary: { emphasis: "primary", presentation: "sheet" },
+        search: { emphasis: "hidden" },
+      },
+    },
+    /** Share trip from the live sheet. Same interrupt as Safety. */
+    openTravelShare: {
+      intent: "interrupt",
+      surfaces: {
+        primary: { emphasis: "suspended" },
+        map: { emphasis: "background", interaction: "passive" },
+        interrupt: {
+          emphasis: "interrupt",
+          presentation: "compact-interrupt",
+          interaction: "active",
+        },
+      },
+    },
+    /** Comfort/Reserve quote: add a drink? Quote stays mounted. */
+    openForTheWay: {
+      intent: "interrupt",
+      surfaces: {
+        primary: { emphasis: "suspended" },
+        map: { emphasis: "background", interaction: "passive" },
+        interrupt: {
+          emphasis: "interrupt",
+          presentation: "compact-interrupt",
+          interaction: "active",
+        },
+      },
+    },
+    skipForTheWay: {
+      intent: "return",
+      surfaces: { interrupt: { emphasis: "hidden" } },
+    },
+    addForTheWay: {
+      intent: "return",
+      surfaces: { interrupt: { emphasis: "hidden" } },
+    },
     /** Correcting the pickup. Same scene, different question. */
     openPickupSearch: {
       intent: "expand",
@@ -255,8 +310,7 @@ export const LIMECAB_SCENE_SURFACES: Record<
     primary: { emphasis: "primary", presentation: "expanded" },
     search: { emphasis: "hidden" },
   },
-  // LimeCab has nothing to configure between tier and quote; the scene is
-  // never entered (`needsConfigure: false`), but the map is kept coherent.
+  // Courier and Reserve both stop here; default Home rides skip it.
   configure: {
     map: { emphasis: "background", presentation: "route" },
     primary: { emphasis: "primary", presentation: "expanded" },

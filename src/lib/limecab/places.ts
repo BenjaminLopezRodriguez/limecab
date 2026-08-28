@@ -17,6 +17,7 @@ export function createPlacesAdapter(): GeocodeAdapter {
 
   return {
     async suggest(query, signal) {
+      const fixtures = await staticGeocodeAdapter.suggest(query, signal);
       try {
         const res = await fetch(
           `/api/map/places?q=${encodeURIComponent(query)}&${proximity}`,
@@ -26,12 +27,23 @@ export function createPlacesAdapter(): GeocodeAdapter {
           const body = (await res.json()) as {
             suggestions?: Awaited<ReturnType<GeocodeAdapter["suggest"]>>;
           };
-          if (body.suggestions?.length) return body.suggestions;
+          const remote = body.suggestions ?? [];
+          if (remote.length) {
+            const seen = new Set(
+              fixtures.map((entry) => entry.address.toLowerCase()),
+            );
+            return [
+              ...fixtures,
+              ...remote.filter(
+                (entry) => !seen.has(entry.address.toLowerCase()),
+              ),
+            ].slice(0, 6);
+          }
         }
       } catch {
         /* Mapbox down or unconfigured — static list still answers. */
       }
-      return staticGeocodeAdapter.suggest(query, signal);
+      return fixtures;
     },
     async retrieve(id) {
       try {

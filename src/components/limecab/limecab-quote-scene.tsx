@@ -41,6 +41,8 @@ export function LimeCabQuoteScene({
   signInLabel = "Sign in to request a ride",
   pricingLabel = "Pricing your ride",
   etaLine,
+  confirmLabel,
+  footnote,
   onEditPickup,
   onOpenDetail,
   onConfirm,
@@ -65,6 +67,9 @@ export function LimeCabQuoteScene({
   pricingLabel?: string;
   /** Overrides the default “dropoff · eta” line. */
   etaLine?: string;
+  /** Overrides “Request {product} · price”. */
+  confirmLabel?: string;
+  footnote?: string;
   onEditPickup: () => void;
   onOpenDetail: (kind: DetailKind) => void;
   onConfirm: () => void;
@@ -74,7 +79,7 @@ export function LimeCabQuoteScene({
   }
 
   return (
-    <div>
+    <div className="flex min-h-full flex-col">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-[17px] font-medium tracking-tight">
@@ -136,11 +141,12 @@ export function LimeCabQuoteScene({
           {error
             ? "Try again"
             : signedIn
-              ? `Request ${product.name} · ${formatMoney(payableCents)}`
+              ? (confirmLabel ??
+                `Request ${product.name} · ${formatMoney(payableCents)}`)
               : signInLabel}
         </PrimaryAction>
         <p className="text-muted-foreground text-center text-xs leading-relaxed">
-          Fares are estimates. Nothing is charged in this demo.
+          {footnote ?? "Fares are estimates. Nothing is charged in this demo."}
         </p>
       </SheetActions>
     </div>

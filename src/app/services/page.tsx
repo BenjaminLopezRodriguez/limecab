@@ -48,7 +48,7 @@ export default function ServicesPage() {
       ) : null}
 
       <p className="text-muted-foreground mt-5 text-sm leading-relaxed">
-        Rides and Courier are live. Reserve and Assist are listed so you can see
+        Rides, Courier, and Reserve are live. Assist is listed so you can see
         where LimeCab is going, not to take your booking.
       </p>
     </TabPage>
@@ -101,7 +101,12 @@ function Tile({
     );
   }
 
-  const href = service.id === "courier" ? "/?service=courier" : "/";
+  const href =
+    service.id === "courier"
+      ? "/?service=courier"
+      : service.id === "reserve"
+        ? "/?service=reserve"
+        : "/";
 
   return (
     <Link

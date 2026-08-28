@@ -18,7 +18,7 @@ import {
   type Pickup,
   type RideProduct,
 } from "@/lib/limecab/domain";
-import { RIDE_PRODUCTS, quoteFor } from "@/lib/limecab/mock";
+import { IMMEDIATE_RIDE_PRODUCTS, quoteFor } from "@/lib/limecab/mock";
 import { formatMoney, type Location } from "@/lib/service-app/services";
 import { cn } from "@/lib/utils";
 
@@ -59,7 +59,7 @@ export function LimeCabRideSelectScene({
 }) {
   const rides = useMemo<PricedRide[]>(() => {
     if (!destination) return [];
-    const priced = RIDE_PRODUCTS.map((entry) => ({
+    const priced = IMMEDIATE_RIDE_PRODUCTS.map((entry) => ({
       product: entry,
       totalCents: quoteFor(entry, pickup, destination).fare.totalCents,
     }));

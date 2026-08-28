@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import {
   Clock01Icon,
   Gps01Icon,
@@ -45,6 +51,10 @@ export function LocationSearchScene({
   onChooseOnMap,
   error,
   onError,
+  trailing,
+  banner,
+  normalizeQuery,
+  renderResults,
 }: {
   open: boolean;
   adapter: GeocodeAdapter;
@@ -74,6 +84,12 @@ export function LocationSearchScene({
   error?: string | null;
   /** Called with a human-readable message. Feed it back in via `error`. */
   onError?: (message: string) => void;
+  /** Extra control inside the active field (mic). Composed with locate/remove. */
+  trailing?: ReactNode;
+  /** Listening or fallback copy above the field. Parent stays this scene. */
+  banner?: ReactNode;
+  normalizeQuery?: (query: string) => string;
+  renderResults?: ComponentProps<typeof LocationSearch>["renderResults"];
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [locating, setLocating] = useState(false);
@@ -160,6 +176,7 @@ export function LocationSearchScene({
         backLabel="Close search"
       />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        {banner}
         <div className="relative">
           <LocationSearch
             key={route?.active ?? "search"}
@@ -168,6 +185,8 @@ export function LocationSearchScene({
             inputRef={inputRef}
             value={activeRow?.value ?? ""}
             onSelect={choose}
+            normalizeQuery={normalizeQuery}
+            renderResults={renderResults}
             placeholder={
               route?.active === "origin"
                 ? "Pickup address…"
@@ -250,28 +269,31 @@ export function LocationSearchScene({
                 : null
             }
             end={
-              route?.active === "origin" ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  disabled={locating}
-                  aria-label={
-                    locating
-                      ? "Finding current location"
-                      : "Use current location"
-                  }
-                  aria-busy={locating}
-                  onClick={useCurrent}
-                  className="text-muted-foreground"
-                >
-                  <Icon icon={Gps01Icon} size={18} />
-                </Button>
-              ) : activeStopIndex !== null && route?.onRemoveStop ? (
-                <RemoveStopButton
-                  onPress={() => route.onRemoveStop!(activeStopIndex)}
-                />
-              ) : null
+              <span className="flex items-center">
+                {route?.active === "origin" ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    disabled={locating}
+                    aria-label={
+                      locating
+                        ? "Finding current location"
+                        : "Use current location"
+                    }
+                    aria-busy={locating}
+                    onClick={useCurrent}
+                    className="text-muted-foreground"
+                  >
+                    <Icon icon={Gps01Icon} size={18} />
+                  </Button>
+                ) : activeStopIndex !== null && route?.onRemoveStop ? (
+                  <RemoveStopButton
+                    onPress={() => route.onRemoveStop!(activeStopIndex)}
+                  />
+                ) : null}
+                {trailing}
+              </span>
             }
           />
           {canAddStop ? (

@@ -29,6 +29,11 @@ import {
   type OfferTrip,
 } from "@/components/limecab/driver-scenes";
 import {
+  DriverSafetyToolkit,
+  useDashcam,
+  type Dashcam,
+} from "@/components/limecab/driver-safety-toolkit";
+import {
   DRIVER_MAP_MODE,
   DRIVER_SCENE_SURFACES,
   driverSurfaces,
@@ -114,6 +119,10 @@ function DriverFlow({ driverInitial }: { driverInitial: string }) {
   const [finished, setFinished] = useState<JobTrip | null>(null);
   const [device, setDevice] = useState<MapPoint | null>(null);
   const [route, setRoute] = useState<MapPoint[] | null>(null);
+  const [aside, setAside] = useState<"heading" | "safety" | null>(null);
+  const asideRef = useRef(aside);
+  asideRef.current = aside;
+  const dashcam = useDashcam();
 
   const hunting = scene === "online" && offeredId === null;
   const inbox = api.driver.inbox.useQuery(undefined, {
@@ -282,6 +291,24 @@ function DriverFlow({ driverInitial }: { driverInitial: string }) {
 
   const jobChip = job ?? offer;
 
+  const openAside = useCallback(
+    (kind: "heading" | "safety") => {
+      // The offer already owns the interrupt rung; 911 on the map still works.
+      if (kind === "safety" && offeredId) return;
+      if (asideRef.current === null) {
+        surfaces.perform(kind === "safety" ? "openSafety" : "openHeading");
+      }
+      setAside(kind);
+    },
+    [offeredId, surfaces],
+  );
+
+  const closeAside = useCallback(() => {
+    if (asideRef.current === null) return;
+    setAside(null);
+    surfaces.perform("closeAside");
+  }, [surfaces]);
+
   return (
     <ServiceAppShell
       layout="task"
@@ -312,8 +339,21 @@ function DriverFlow({ driverInitial }: { driverInitial: string }) {
                 {driverInitial}
               </Link>
               <div className="flex gap-2">
-                <MapControl label="Safety toolkit" href="/driver/profile/safety">
+                <MapControl
+                  label={
+                    dashcam.recording
+                      ? "Safety toolkit, dashcam recording"
+                      : "Safety toolkit"
+                  }
+                  onPress={() => openAside("safety")}
+                >
                   <Icon icon={Shield01Icon} size={20} aria-hidden="true" />
+                  {dashcam.recording ? (
+                    <span
+                      className="bg-destructive absolute top-1 right-1 size-2.5 rounded-full motion-safe:animate-pulse"
+                      aria-hidden="true"
+                    />
+                  ) : null}
                 </MapControl>
                 <MapControl label="Call 911" href="tel:911">
                   <Icon
@@ -346,6 +386,10 @@ function DriverFlow({ driverInitial }: { driverInitial: string }) {
         todayCents={todayCents}
         headingAddress={headingAddress}
         loading={!inbox.data}
+        aside={aside}
+        dashcam={dashcam}
+        onOpenHeading={() => openAside("heading")}
+        onCloseAside={closeAside}
         onDismissOffer={dismissOffer}
         onOfferTaken={clearOffer}
         onFinished={setFinished}
@@ -366,6 +410,10 @@ function DriverSurfaces({
   todayCents,
   headingAddress,
   loading,
+  aside,
+  dashcam,
+  onOpenHeading,
+  onCloseAside,
   onDismissOffer,
   onOfferTaken,
   onFinished,
@@ -379,6 +427,10 @@ function DriverSurfaces({
   todayCents: number;
   headingAddress: string | null;
   loading: boolean;
+  aside: "heading" | "safety" | null;
+  dashcam: Dashcam;
+  onOpenHeading: () => void;
+  onCloseAside: () => void;
   onDismissOffer: (tripId: string) => void;
   onOfferTaken: () => void;
   onFinished: (trip: JobTrip) => void;
@@ -387,7 +439,6 @@ function DriverSurfaces({
 }) {
   const surface = useAdaptiveSurface();
   const surfaces = useSurfaceManager<DriverSurfaceId, DriverSurfaceAction>();
-  const [aside, setAside] = useState<"heading" | null>(null);
   const [pickupCode, setPickupCode] = useState("");
   const [deliveryCode, setDeliveryCode] = useState("");
   const [left, setLeft] = useState(OFFER_SECONDS);
@@ -566,11 +617,6 @@ function DriverSurfaces({
     return () => window.clearTimeout(id);
   }, [resumeIdle, scene]);
 
-  const closeAside = () => {
-    setAside(null);
-    surfaces.perform("closeAside");
-  };
-
   // Mid-transition the sheet shows the scene the choreography is on, not the
   // one the app has already moved to.
   const visible =
@@ -601,10 +647,7 @@ function DriverSurfaces({
               error={failure}
               onGoOnline={() => setDuty(true)}
               onGoOffline={() => setDuty(false)}
-              onOpenHeading={() => {
-                surfaces.perform("openHeading");
-                setAside("heading");
-              }}
+              onOpenHeading={onOpenHeading}
             />
           ) : null}
 
@@ -664,26 +707,35 @@ function DriverSurfaces({
       </AdaptiveSurface.Interrupt>
 
       <AdaptiveSurface.Interrupt
-        id="heading"
-        open={aside === "heading"}
+        id="aside"
+        open={aside !== null}
         onOpenChange={(next) => {
-          if (!next) closeAside();
+          if (!next) onCloseAside();
         }}
-        label="Where are you heading?"
-        description="You’ll only be offered rides that end up that way."
+        label={aside === "safety" ? "Safety" : "Where are you heading?"}
+        description={
+          aside === "heading"
+            ? "You’ll only be offered rides that end up that way."
+            : undefined
+        }
       >
-        <HeadingChoice
-          address={headingAddress}
-          busy={setHeading.isPending}
-          onChoose={(place) => {
-            setHeading.mutate(place, {
-              onSettled: () => {
-                void refresh();
-                closeAside();
-              },
-            });
-          }}
-        />
+        {aside === "heading" ? (
+          <HeadingChoice
+            address={headingAddress}
+            busy={setHeading.isPending}
+            onChoose={(place) => {
+              setHeading.mutate(place, {
+                onSettled: () => {
+                  void refresh();
+                  onCloseAside();
+                },
+              });
+            }}
+          />
+        ) : null}
+        {aside === "safety" ? (
+          <DriverSafetyToolkit dashcam={dashcam} />
+        ) : null}
       </AdaptiveSurface.Interrupt>
     </>
   );

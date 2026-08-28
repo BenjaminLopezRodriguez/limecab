@@ -75,7 +75,21 @@ export const RIDE_PRODUCTS: RideProduct[] = [
     priceCents: 72,
     status: "available",
   },
+  {
+    id: "lime-reserve",
+    name: "Lime Reserve",
+    description: "Book ahead",
+    seats: 4,
+    etaMinutes: 6,
+    priceCents: 148,
+    status: "available",
+  },
 ];
+
+/** Immediate tiers on the Home comparison list. Reserve is its own entry. */
+export const IMMEDIATE_RIDE_PRODUCTS = RIDE_PRODUCTS.filter(
+  (product) => product.id !== "lime-reserve",
+);
 
 export const SAVED_PLACES: Place[] = [
   {
@@ -251,7 +265,7 @@ export const LIMECAB_SERVICES = [
     id: "reserve",
     title: "Reserve",
     description: "Book ahead",
-    status: "coming_soon" as const,
+    status: "available" as const,
   },
   COURIER_SERVICE,
   {
@@ -262,44 +276,110 @@ export const LIMECAB_SERVICES = [
   },
 ];
 
+/** Static LA fixtures the geocoder, voice parser, and Travel Mode share. */
+export const GEOCODE_FIXTURES = [
+  ...SAVED_PLACES.map((place) => ({
+    id: place.id,
+    address: place.address,
+    context: place.label,
+    latitude: place.latitude ?? undefined,
+    longitude: place.longitude ?? undefined,
+  })),
+  {
+    id: "lax",
+    address: "LAX Terminal 4, Los Angeles",
+    context: "Airport",
+    latitude: 33.9416,
+    longitude: -118.4085,
+  },
+  {
+    id: "griffith",
+    address: "Griffith Observatory, Los Angeles",
+    context: "Los Feliz",
+    latitude: 34.1184,
+    longitude: -118.3004,
+  },
+  {
+    id: "smpier",
+    address: "Santa Monica Pier, Santa Monica",
+    context: "Beach",
+    latitude: 34.0094,
+    longitude: -118.4973,
+  },
+  {
+    id: "dodger",
+    address: "Dodger Stadium, Los Angeles",
+    context: "Elysian Park",
+    latitude: 34.0739,
+    longitude: -118.24,
+  },
+  {
+    id: "plant-shop",
+    address: "Sunset Plant Shop, Sunset Blvd, Los Angeles",
+    context: "Snake plant · nursery",
+    latitude: 34.0869,
+    longitude: -118.2694,
+  },
+  {
+    id: "butcher",
+    address: "McCall's Meat & Fish, Los Feliz, Los Angeles",
+    context: "Butcher",
+    latitude: 34.0837,
+    longitude: -118.3264,
+  },
+  {
+    id: "gcm",
+    address: "Grand Central Market, S Broadway, Los Angeles",
+    context: "Coffee · downtown",
+    latitude: 34.0508,
+    longitude: -118.249,
+  },
+] as const;
+
+const TYPICAL_WAIT = `usually ${RIDE_PRODUCTS[0]!.etaMinutes} min`;
+
+/** Curated spots for Travel Mode. Same booking chain as Saved places. */
+export const TRAVEL_SPOTS: Place[] = [
+  {
+    id: "lax",
+    label: "LAX Terminal 4",
+    address: "LAX Terminal 4, Los Angeles",
+    latitude: 33.9416,
+    longitude: -118.4085,
+    source: "saved",
+    hint: TYPICAL_WAIT,
+  },
+  {
+    id: "griffith",
+    label: "Griffith Observatory",
+    address: "Griffith Observatory, Los Angeles",
+    latitude: 34.1184,
+    longitude: -118.3004,
+    source: "saved",
+    hint: TYPICAL_WAIT,
+  },
+  {
+    id: "smpier",
+    label: "Santa Monica Pier",
+    address: "Santa Monica Pier, Santa Monica",
+    latitude: 34.0094,
+    longitude: -118.4973,
+    source: "saved",
+    hint: TYPICAL_WAIT,
+  },
+  {
+    id: "dodger",
+    label: "Dodger Stadium",
+    address: "Dodger Stadium, Los Angeles",
+    latitude: 34.0739,
+    longitude: -118.24,
+    source: "saved",
+    hint: TYPICAL_WAIT,
+  },
+];
+
 export const geocodeAdapter: GeocodeAdapter = {
-  ...createStaticGeocodeAdapter([
-    ...SAVED_PLACES.map((place) => ({
-      id: place.id,
-      address: place.address,
-      context: place.label,
-      latitude: place.latitude ?? undefined,
-      longitude: place.longitude ?? undefined,
-    })),
-    {
-      id: "lax",
-      address: "LAX Terminal 4, Los Angeles",
-      context: "Airport",
-      latitude: 33.9416,
-      longitude: -118.4085,
-    },
-    {
-      id: "griffith",
-      address: "Griffith Observatory, Los Angeles",
-      context: "Los Feliz",
-      latitude: 34.1184,
-      longitude: -118.3004,
-    },
-    {
-      id: "smpier",
-      address: "Santa Monica Pier, Santa Monica",
-      context: "Beach",
-      latitude: 34.0094,
-      longitude: -118.4973,
-    },
-    {
-      id: "dodger",
-      address: "Dodger Stadium, Los Angeles",
-      context: "Elysian Park",
-      latitude: 34.0739,
-      longitude: -118.24,
-    },
-  ]),
+  ...createStaticGeocodeAdapter([...GEOCODE_FIXTURES]),
   async reverse(latitude, longitude) {
     const dropped: Location = {
       address: "Pinned location",

@@ -93,6 +93,23 @@ test("a draft is not ready until the recipient has a name and phone", () => {
   );
 });
 
+test("buy-for-me needs an item description before it is ready", () => {
+  const values = defaultOptionValues(COURIER_OPTIONS);
+  const named = {
+    ...values,
+    fulfillment: "buy",
+    recipientName: "Jordan Hale",
+    recipientPhone: "2135550142",
+  };
+  assert.equal(courierDraftReady(courierDraftFromOptions(named)), false);
+  assert.equal(
+    courierDraftReady(
+      courierDraftFromOptions({ ...named, itemDescription: "Snake plant" }),
+    ),
+    true,
+  );
+});
+
 test("meeting point is operational, not a contents confession", () => {
   const values = defaultOptionValues(COURIER_OPTIONS);
   assert.equal(

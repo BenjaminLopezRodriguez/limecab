@@ -21,6 +21,7 @@ import {
   type Trip,
 } from "@/lib/limecab/domain";
 import { AVAILABLE_PROMO, PAYMENT_METHODS } from "@/lib/limecab/mock";
+import { FOR_THE_WAY_ITEMS } from "@/lib/limecab/for-the-way";
 import { formatMoney } from "@/lib/service-app/services";
 
 /**
@@ -94,6 +95,7 @@ export function LimeCabDetailSurface({
   pickup,
   pickupLine,
   destinationLine,
+  stopLines,
   payment,
   promoApplied,
   onTogglePromo,
@@ -111,6 +113,7 @@ export function LimeCabDetailSurface({
   pickup: Pickup;
   pickupLine: string;
   destinationLine: string;
+  stopLines?: string[];
   payment: PaymentMethod;
   promoApplied: boolean;
   onTogglePromo: () => void;
@@ -144,6 +147,10 @@ export function LimeCabDetailSurface({
             { label: "Vehicle", value: vehicleLabel(trip.driver.vehicle) },
             { label: "Pickup", value: pickupLine },
             { label: "Meet at", value: pickup.meetingPoint ?? pickupLine },
+            ...(stopLines ?? []).map((stop, index) => ({
+              label: `Stop ${index + 1}`,
+              value: stop,
+            })),
             { label: "Destination", value: destinationLine },
             { label: "Distance", value: `${trip.distanceMiles} mi` },
             { label: "Trip time", value: `~${trip.tripMinutes} min` },
@@ -392,9 +399,7 @@ export function LimeCabCancelSurfaces({
 }
 
 /**
- * The one genuinely real control here: the platform share sheet. Rendered only
- * where the browser actually supports it, so it never looks like a feature
- * this build doesn't have.
+ * Device share sheet when the browser has one; honest-empty otherwise.
  */
 function ShareTripButton({
   trip,
@@ -404,13 +409,16 @@ function ShareTripButton({
   destinationLine: string;
 }) {
   const [supported, setSupported] = useState(false);
+  const [attempted, setAttempted] = useState(false);
   useEffect(() => {
     setSupported(typeof navigator !== "undefined" && "share" in navigator);
   }, []);
 
-  if (!supported || !trip) return null;
-
-  const share = () =>
+  const share = () => {
+    if (!supported || !trip) {
+      setAttempted(true);
+      return;
+    }
     void navigator
       .share({
         title: "My LimeCab ride",
@@ -419,15 +427,72 @@ function ShareTripButton({
         )}${destinationLine ? `, heading to ${destinationLine}` : ""}.`,
       })
       .catch(() => undefined);
+  };
 
   return (
-    <Button
-      variant="ghost"
-      className="border-border h-12 w-full"
-      onClick={share}
+    <div className="flex flex-col gap-2">
+      <Button
+        variant="ghost"
+        className="border-border h-12 w-full"
+        onClick={share}
+      >
+        <Icon icon={Share05Icon} size={16} aria-hidden="true" />
+        Share trip details
+      </Button>
+      {attempted && (!supported || !trip) ? (
+        <p className="text-muted-foreground text-sm leading-relaxed">
+          Sharing uses your phone’s share sheet. This browser doesn’t have one,
+          and nothing was sent from here.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+export function LimeCabForTheWaySurface({
+  open,
+  onSkip,
+  onAdd,
+}: {
+  open: boolean;
+  onSkip: () => void;
+  onAdd: (itemId: string) => void;
+}) {
+  return (
+    <AdaptiveSurface.Interrupt
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onSkip();
+      }}
+      id="for-the-way"
+      label="Add something for the ride?"
+      description="Coffee, tea, or sparkling water. One stop on the way. Skip to keep the ride as-is."
     >
-      <Icon icon={Share05Icon} size={16} aria-hidden="true" />
-      Share trip details
-    </Button>
+      <ul className="divide-border ring-border divide-y rounded-2xl ring-1">
+        {FOR_THE_WAY_ITEMS.map((item) => (
+          <li key={item.id}>
+            <button
+              type="button"
+              onClick={() => onAdd(item.id)}
+              className="focus-visible:ring-ring active:bg-accent flex min-h-14 w-full items-center justify-between px-4 text-left first:rounded-t-2xl last:rounded-b-2xl focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
+            >
+              <span className="text-[15px] font-medium tracking-tight">
+                {item.label}
+              </span>
+              <span className="text-muted-foreground text-sm tabular-nums">
+                +{formatMoney(item.priceCents)}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <Button
+        variant="ghost"
+        className="text-muted-foreground h-11 w-full rounded-xl text-sm font-normal"
+        onClick={onSkip}
+      >
+        No thanks
+      </Button>
+    </AdaptiveSurface.Interrupt>
   );
 }
