@@ -227,11 +227,22 @@ export function MapboxCanvas({
         }}
         onMoveEnd={
           interactive && onCameraChange
-            ? (event) =>
+            ? (event) => {
+                // Only a real gesture moves the pin. `setPadding` and `easeTo`
+                // fire `moveend` too, and reporting those back as a camera
+                // change is a loop: state moves the camera, the camera moves
+                // state. Mapbox marks user input with `originalEvent`.
+                // `originalEvent` is present on gesture-driven camera events
+                // and absent on programmatic ones. react-map-gl does not
+                // declare it on ViewStateChangeEvent, hence the narrow read.
+                const gesture = (event as { originalEvent?: unknown })
+                  .originalEvent;
+                if (!gesture) return;
                 onCameraChange({
                   latitude: event.viewState.latitude,
                   longitude: event.viewState.longitude,
-                })
+                });
+              }
             : undefined
         }
       >
