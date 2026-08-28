@@ -102,3 +102,65 @@ Uber-shaped duty session. Do not polish the inbox list.
 | D4 | no-driver-scene-machine | (missing driver-app.tsx) | P0 | open |
 | D5 | no-offer-sound-countdown-ring | driver-offer-card.tsx | P1 | open |
 
+
+## 2026-08-27 — Driver app handoff (shipped)
+
+`.ux-bugs/HANDOFF-driver.md` is implemented, verified at 390×844 and 1280,
+merged to `main` (`35411e4` / `a8fc92c`) and live on production (`lime.cab`,
+`dpl_FtkwEy59pQQpX3miFK4xZmetVup4`). See that file's "Status — built
+2026-08-27" section for the file map and the decisions it left open.
+
+| ID | Slug | File | Severity | Status |
+|----|------|------|----------|--------|
+| D1 | driver-is-inbox-not-map | src/app/driver/page.tsx | P0 | fixed 2026-08-27 |
+| D2 | offers-are-a-list | driver-offer-card.tsx | P0 | fixed 2026-08-27 |
+| D3 | accept-navigates-away | src/app/driver/trips/[tripId]/page.tsx | P0 | fixed 2026-08-27 |
+| D4 | no-driver-scene-machine | (missing driver-app.tsx) | P0 | fixed 2026-08-27 |
+| D5 | no-offer-sound-countdown-ring | driver-offer-card.tsx | P1 | fixed 2026-08-27 |
+
+### Bugs fixed
+| ID | Slug | File | Fix |
+|----|------|------|-----|
+| D1 | driver-is-inbox-not-map | driver-app.tsx / driver-chrome.tsx | `/driver` is `ServiceAppShell layout="task"` over one mounted map; profile routes keep the padded column |
+| D2 | offers-are-a-list | driver-scenes.tsx / driver-surfaces.ts | One offer at a time as `AdaptiveSurface.Interrupt`; the idle peek suspends and returns |
+| D3 | accept-navigates-away | driver-app.tsx | Accept is a `progress` transition; `/driver/trips/[id]` redirects to `/driver` |
+| D4 | no-driver-scene-machine | lib/limecab/driver-state.ts | `DriverAppState` + reducer + `driverAppQuestion`, with tests |
+| D5 | no-offer-sound-countdown-ring | driver-scenes.tsx | Determinate countdown bar; `AudioContext` chime + `navigator.vibrate`, both fail-soft |
+
+## 2026-08-27 — Fix Session (surfaces leftovers)
+
+Ledger: 0 open from the surfaces handoff. Committed as `7fdcf5e`.
+Top categories: layout, map.
+
+### Bugs found
+| ID | Slug | File | Severity | Status |
+|----|------|------|----------|--------|
+| L9 | action-band-not-in-thumb-zone | limecab-quote-scene.tsx, limecab-configure-scene.tsx, location-pin-scene.tsx, quote-panel.tsx | P1 | fixed 2026-08-27 |
+| M3 | route-layer-remount | src/components/service-app/mapbox-canvas.tsx | P1 | fixed 2026-08-27 |
+
+### Bugs fixed
+| ID | Slug | File | Fix |
+|----|------|------|-----|
+| L9 | action-band-not-in-thumb-zone | four scenes | Wrapper `<div>`s stretch (`flex min-h-full flex-col`) so `SheetActions`' `mt-auto` reaches the sheet's bottom edge. No portal — the handoff ruled that out |
+| M3 | route-layer-remount | mapbox-canvas.tsx | One layer id, two paint states, same paint keys (`line-dasharray: [1,0]` = solid). Was tearing down the route line on every mute change |
+
+### Recurring patterns
+- `mt-auto` only reaches the sheet edge from a **direct child** of the sheet's
+  flex scrollport. A scene that returns a wrapper element must stretch it.
+- A react-map-gl `<Layer>` whose `id` changes is a remount, not a restyle.
+  Vary paint, keep the id.
+
+## 2026-08-27 — Open, not mine (GO–GET session)
+
+Found while verifying the above; **introduced by the in-flight GO–GET work**,
+not pre-existing. Production (`a8fc92c`, no GO–GET code) shows 0 errors on the
+same interaction; the local tree throws ~429 in four seconds.
+
+| ID | Slug | File | Severity | Status |
+|----|------|------|----------|--------|
+| R2 | pin-scene-render-loop | limecab-app.tsx (pin ↔ camera) | P0 | open |
+
+Repro: Home → tap the map card → `location_pin`. Console fills with
+"Maximum update depth exceeded". Reverting the surfaces fixes above does not
+change it. Suspect the `setPin` ↔ `onCameraChange`/`easeTo` feedback now that
+Home and the search scene have new props.
