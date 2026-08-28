@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { DriverTabBar } from "@/components/limecab/driver-tabs";
+
 /**
  * Two products live under `/driver`.
  *
@@ -38,7 +40,7 @@ export function DriverChrome({
   }
 
   return (
-    <div className="mx-auto max-w-md px-5 pb-10 text-[16px]">
+    <div className="mx-auto max-w-md px-5 pb-[7rem] text-[16px]">
       <header className="bg-background sticky top-0 z-10 flex h-16 items-center justify-between">
         <Link
           href="/driver"
@@ -55,6 +57,7 @@ export function DriverChrome({
         </Link>
       </header>
       {children}
+      <DriverTabBar />
     </div>
   );
 }

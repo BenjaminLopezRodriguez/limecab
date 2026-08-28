@@ -55,6 +55,7 @@ export function LocationSearchScene({
   banner,
   normalizeQuery,
   renderResults,
+  rowAction,
 }: {
   open: boolean;
   adapter: GeocodeAdapter;
@@ -90,6 +91,8 @@ export function LocationSearchScene({
   banner?: ReactNode;
   normalizeQuery?: (query: string) => string;
   renderResults?: ComponentProps<typeof LocationSearch>["renderResults"];
+  /** Trailing control on a suggestion row, e.g. filing the address. */
+  rowAction?: ComponentProps<typeof LocationSearch>["rowAction"];
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [locating, setLocating] = useState(false);
@@ -187,6 +190,7 @@ export function LocationSearchScene({
             onSelect={choose}
             normalizeQuery={normalizeQuery}
             renderResults={renderResults}
+            rowAction={rowAction}
             placeholder={
               route?.active === "origin"
                 ? "Pickup address…"

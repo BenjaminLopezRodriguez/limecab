@@ -1,5 +1,6 @@
 import { driverRouter } from "@/server/api/routers/driver";
 import { loginRouter } from "@/server/api/routers/login";
+import { placesRouter } from "@/server/api/routers/places";
 import { postRouter } from "@/server/api/routers/post";
 import { riderRouter } from "@/server/api/routers/rider";
 import { tripRouter } from "@/server/api/routers/trip";
@@ -14,6 +15,7 @@ export const appRouter = createTRPCRouter({
   post: postRouter,
   driver: driverRouter,
   login: loginRouter,
+  places: placesRouter,
   rider: riderRouter,
   trip: tripRouter,
 });

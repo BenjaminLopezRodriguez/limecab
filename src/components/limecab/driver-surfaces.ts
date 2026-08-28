@@ -33,10 +33,61 @@ const OFFER_UP = {
   offer: { emphasis: "interrupt", presentation: "sheet", interaction: "active" },
 } as const;
 
+/**
+ * Online and hunting: the map is the app, the peek is a status line. The
+ * canvas takes gestures — a hunting driver looks around; only a live job
+ * hands the camera to the follow-cam.
+ */
 const IDLE = {
-  map: { emphasis: "background", presentation: "idle", interaction: "passive" },
+  map: { emphasis: "primary", presentation: "idle", interaction: "active" },
   primary: { emphasis: "primary", presentation: "peek", interaction: "active" },
   offer: { emphasis: "hidden" },
+} as const;
+
+/**
+ * Off duty is a *home*, not a dimmer version of the dash. The driver is
+ * reading a document with a live map card in it, so `primary` is the page
+ * itself — the "launcher" posture the shell draws as `layout="home"` — and
+ * there is no drawer over anything.
+ */
+const HOME = {
+  map: { emphasis: "background", presentation: "idle", interaction: "passive" },
+  primary: {
+    emphasis: "primary",
+    presentation: "launcher",
+    interaction: "active",
+  },
+  offer: { emphasis: "hidden" },
+} as const;
+
+/**
+ * The offline map, opened out. Still off duty: this is "let me look at where
+ * it is busy", which is a question about the map and never a duty change.
+ */
+const IDLE_MAP = {
+  map: { emphasis: "primary", presentation: "idle", interaction: "active" },
+  primary: { emphasis: "hidden" },
+  offer: { emphasis: "hidden" },
+} as const;
+
+/** The hunting peek, opened out. Where duty ends — and only here. */
+const RECOMMENDED = {
+  map: { emphasis: "background", presentation: "idle", interaction: "passive" },
+  primary: {
+    emphasis: "primary",
+    presentation: "expanded",
+    interaction: "active",
+  },
+} as const;
+
+/**
+ * Trends. A question *about* the marketplace, so it suspends whatever idle
+ * posture the driver was in and `return` puts them back in it exactly —
+ * offline home or the hunting peek, without either one being named here.
+ */
+const TRENDS = {
+  map: { emphasis: "primary", presentation: "idle", interaction: "active" },
+  primary: { emphasis: "primary", presentation: "sheet", interaction: "active" },
 } as const;
 
 /** A question *about* the duty session: the peek is held behind it. */
@@ -63,7 +114,7 @@ export const driverSurfaces = createSurfaceManager({
     },
     primary: {
       role: "primary",
-      presentations: ["peek", "sheet"],
+      presentations: ["launcher", "peek", "sheet", "expanded"],
       initial: {
         emphasis: "primary",
         presentation: "peek",
@@ -88,9 +139,34 @@ export const driverSurfaces = createSurfaceManager({
     },
   },
   actions: {
-    /** Duty taken. Same geometry, different copy — the map must not blink. */
+    /**
+     * Duty taken. The composition changes — a map card becomes the canvas —
+     * but it is the same mounted map: `layout` is the only switch.
+     */
     goOnline: { intent: "progress", surfaces: IDLE },
-    goOffline: { intent: "progress", surfaces: IDLE },
+    goOffline: { intent: "progress", surfaces: HOME },
+
+    /** Off duty, looking around. The pill is still the only way on duty. */
+    expandIdleMap: { intent: "expand", surfaces: IDLE_MAP },
+    collapseIdleMap: { intent: "collapse", surfaces: HOME },
+
+    /** The list icon on the hunting peek. */
+    openRecommended: { intent: "interrupt", surfaces: RECOMMENDED },
+    closeRecommended: { intent: "return", surfaces: {} },
+
+    /** The charts icon, the Opportunities row, the Recommended row. */
+    openTrends: { intent: "interrupt", surfaces: TRENDS },
+    closeTrends: { intent: "return", surfaces: {} },
+
+    /** Trends, read as a list instead of as a map. Same aside, taller. */
+    openTrendCharts: {
+      intent: "expand",
+      surfaces: { primary: { emphasis: "primary", presentation: "expanded" } },
+    },
+    closeTrendCharts: {
+      intent: "collapse",
+      surfaces: { primary: { emphasis: "primary", presentation: "sheet" } },
+    },
 
     /** A ride the driver can take. The whole screen turns to it. */
     offerIncoming: { intent: "interrupt", surfaces: OFFER_UP },
@@ -166,7 +242,7 @@ export const DRIVER_SCENE_SURFACES: Record<
   DriverAppState,
   SurfaceRecipe<DriverSurfaceId>
 > = {
-  offline: IDLE,
+  offline: HOME,
   online: IDLE,
   to_pickup: {
     map: { emphasis: "background", presentation: "tracking" },

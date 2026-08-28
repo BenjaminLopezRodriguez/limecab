@@ -11,6 +11,7 @@ import {
   findBookableProduct,
   isCourierProduct,
 } from "@/lib/limecab/courier";
+import { toDriverCell } from "@/lib/limecab/h3";
 import { RIDE_PRODUCTS } from "@/lib/limecab/mock";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { trips, supportTickets } from "@/server/db/schema";
@@ -132,6 +133,13 @@ export const tripRouter = createTRPCRouter({
           pickupLatitude: input.pickup.latitude,
           pickupLongitude: input.pickup.longitude,
           pickupMeetingPoint: input.pickup.meetingPoint,
+          // The cell the driver inbox matches on. Address-only pickups have
+          // no coordinates and stay null — pin and Places always have both.
+          pickupH3:
+            input.pickup.latitude !== undefined &&
+            input.pickup.longitude !== undefined
+              ? toDriverCell(input.pickup.latitude, input.pickup.longitude)
+              : null,
           destinationAddress: input.destination.address,
           destinationLatitude: input.destination.latitude,
           destinationLongitude: input.destination.longitude,

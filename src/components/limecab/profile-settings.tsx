@@ -8,10 +8,15 @@ export function SettingSwitch({
   label,
   description,
   defaultChecked,
+  onChange,
+  disabled = false,
 }: {
   label: string;
   description?: string;
   defaultChecked: boolean;
+  /** Omit and the switch is local only — say so on the page if it is. */
+  onChange?: (checked: boolean) => void;
+  disabled?: boolean;
 }) {
   const [checked, setChecked] = useState(defaultChecked);
 
@@ -20,8 +25,13 @@ export function SettingSwitch({
       type="button"
       role="switch"
       aria-checked={checked}
-      onClick={() => setChecked((value) => !value)}
-      className="focus-visible:ring-ring active:bg-accent flex min-h-14 w-full items-center gap-3 px-4 text-left focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
+      disabled={disabled}
+      onClick={() => {
+        const next = !checked;
+        setChecked(next);
+        onChange?.(next);
+      }}
+      className="focus-visible:ring-ring active:bg-accent flex min-h-14 w-full items-center gap-3 px-4 text-left focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none disabled:opacity-60"
     >
       <span className="min-w-0 flex-1">
         <span className="block text-[15px] font-medium tracking-tight">

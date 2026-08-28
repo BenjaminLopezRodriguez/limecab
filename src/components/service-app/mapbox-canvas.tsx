@@ -60,6 +60,64 @@ const mutedRouteLayer = {
 };
 
 /**
+ * The area overlay. Stable ids, same lesson as the route line: swapping an id
+ * makes react-map-gl tear the layer down and rebuild it.
+ *
+ * `weight` is occupancy — how many requests and recent trips a cell holds —
+ * and it saturates fast and low. There is no ramp to red, no second hue, and
+ * nothing here that could be read as a price.
+ */
+const coverageFillLayer = {
+  id: "limecab-coverage-fill",
+  type: "fill" as const,
+  paint: {
+    "fill-color": ROUTE_LIME,
+    "fill-opacity": [
+      "case",
+      ["==", ["coalesce", ["get", "emphasis"], ""], "self"],
+      0.18,
+      [
+        "+",
+        0.06,
+        ["min", 0.2, ["*", 0.04, ["coalesce", ["get", "weight"], 0]]],
+      ],
+    ] as unknown as number,
+  },
+};
+
+/**
+ * Locality names, for the cells that have earned one. Drawn only when the
+ * feature carries a `label`, so the same source is a bare lattice everywhere
+ * else — a name on every hex is noise on a dash mount.
+ */
+const coverageLabelLayer = {
+  id: "limecab-coverage-label",
+  type: "symbol" as const,
+  filter: ["has", "label"] as unknown as undefined,
+  layout: {
+    "text-field": ["get", "label"] as unknown as string,
+    "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+    "text-size": 12,
+    "text-allow-overlap": false,
+  },
+  paint: {
+    "text-color": ROUTE_LIME,
+    "text-halo-color": "rgba(0,0,0,0.65)",
+    "text-halo-width": 1.2,
+  },
+};
+
+const coverageLineLayer = {
+  id: "limecab-coverage-line",
+  type: "line" as const,
+  paint: {
+    "line-color": ROUTE_LIME,
+    "line-opacity": 0.35,
+    "line-width": 1,
+  },
+};
+
+/**
  * Mapbox GL canvas. Pan, pinch, and the street tiles come from the SDK —
  * this component only places the ride's markers, the driving line, and the
  * pin overlay when the rider is choosing a point.
@@ -70,12 +128,14 @@ export function MapboxCanvas({
   center,
   points = [],
   route = [],
+  coverage,
   callout,
   label,
   pinLabel,
   pinLocating = false,
   zoom,
   interactive = false,
+  recenterAt = 0,
   onCameraChange,
   className,
 }: MapViewProps & { token: string }) {
@@ -98,6 +158,7 @@ export function MapboxCanvas({
 
   const muted = mode === "provider_arrival" || mode === "results";
   const wasInteractive = useRef(false);
+  const lastRecenter = useRef(recenterAt);
   const tracking = tracksProvider(mode);
   const follow = tracking
     ? points.find((point) => point.kind === "provider")
@@ -111,7 +172,12 @@ export function MapboxCanvas({
 
     const enteredPin = interactive && !wasInteractive.current;
     wasInteractive.current = interactive;
-    let pinJustEntered = enteredPin;
+    const asked = recenterAt !== lastRecenter.current;
+    lastRecenter.current = recenterAt;
+    // A re-frame stays pending until the camera has actually arrived:
+    // `resize()` and `setPadding()` cancel an ease in flight, and the sheet
+    // leaving fires both right after the camera is told to move.
+    let reframe = enteredPin || asked;
     const reduce =
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -120,17 +186,27 @@ export function MapboxCanvas({
       map.resize();
       const padding = readMapPadding();
       map.getMap().setPadding(padding);
-      const duration = reduce ? 0 : pinJustEntered ? 300 : 500;
+      const duration = reduce ? 0 : reframe ? 300 : 500;
 
       if (interactive) {
-        if (pinJustEntered) {
-          pinJustEntered = false;
-          map.easeTo({
-            center: [start.longitude, start.latitude],
-            zoom: resolvedZoom,
-            duration,
-            padding,
-          });
+        // Entering the posture frames the subject; `recenterAt` puts them back
+        // in frame after the user has moved the camera off it.
+        if (reframe) {
+          const gl = map.getMap();
+          const at = gl.getCenter();
+          reframe = !(
+            Math.abs(gl.getZoom() - resolvedZoom) < 0.05 &&
+            Math.abs(at.lng - start.longitude) < 1e-4 &&
+            Math.abs(at.lat - start.latitude) < 1e-4
+          );
+          if (reframe) {
+            map.easeTo({
+              center: [start.longitude, start.latitude],
+              zoom: resolvedZoom,
+              duration,
+              padding,
+            });
+          }
         }
         return;
       }
@@ -170,6 +246,7 @@ export function MapboxCanvas({
   }, [
     interactive,
     ready,
+    recenterAt,
     resolvedZoom,
     route,
     start.latitude,
@@ -246,6 +323,14 @@ export function MapboxCanvas({
             : undefined
         }
       >
+        {coverage && coverage.features.length > 0 ? (
+          <Source id="limecab-coverage" type="geojson" data={coverage}>
+            <Layer {...coverageFillLayer} />
+            <Layer {...coverageLineLayer} />
+            <Layer {...coverageLabelLayer} />
+          </Source>
+        ) : null}
+
         {route.length > 1 ? (
           <Source id="limecab-route" type="geojson" data={routeData}>
             <Layer {...(muted ? mutedRouteLayer : routeLayer)} />
@@ -279,7 +364,9 @@ export function MapboxCanvas({
         ))}
       </Map>
 
-      {interactive ? (
+      {/* The crosshair belongs to *picking a point*, not to gestures: a driver
+          panning an idle map is not choosing a pickup. */}
+      {interactive && mode === "select_location" ? (
         <LocationPinMarker name={pinLabel ?? null} locating={pinLocating} />
       ) : null}
 

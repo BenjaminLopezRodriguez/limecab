@@ -199,3 +199,35 @@ SurfaceManager invariant warnings.
   prices the request itself, the client may only *display* what it sends.
 - A route that maps every upstream failure to 502 hides the upstream's actual
   complaint. The 422 body named the fix exactly.
+
+## 2026-08-27 — Logistics handoff (open)
+
+Open work: `.ux-bugs/HANDOFF-logistics.md`. Real location backend, user
+favorite spots, H3 res-8 lattice on the idle driver map, H3 res-9 index
+for nearby search. Dummy Home/Work/nearby cars come out. Do not restyle
+the driver shell or redo surfaces / GO–GET.
+
+| ID | Slug | File | Severity | Status |
+|----|------|------|----------|--------|
+| G2 | dummy-saved-places | mock.ts / home / profile/places | P0 | open |
+| G3 | no-driver-fix | schema.ts / driver.ts / driver-app.tsx | P0 | open |
+| G4 | phantom-nearby-cars | limecab-app.tsx NEARBY_DRIVERS | P0 | open |
+| G5 | inbox-is-global | driver.ts inbox | P0 | open |
+| G6 | h3-driver-lattice | mapbox-canvas.tsx / driver-app.tsx | P0 | open |
+| G7 | h3-search-index | places router (missing) | P0 | open |
+
+## 2026-08-27 — Driver idle UX handoff (open)
+
+Open work: `.ux-bugs/HANDOFF-driver-ux.md`. Match Uber Driver's idle
+operating model from `.ux-bugs/refs/uber-driver/`: offline is a home with
+a map card; online is full-bleed hunting; Recommended holds GO OFFLINE;
+trends + preferences. Offers and live jobs stay as HANDOFF-driver shipped
+them. `page.tsx` stays the register/load gate.
+
+| ID | Slug | File | Severity | Status |
+|----|------|------|----------|--------|
+| D6 | offline-is-still-a-peek | driver-app.tsx / driver-scenes.tsx | P0 | open |
+| D7 | online-peek-is-go-offline | DriverDutyScene | P0 | open |
+| D8 | no-demand-overlay | mapbox-canvas.tsx | P0 | open |
+| D9 | no-earnings-trends | (missing) | P1 | open |
+| D10 | prefs-not-uber-shaped | driver/profile/preferences | P1 | open |

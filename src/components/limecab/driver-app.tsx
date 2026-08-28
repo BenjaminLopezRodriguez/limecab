@@ -2,7 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Call02Icon, Shield01Icon } from "@hugeicons/core-free-icons";
+import { useRouter } from "next/navigation";
+import {
+  Analytics01Icon,
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  Call02Icon,
+  GpsSignal01Icon,
+  Home01Icon,
+  ArrowExpand01Icon,
+  Shield01Icon,
+} from "@hugeicons/core-free-icons";
 
 import { useAdaptiveSurface } from "@/components/service-app/adaptive-surface";
 import { AdaptiveSurface } from "@/components/service-app/adaptive-surface";
@@ -21,13 +31,19 @@ import { Icon } from "@/components/ui/icon";
 import {
   advanceActionFor,
   DriverCompleteScene,
-  DriverDutyScene,
+  DriverHuntingPeek,
   DriverJobScene,
   DriverOfferScene,
+  DriverOfflineHeadline,
+  DriverOfflineHome,
+  DriverRecommendedScene,
+  DriverTrendsScene,
   MapControl,
   type JobTrip,
   type OfferTrip,
+  type TrendCell,
 } from "@/components/limecab/driver-scenes";
+import { DRIVER_TAB_HEIGHT, DriverTabBar } from "@/components/limecab/driver-tabs";
 import {
   DriverSafetyToolkit,
   useDashcam,
@@ -49,10 +65,11 @@ import {
   type DriverAppEvent,
   type DriverAppState,
 } from "@/lib/limecab/driver-state";
-import { CURRENT_LOCATION, SAVED_PLACES } from "@/lib/limecab/mock";
+import { cellCenter, cellPolygon, toDriverCell } from "@/lib/limecab/h3";
+import { CURRENT_LOCATION } from "@/lib/limecab/mock";
 import { fetchDrivingRoute } from "@/lib/service-app/directions";
 import type { MapPoint } from "@/lib/service-app/map-adapter";
-import { splitAddress } from "@/lib/service-app/services";
+import { formatMoney, splitAddress, type Place } from "@/lib/service-app/services";
 import { env } from "@/env";
 import { api, type RouterOutputs } from "@/trpc/react";
 
@@ -92,9 +109,11 @@ const FALLBACK_POINT: MapPoint = {
   longitude: CURRENT_LOCATION.longitude!,
 };
 
-const HEADING_PRESETS = SAVED_PLACES.filter((place) =>
-  ["home", "work", "union"].includes(place.id),
-);
+/** How often a driver on duty reports where they are. Matches the resting inbox. */
+const PING_MS = 4_000;
+
+/** The demand lattice is per-cell, so panning inside one cell is not a refetch. */
+const DEMAND_MS = 15_000;
 
 export function DriverApp({ driverInitial }: { driverInitial: string }) {
   return (
@@ -106,6 +125,13 @@ export function DriverApp({ driverInitial }: { driverInitial: string }) {
 
 function DriverFlow({ driverInitial }: { driverInitial: string }) {
   const surfaces = useSurfaceManager<DriverSurfaceId, DriverSurfaceAction>();
+  const router = useRouter();
+  /**
+   * `surfaces` is a new object on every layout change — depending on it inside
+   * an effect makes that effect fire on every surface move. Effects take the
+   * two stable dispatchers instead.
+   */
+  const { perform, apply } = surfaces;
 
   const [scene, setScene] = useState<DriverAppState>("offline");
   /** The one ride being offered. App data, not a scene and not a boolean. */
@@ -122,6 +148,20 @@ function DriverFlow({ driverInitial }: { driverInitial: string }) {
   const [aside, setAside] = useState<"heading" | "safety" | null>(null);
   const asideRef = useRef(aside);
   asideRef.current = aside;
+  /**
+   * Which idle panel is up. App data about the map, deliberately not a
+   * scene: reading a chart is not a duty change. Whether the off-duty map is
+   * opened out needs no state at all — the primary surface's own rung says so.
+   */
+  const [panel, setPanel] = useState<"recommended" | "trends" | null>(null);
+  const panelRef = useRef(panel);
+  panelRef.current = panel;
+  const [trendDay, setTrendDay] = useState(() => new Date().getDay());
+  /** A cell the driver asked to look at, and the nonce that re-frames on it. */
+  const [focus, setFocus] = useState<MapPoint | null>(null);
+  const [recenterAt, setRecenterAt] = useState(0);
+  /** Where the camera is, rounded to its cell: panning is not a refetch. */
+  const [camera, setCamera] = useState<MapPoint | null>(null);
   const dashcam = useDashcam();
 
   const hunting = scene === "online" && offeredId === null;
@@ -160,10 +200,18 @@ function DriverFlow({ driverInitial }: { driverInitial: string }) {
     if (target !== scene) setScene(target);
   }, [activeStatus, available, scene]);
 
-  // The scene says which question; the recipe says how the surfaces sit.
+  // The scene says which question; the recipe says how the surfaces sit. A
+  // scene *change* ends every idle panel — there is nothing to return to — but
+  // the first run must not, or it would close a panel opened on the same tick.
+  const lastScene = useRef(scene);
   useEffect(() => {
-    surfaces.apply("progress", DRIVER_SCENE_SURFACES[scene]);
-  }, [scene, surfaces]);
+    if (lastScene.current !== scene) {
+      setPanel(null);
+      setFocus(null);
+    }
+    lastScene.current = scene;
+    apply("progress", DRIVER_SCENE_SURFACES[scene]);
+  }, [apply, scene]);
 
   /**
    * The device fix, live. The driver *is* the provider point on this canvas,
@@ -190,6 +238,37 @@ function DriverFlow({ driverInitial }: { driverInitial: string }) {
     [device],
   );
 
+  /**
+   * The fix, reported. Until this existed a driver in Santa Monica was offered
+   * a pickup in Pasadena — the app held `device` and never sent it.
+   *
+   * Fail-soft on purpose: a rejected ping is not a duty event, so it never
+   * touches the progress lock and never blocks GO. Off duty nobody is asking
+   * where this driver is, so nothing is sent.
+   */
+  const pingLocation = api.driver.pingLocation.useMutation();
+  const ping = useRef(pingLocation.mutate);
+  ping.current = pingLocation.mutate;
+  // The latest fix by reference, so a moving car does not restart the timer on
+  // every GPS tick — the cadence is the interval, not the sensor.
+  const lastFix = useRef<MapPoint | null>(device);
+  lastFix.current = device;
+  const onDuty = scene !== "offline" && scene !== "complete";
+  useEffect(() => {
+    if (!onDuty) return;
+    const send = () => {
+      const fix = lastFix.current;
+      if (!fix) return;
+      ping.current(
+        { latitude: fix.latitude, longitude: fix.longitude },
+        { onError: () => undefined },
+      );
+    };
+    send();
+    const id = window.setInterval(send, PING_MS);
+    return () => window.clearInterval(id);
+  }, [onDuty]);
+
   const offer = useMemo(
     () => open.find((trip) => trip.id === offeredId) ?? null,
     [offeredId, open],
@@ -211,10 +290,18 @@ function DriverFlow({ driverInitial }: { driverInitial: string }) {
   const candidateId = candidate?.id ?? null;
   useEffect(() => {
     if (!candidateId) return;
+    // An offer is louder than anything the driver was reading. The panel goes
+    // first so the ride does not land behind a Go Offline circle.
+    if (panelRef.current) {
+      setPanel(null);
+      perform(
+        panelRef.current === "trends" ? "closeTrends" : "closeRecommended",
+      );
+    }
     setOfferedId(candidateId);
-    surfaces.perform("offerIncoming");
+    perform("offerIncoming");
     alertDriver();
-  }, [candidateId, surfaces]);
+  }, [candidateId, perform]);
 
   /** The ride is the driver's now — it is not declined, it is theirs. */
   const clearOffer = useCallback(() => setOfferedId(null), []);
@@ -225,9 +312,9 @@ function DriverFlow({ driverInitial }: { driverInitial: string }) {
         current.includes(tripId) ? current : [...current, tripId],
       );
       setOfferedId(null);
-      surfaces.perform("offerDismissed");
+      perform("offerDismissed");
     },
-    [surfaces],
+    [perform],
   );
 
   /* ---- what the canvas is showing ------------------------------------- */
@@ -289,6 +376,62 @@ function DriverFlow({ driverInitial }: { driverInitial: string }) {
     [driverPoint, target],
   );
 
+  /**
+   * The location lattice.
+   *
+   * How a driver reads the marketplace they are standing in: every cell in
+   * view, filled by how busy it has actually been — open requests standing in
+   * it plus trips that started there this week. That is occupancy, not price.
+   * There is no scale here, no multiplier, and nothing to bid against.
+   *
+   * The camera is rounded to its own cell before it becomes a query key, so
+   * a car crossing a car park does not refetch the grid.
+   */
+  const anchor = camera ?? device ?? FALLBACK_POINT;
+  const anchorCell = toDriverCell(anchor.latitude, anchor.longitude);
+  const idleMap = (surfaces.layout.map?.presentation ?? "idle") === "idle";
+  const demand = api.driver.demand.useQuery(cellCenter(anchorCell), {
+    enabled: idleMap && !offer,
+    refetchInterval: DEMAND_MS,
+  });
+
+  const selfCell = device
+    ? toDriverCell(device.latitude, device.longitude)
+    : null;
+  // Names are for the trends aside only: one on every hex is noise on a dash.
+  const named = panel === "trends";
+  const coverage = useMemo<GeoJSON.FeatureCollection | undefined>(() => {
+    if (!idleMap || offer) return undefined;
+    const cells = demand.data;
+    if (!cells?.length) return undefined;
+    return {
+      type: "FeatureCollection",
+      features: cells.map((cell) => ({
+        type: "Feature",
+        id: cell.h3,
+        properties: {
+          weight: cell.openCount + cell.weekCount,
+          ...(cell.h3 === selfCell ? { emphasis: "self" } : {}),
+          ...(named && cell.label && cell.weekCount >= 1
+            ? { label: cell.label }
+            : {}),
+        },
+        geometry: cellPolygon(cell.h3),
+      })),
+    };
+  }, [demand.data, idleMap, named, offer, selfCell]);
+
+  /** The locality the driver is standing in, if their pickups have named it. */
+  const areaLabel =
+    demand.data?.find((cell) => cell.h3 === selfCell)?.label ?? null;
+
+  /** The driver's own history, loaded only when they ask to read it. */
+  const trends = api.driver.trends.useQuery(
+    device ? { latitude: device.latitude, longitude: device.longitude } : null,
+    { enabled: panel === "trends" },
+  );
+  const trendCells = trends.data?.cells ?? [];
+
   const jobChip = job ?? offer;
 
   const openAside = useCallback(
@@ -296,107 +439,349 @@ function DriverFlow({ driverInitial }: { driverInitial: string }) {
       // The offer already owns the interrupt rung; 911 on the map still works.
       if (kind === "safety" && offeredId) return;
       if (asideRef.current === null) {
-        surfaces.perform(kind === "safety" ? "openSafety" : "openHeading");
+        perform(kind === "safety" ? "openSafety" : "openHeading");
       }
       setAside(kind);
     },
-    [offeredId, surfaces],
+    [offeredId, perform],
   );
 
   const closeAside = useCallback(() => {
     if (asideRef.current === null) return;
     setAside(null);
-    surfaces.perform("closeAside");
-  }, [surfaces]);
+    perform("closeAside");
+  }, [perform]);
+
+  /**
+   * The idle panels. Every one of these is a single named action: nothing in
+   * this file sets a drawer, a map posture, and a layout by hand and then
+   * guesses at the order.
+   */
+  const expandIdleMap = useCallback(() => {
+    perform("expandIdleMap");
+  }, [perform]);
+
+  const collapseIdleMap = useCallback(() => {
+    setFocus(null);
+    perform("collapseIdleMap");
+  }, [perform]);
+
+  const openRecommended = useCallback(() => {
+    setPanel("recommended");
+    perform("openRecommended");
+  }, [perform]);
+
+  const closeRecommended = useCallback(() => {
+    setPanel(null);
+    perform("closeRecommended");
+  }, [perform]);
+
+  const openTrends = useCallback(() => {
+    // From Recommended, trends replaces it rather than stacking on it.
+    if (panelRef.current === "recommended") perform("closeRecommended");
+    setPanel("trends");
+    perform("openTrends");
+  }, [perform]);
+
+  const closeTrends = useCallback(() => {
+    setPanel(null);
+    setFocus(null);
+    perform("closeTrends");
+  }, [perform]);
+
+  /**
+   * Trends read as a map, or as a list. Same aside either way — the rung is
+   * the state, so there is no boolean here naming a screen.
+   */
+  const chartsOpen =
+    panel === "trends" && surfaces.layout.primary?.presentation === "expanded";
+  const seeCharts = useCallback(() => {
+    perform(chartsOpen ? "closeTrendCharts" : "openTrendCharts");
+  }, [chartsOpen, perform]);
+
+  /**
+   * Coming back to the idle canvas re-frames it. An offer and a job hand the
+   * camera to the follow-cam at street zoom; without this the driver lands
+   * back on the hunting map staring at the inside of one cell.
+   */
+  useEffect(() => {
+    if (mapPosture === "idle") setRecenterAt(Date.now());
+  }, [mapPosture]);
+
+  const recenter = useCallback(() => {
+    setFocus(null);
+    setRecenterAt(Date.now());
+  }, []);
+
+  const focusCell = useCallback((cell: TrendCell) => {
+    setFocus({ latitude: cell.latitude, longitude: cell.longitude });
+    setRecenterAt(Date.now());
+  }, []);
+
+  /**
+   * The Trends *tab* is a deep link, not a route: `/driver?trends=1` from the
+   * account pages lands on the duty map with the aside already up.
+   */
+  // Read once, at mount: the query is cleaned off the URL immediately, so the
+  // request has to outlive it.
+  const trendsAsked = useRef(
+    typeof window === "undefined"
+      ? false
+      : new URLSearchParams(window.location.search).has("trends"),
+  );
+  useEffect(() => {
+    if (!trendsAsked.current) return;
+    window.history.replaceState(null, "", "/driver");
+    openTrends();
+  }, [openTrends]);
+
+  /**
+   * Off duty the driver is in a *home*: a page with a live map card in it.
+   * On duty the map is the app. That is the only layout switch in this file,
+   * and the same Mapbox instance survives it — going online must not blink.
+   */
+  const homeLayout = surfaces.layout.primary?.presentation === "launcher";
+  const driving = isDriving(scene) || scene === "complete";
+  const trendsUp = panel === "trends";
+  const preferences = "/driver/profile/preferences";
 
   return (
-    <ServiceAppShell
-      layout="task"
-      map={
-        <ManagedSurface<DriverSurfaceId> id="map">
-          <div className="relative size-full">
-            <ServiceMap
-              adapter={mapAdapter}
-              mode={DRIVER_MAP_MODE[mapPosture] ?? "home"}
-              center={scene === "complete" ? (target ?? driverPoint) : driverPoint}
-              // ponytail: the canvas follows the device on every fix, so
-              // there is nothing to recentre and nothing to pan away from.
-              // Pan needs a kit prop to suppress the pin crosshair; add it
-              // when a driver actually asks to look somewhere else.
-              interactive={false}
-              points={points}
-              route={route ?? undefined}
-            />
-
-            {/* Canvas controls. Account and safety are always one tap away and
-                never compete with the scene's own action. */}
-            <div className="absolute inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-10 flex items-start justify-between gap-3">
-              <Link
-                href="/driver/profile"
-                aria-label="Your profile"
-                className="bg-card ring-border focus-visible:ring-ring flex size-11 items-center justify-center rounded-full text-[17px] font-semibold tracking-tight shadow-[0_4px_16px_rgba(26,24,20,0.12)] ring-1 focus-visible:ring-2 focus-visible:outline-none"
-              >
-                {driverInitial}
-              </Link>
-              <div className="flex gap-2">
-                <MapControl
-                  label={
-                    dashcam.recording
-                      ? "Safety toolkit, dashcam recording"
-                      : "Safety toolkit"
-                  }
-                  onPress={() => openAside("safety")}
-                >
-                  <Icon icon={Shield01Icon} size={20} aria-hidden="true" />
-                  {dashcam.recording ? (
-                    <span
-                      className="bg-destructive absolute top-1 right-1 size-2.5 rounded-full motion-safe:animate-pulse"
-                      aria-hidden="true"
-                    />
-                  ) : null}
-                </MapControl>
-                <MapControl label="Call 911" href="tel:911">
-                  <Icon
-                    icon={Call02Icon}
-                    size={20}
-                    className="text-destructive"
-                    aria-hidden="true"
-                  />
-                </MapControl>
-              </div>
-            </div>
-
-            {jobChip ? (
-              <p className="bg-card/95 ring-border absolute inset-x-3 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.25rem)] z-10 truncate rounded-full px-4 py-2 text-[15px] font-medium tracking-tight shadow-[0_4px_16px_rgba(26,24,20,0.12)] ring-1 backdrop-blur-sm">
-                {splitAddress(jobChip.pickupAddress).line}
-                <span className="text-muted-foreground"> → </span>
-                {splitAddress(jobChip.destinationAddress).line}
-              </p>
-            ) : null}
-
-          </div>
-        </ManagedSurface>
+    <div
+      style={
+        {
+          // The tab bar is chrome under the shell, and only off duty: a dash
+          // does not get one.
+          "--service-app-chrome": homeLayout ? DRIVER_TAB_HEIGHT : "0rem",
+          "--nav-pill-clear": "1.5rem",
+        } as React.CSSProperties
       }
     >
-      <DriverSurfaces
-        scene={scene}
-        go={go}
-        offer={offer}
-        job={job}
-        todayCents={todayCents}
-        headingAddress={headingAddress}
-        loading={!inbox.data}
-        aside={aside}
-        dashcam={dashcam}
-        onOpenHeading={() => openAside("heading")}
-        onCloseAside={closeAside}
-        onDismissOffer={dismissOffer}
-        onOfferTaken={clearOffer}
-        onFinished={setFinished}
-        onResumed={() => setFinished(null)}
-        refresh={inbox.refetch}
-      />
-    </ServiceAppShell>
+      <ServiceAppShell
+        layout={homeLayout ? "home" : "task"}
+        mapPressLabel="Open the map"
+        onMapPress={expandIdleMap}
+        header={
+          homeLayout ? (
+            <DriverOfflineHeadline
+              onOpenSafety={() => openAside("safety")}
+              onOpenPreferences={() => router.push(preferences)}
+            />
+          ) : undefined
+        }
+        map={
+          <ManagedSurface<DriverSurfaceId> id="map">
+            <div className="relative size-full">
+              <ServiceMap
+                adapter={mapAdapter}
+                mode={DRIVER_MAP_MODE[mapPosture] ?? "home"}
+                center={
+                  focus ??
+                  (scene === "complete" ? (target ?? driverPoint) : driverPoint)
+                }
+                interactive={surfaces.layout.map?.interaction === "active"}
+                // A res-8 cell is ~460 m across: at the shared home zoom one
+                // hex fills a phone and the lattice stops being a lattice.
+                zoom={idleMap ? 12.5 : undefined}
+                recenterAt={recenterAt}
+                onCameraChange={setCamera}
+                points={points}
+                route={route ?? undefined}
+                coverage={coverage}
+              />
+
+              {/* Canvas controls. Which ones exist is the posture, not a pile
+                  of booleans: a job keeps the chrome it always had, and the
+                  idle canvas gets the controls that belong to looking. */}
+              {driving || offer ? (
+                <>
+                  <div className="absolute inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-10 flex items-start justify-between gap-3">
+                    <Link
+                      href="/driver/profile"
+                      aria-label="Your profile"
+                      className="bg-card ring-border focus-visible:ring-ring flex size-11 items-center justify-center rounded-full text-[17px] font-semibold tracking-tight shadow-[0_4px_16px_rgba(26,24,20,0.12)] ring-1 focus-visible:ring-2 focus-visible:outline-none"
+                    >
+                      {driverInitial}
+                    </Link>
+                    <div className="flex gap-2">
+                      <SafetyControl
+                        recording={dashcam.recording}
+                        onPress={() => openAside("safety")}
+                      />
+                      <MapControl label="Call 911" href="tel:911">
+                        <Icon
+                          icon={Call02Icon}
+                          size={20}
+                          className="text-destructive"
+                          aria-hidden="true"
+                        />
+                      </MapControl>
+                    </div>
+                  </div>
+
+                  {jobChip ? (
+                    <p className="bg-card/95 ring-border absolute inset-x-3 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.25rem)] z-10 truncate rounded-full px-4 py-2 text-[15px] font-medium tracking-tight shadow-[0_4px_16px_rgba(26,24,20,0.12)] ring-1 backdrop-blur-sm">
+                      {splitAddress(jobChip.pickupAddress).line}
+                      <span className="text-muted-foreground"> → </span>
+                      {splitAddress(jobChip.destinationAddress).line}
+                    </p>
+                  ) : null}
+                </>
+              ) : homeLayout ? (
+                // Inside the card, so it reads as "open this map" and not as
+                // a control over the page.
+                <MapControl
+                  label="Open the map"
+                  onPress={expandIdleMap}
+                  className="absolute top-3 right-3 z-10"
+                >
+                  <Icon icon={ArrowExpand01Icon} size={18} aria-hidden="true" />
+                </MapControl>
+              ) : (
+                <>
+                  <div className="absolute inset-x-3 top-[max(0.75rem,env(safe-area-inset-top))] z-10 flex items-start justify-between gap-3">
+                    {trendsUp ? (
+                      <MapControl label="Back" onPress={closeTrends}>
+                        <Icon icon={ArrowLeft01Icon} size={20} aria-hidden="true" />
+                      </MapControl>
+                    ) : scene === "offline" ? (
+                      // Off duty and looking around: the house is the way back
+                      // to the page. It is not a duty control.
+                      <MapControl label="Back to home" onPress={collapseIdleMap}>
+                        <Icon icon={Home01Icon} size={20} aria-hidden="true" />
+                      </MapControl>
+                    ) : (
+                      <MapControl label="Recenter the map" onPress={recenter}>
+                        <Icon icon={Home01Icon} size={20} aria-hidden="true" />
+                      </MapControl>
+                    )}
+
+                    {/* The number a driver optimises for, on every idle frame. */}
+                    {scene === "online" && !trendsUp ? (
+                      <Link
+                        href="/driver/profile/earnings"
+                        className="bg-foreground text-background focus-visible:ring-ring flex h-11 items-center gap-1.5 rounded-full px-4 text-[19px] font-semibold tracking-[-0.02em] tabular-nums shadow-[0_4px_16px_rgba(26,24,20,0.2)] focus-visible:ring-2 focus-visible:outline-none"
+                      >
+                        <span className="text-lime">
+                          {formatMoney(todayCents)}
+                        </span>
+                        <Icon icon={ArrowRight01Icon} size={16} aria-hidden="true" />
+                      </Link>
+                    ) : null}
+
+                    {trendsUp ? (
+                      <button
+                        type="button"
+                        onClick={seeCharts}
+                        className="bg-card ring-border focus-visible:ring-ring flex h-11 items-center gap-2 rounded-full px-4 text-[15px] font-semibold tracking-tight shadow-[0_4px_16px_rgba(26,24,20,0.12)] ring-1 focus-visible:ring-2 focus-visible:outline-none"
+                      >
+                        <Icon icon={Analytics01Icon} size={18} aria-hidden="true" />
+                        {chartsOpen ? "See map" : "See charts"}
+                      </button>
+                    ) : (
+                      <span aria-hidden="true" />
+                    )}
+                  </div>
+
+                  {/* Above whatever rung the sheet is on: `--sheet-snap` is
+                      the fraction the sheet publishes, so these ride up with
+                      it instead of hiding behind it. */}
+                  <div className="pointer-events-none absolute inset-x-3 bottom-[calc(var(--sheet-snap,0)*100dvh_+_0.75rem)] z-10 flex items-end justify-between gap-3">
+                    {scene === "online" && !trendsUp ? (
+                      <SafetyControl
+                        recording={dashcam.recording}
+                        onPress={() => openAside("safety")}
+                        className="pointer-events-auto"
+                      />
+                    ) : (
+                      <span aria-hidden="true" />
+                    )}
+                    {trendsUp ? (
+                      <MapControl
+                        label="Recenter the map"
+                        onPress={recenter}
+                        className="pointer-events-auto"
+                      >
+                        <Icon icon={GpsSignal01Icon} size={20} aria-hidden="true" />
+                      </MapControl>
+                    ) : scene === "online" ? (
+                      <MapControl
+                        label="Earnings trends"
+                        onPress={openTrends}
+                        className="pointer-events-auto"
+                      >
+                        <Icon icon={Analytics01Icon} size={20} aria-hidden="true" />
+                      </MapControl>
+                    ) : (
+                      <span aria-hidden="true" />
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </ManagedSurface>
+        }
+      >
+        <DriverSurfaces
+          scene={scene}
+          go={go}
+          offer={offer}
+          job={job}
+          todayCents={todayCents}
+          areaLabel={areaLabel}
+          headingAddress={headingAddress}
+          loading={!inbox.data}
+          aside={aside}
+          panel={panel}
+          trendCells={trendCells}
+          trendDay={trendDay}
+          onTrendDay={setTrendDay}
+          chartsOpen={chartsOpen}
+          onSeeCharts={seeCharts}
+          onFocusCell={focusCell}
+          dashcam={dashcam}
+          onOpenHeading={() => openAside("heading")}
+          onCloseAside={closeAside}
+          onOpenRecommended={openRecommended}
+          onCloseRecommended={closeRecommended}
+          onOpenTrends={openTrends}
+          onOpenPreferences={() => router.push(preferences)}
+          onDismissOffer={dismissOffer}
+          onOfferTaken={clearOffer}
+          onFinished={setFinished}
+          onResumed={() => setFinished(null)}
+          refresh={inbox.refetch}
+        />
+      </ServiceAppShell>
+
+      {homeLayout ? <DriverTabBar active="home" onTrends={openTrends} /> : null}
+    </div>
+  );
+}
+
+/** Shield, with the dashcam's own state on it. Same control everywhere. */
+function SafetyControl({
+  recording,
+  onPress,
+  className,
+}: {
+  recording: boolean;
+  onPress: () => void;
+  className?: string;
+}) {
+  return (
+    <MapControl
+      label={recording ? "Safety toolkit, dashcam recording" : "Safety toolkit"}
+      onPress={onPress}
+      className={className}
+    >
+      <Icon icon={Shield01Icon} size={20} aria-hidden="true" />
+      {recording ? (
+        <span
+          className="bg-destructive absolute top-1 right-1 size-2.5 rounded-full motion-safe:animate-pulse"
+          aria-hidden="true"
+        />
+      ) : null}
+    </MapControl>
   );
 }
 
@@ -408,12 +793,24 @@ function DriverSurfaces({
   offer,
   job,
   todayCents,
+  areaLabel,
   headingAddress,
   loading,
   aside,
+  panel,
+  trendCells,
+  trendDay,
+  onTrendDay,
+  chartsOpen,
+  onSeeCharts,
+  onFocusCell,
   dashcam,
   onOpenHeading,
   onCloseAside,
+  onOpenRecommended,
+  onCloseRecommended,
+  onOpenTrends,
+  onOpenPreferences,
   onDismissOffer,
   onOfferTaken,
   onFinished,
@@ -425,12 +822,24 @@ function DriverSurfaces({
   offer: OfferTrip | null;
   job: JobTrip | null;
   todayCents: number;
+  areaLabel: string | null;
   headingAddress: string | null;
   loading: boolean;
   aside: "heading" | "safety" | null;
+  panel: "recommended" | "trends" | null;
+  trendCells: TrendCell[];
+  trendDay: number;
+  onTrendDay: (day: number) => void;
+  chartsOpen: boolean;
+  onSeeCharts: () => void;
+  onFocusCell: (cell: TrendCell) => void;
   dashcam: Dashcam;
   onOpenHeading: () => void;
   onCloseAside: () => void;
+  onOpenRecommended: () => void;
+  onCloseRecommended: () => void;
+  onOpenTrends: () => void;
+  onOpenPreferences: () => void;
   onDismissOffer: (tripId: string) => void;
   onOfferTaken: () => void;
   onFinished: (trip: JobTrip) => void;
@@ -451,6 +860,17 @@ function DriverSurfaces({
 
   const setAvailable = api.driver.setAvailable.useMutation();
   const setHeading = api.driver.setHeading.useMutation();
+  // The driver's own places, loaded only when they open the question.
+  const savedPlaces = api.places.list.useQuery(undefined, {
+    enabled: aside === "heading",
+  });
+  const headingPlaces = useMemo(() => {
+    const list = savedPlaces.data;
+    if (!list) return [];
+    return [list.home, list.work, ...list.custom].flatMap((place) =>
+      place ? [place] : [],
+    );
+  }, [savedPlaces.data]);
   const accept = api.driver.accept.useMutation();
   const advance = api.driver.advance.useMutation();
 
@@ -625,6 +1045,23 @@ function DriverSurfaces({
       : ((surface.progress.content as DriverAppState | null) ?? scene);
   const question = driverAppQuestion(visible, courier);
 
+  /**
+   * The rung the primary surface is on. It comes from the layout, not from a
+   * local boolean — "launcher" is the off-duty page, `null` is the opened-out
+   * idle map with no sheet over it at all.
+   */
+  const posture = (() => {
+    const state = surfaces.layout.primary;
+    if (!state || state.emphasis === "hidden") return null;
+    const value = state.presentation;
+    return value === "launcher" ||
+      value === "peek" ||
+      value === "sheet" ||
+      value === "expanded"
+      ? value
+      : "sheet";
+  })();
+
   return (
     <>
       <div className="sr-only" aria-live="polite">
@@ -632,55 +1069,98 @@ function DriverSurfaces({
       </div>
 
       <ManagedSurface<DriverSurfaceId> id="primary">
-        <ServiceSheet
-          label="Your duty session"
-          presentation={visible === "offline" || visible === "online" ? "peek" : "sheet"}
-        >
-          {loading ? <SurfaceSkeleton lines={2} /> : null}
-
-          {!loading && (visible === "offline" || visible === "online") ? (
-            <DriverDutyScene
-              scene={visible}
-              todayCents={todayCents}
-              headingAddress={headingAddress}
+        {/* Off duty there is no drawer at all: the page *is* the surface.
+            On duty the same content ladder runs peek → expanded. */}
+        {posture === "launcher" ? (
+          loading ? (
+            <SurfaceSkeleton lines={2} />
+          ) : (
+            <DriverOfflineHome
+              areaLabel={areaLabel}
               busy={surface.progress.locked}
               error={failure}
               onGoOnline={() => setDuty(true)}
-              onGoOffline={() => setDuty(false)}
-              onOpenHeading={onOpenHeading}
+              onOpenTrends={onOpenTrends}
             />
-          ) : null}
+          )
+        ) : posture === null ? null : (
+          <ServiceSheet
+            label={
+              panel === "trends"
+                ? "Earnings trends"
+                : panel === "recommended"
+                  ? "Recommended for you"
+                  : "Your duty session"
+            }
+            presentation={posture}
+          >
+            {loading ? <SurfaceSkeleton lines={2} /> : null}
 
-          {/* Nothing about a job is asserted until the server has confirmed
-              one: no address, no rider, no PIN before the row exists. */}
-          {!loading && isDriving(visible) ? (
-            job ? (
-              <DriverJobScene
-                scene={visible as "to_pickup" | "at_pickup" | "on_trip"}
-                trip={job}
-                courier={courier}
-                pickupCode={pickupCode}
-                onPickupCode={setPickupCode}
-                deliveryCode={deliveryCode}
-                onDeliveryCode={setDeliveryCode}
+            {!loading && panel === "trends" ? (
+              <DriverTrendsScene
+                cells={trendCells}
+                day={trendDay}
+                onDay={onTrendDay}
+                expanded={chartsOpen}
+                onSeeCharts={onSeeCharts}
+                onFocusCell={onFocusCell}
+                onGoOnline={() => setDuty(true)}
+                offline={visible === "offline"}
+                busy={surface.progress.locked}
+              />
+            ) : null}
+
+            {!loading && panel === "recommended" ? (
+              <DriverRecommendedScene
                 busy={surface.progress.locked}
                 error={failure}
-                onAdvance={runAdvance}
+                headingAddress={headingAddress}
+                onClose={onCloseRecommended}
+                onOpenHeading={onOpenHeading}
+                onOpenTrends={onOpenTrends}
+                onOpenPreferences={onOpenPreferences}
+                onGoOffline={() => setDuty(false)}
               />
-            ) : (
-              <SurfaceSkeleton lines={3} />
-            )
-          ) : null}
+            ) : null}
 
-          {!loading && visible === "complete" && job ? (
-            <DriverCompleteScene
-              trip={job}
-              todayCents={todayCents}
-              courier={courier}
-              onDone={resumeIdle}
-            />
-          ) : null}
-        </ServiceSheet>
+            {!loading && panel === null && visible === "online" ? (
+              <DriverHuntingPeek
+                onOpenPreferences={onOpenPreferences}
+                onOpenRecommended={onOpenRecommended}
+              />
+            ) : null}
+
+            {/* Nothing about a job is asserted until the server has confirmed
+                one: no address, no rider, no PIN before the row exists. */}
+            {!loading && isDriving(visible) ? (
+              job ? (
+                <DriverJobScene
+                  scene={visible as "to_pickup" | "at_pickup" | "on_trip"}
+                  trip={job}
+                  courier={courier}
+                  pickupCode={pickupCode}
+                  onPickupCode={setPickupCode}
+                  deliveryCode={deliveryCode}
+                  onDeliveryCode={setDeliveryCode}
+                  busy={surface.progress.locked}
+                  error={failure}
+                  onAdvance={runAdvance}
+                />
+              ) : (
+                <SurfaceSkeleton lines={3} />
+              )
+            ) : null}
+
+            {!loading && visible === "complete" && job ? (
+              <DriverCompleteScene
+                trip={job}
+                todayCents={todayCents}
+                courier={courier}
+                onDone={resumeIdle}
+              />
+            ) : null}
+          </ServiceSheet>
+        )}
       </ManagedSurface>
 
       {/* The offer suspends the peek; it never replaces it. Declining puts
@@ -722,6 +1202,7 @@ function DriverSurfaces({
         {aside === "heading" ? (
           <HeadingChoice
             address={headingAddress}
+            places={headingPlaces}
             busy={setHeading.isPending}
             onChoose={(place) => {
               setHeading.mutate(place, {
@@ -743,10 +1224,13 @@ function DriverSurfaces({
 
 function HeadingChoice({
   address,
+  places,
   busy,
   onChoose,
 }: {
   address: string | null;
+  /** The driver's own saved spots. They are a `users` row like anyone else. */
+  places: Place[];
   busy: boolean;
   onChoose: (place: {
     address: string | null;
@@ -756,7 +1240,7 @@ function HeadingChoice({
 }) {
   const options = [
     { id: "anywhere", label: "Anywhere", address: null, latitude: null, longitude: null },
-    ...HEADING_PRESETS.map((place) => ({
+    ...places.map((place) => ({
       id: place.id,
       label: place.label,
       address: place.address,

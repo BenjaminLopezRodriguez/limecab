@@ -41,6 +41,13 @@ export type MapViewProps = {
   points?: MapPoint[];
   /** Ordered path. Adapters that cannot draw routes may ignore it. */
   route?: MapPoint[];
+  /**
+   * An area overlay, painted as fill + outline under everything else. The kit
+   * has no opinion about what the polygons mean — the consumer supplies
+   * GeoJSON and may put an `emphasis` string property on a feature to have it
+   * drawn a shade louder. Undefined or empty draws nothing.
+   */
+  coverage?: GeoJSON.FeatureCollection;
   /** Short physical-world marker, e.g. "7 MIN" or "HERE". */
   callout?: string | null;
   /** Corner caption, usually the current address. */
@@ -53,6 +60,12 @@ export type MapViewProps = {
   className?: string;
   /** When true the canvas accepts pan and pinch. */
   interactive?: boolean;
+  /**
+   * A nonce. Change it to put the camera back on `center` — the only way to
+   * re-frame an interactive canvas the user has panned away from, without the
+   * kit growing an imperative handle.
+   */
+  recenterAt?: number;
   /** Fired when the user finishes a pan or pinch. */
   onCameraChange?: (center: MapPoint) => void;
 };

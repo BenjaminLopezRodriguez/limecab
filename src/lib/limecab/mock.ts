@@ -91,66 +91,48 @@ export const IMMEDIATE_RIDE_PRODUCTS = RIDE_PRODUCTS.filter(
   (product) => product.id !== "lime-reserve",
 );
 
-export const SAVED_PLACES: Place[] = [
+/**
+ * LA addresses the *fallback* geocoder knows. Not anybody's saved places —
+ * a rider's Home and Work live in `limecab_saved_place`, keyed to their own
+ * account. These are here so typing still resolves when Mapbox is down.
+ */
+const FALLBACK_ADDRESSES = [
   {
-    id: "home",
-    label: "Home",
+    id: "echo-park",
     address: "Echo Park Ave, Los Angeles",
+    context: "Echo Park",
     latitude: 34.0782,
     longitude: -118.2606,
-    source: "saved",
-    hint: "Saved",
   },
   {
-    id: "work",
-    label: "Work",
+    id: "traction",
     address: "Traction Ave, Arts District",
+    context: "Arts District",
     latitude: 34.0446,
     longitude: -118.2352,
-    source: "saved",
-    hint: "Saved",
   },
   {
     id: "pasadena",
-    label: "Pasadena",
     address: "E Colorado Blvd, Pasadena",
+    context: "Pasadena",
     latitude: 34.1459,
     longitude: -118.1376,
-    source: "recent",
-    hint: "Yesterday",
   },
   {
     id: "union",
-    label: "Union Station",
     address: "N Alameda St, Los Angeles",
+    context: "Union Station",
     latitude: 34.0561,
     longitude: -118.2365,
-    source: "recent",
-    hint: "Last week",
   },
   {
     id: "big-bear",
-    label: "Big Bear Lake",
     address: "Big Bear Blvd, Big Bear Lake",
+    context: "Outside the service area",
     latitude: 34.2439,
     longitude: -116.9114,
-    source: "recent",
-    hint: "Outside the service area",
   },
-];
-
-/** The rider's most recent completed trip. Mocked; a trips table replaces it. */
-export const LAST_TRIP: Place = SAVED_PLACES.find((p) => p.id === "pasadena")!;
-
-/** The signed-in rider. Invented — there is no auth in this build. */
-export const RIDER = {
-  name: "Ava",
-  fullName: "Ava Moreno",
-  phone: "(323) 555-0148",
-  since: "Member since 2024",
-  rating: 4.91,
-  ridesTaken: 128,
-};
+] as const;
 
 /** Account settings the profile screens disclose. Display and device-local. */
 export const RIDER_PREFERENCES = {
@@ -213,42 +195,6 @@ export const DRIVER_PREFERENCES = {
   courierJobs: true,
 };
 
-/** Completed trips, newest first. A trips table replaces this. */
-export const TRIP_HISTORY = [
-  {
-    id: "t_9812",
-    productName: "Lime",
-    destination: "E Colorado Blvd, Pasadena",
-    when: "Yesterday · 6:42 PM",
-    totalCents: 3259,
-    driverName: "Maya",
-  },
-  {
-    id: "t_9744",
-    productName: "Lime Comfort",
-    destination: "LAX Terminal 4, Los Angeles",
-    when: "Sat · 5:10 AM",
-    totalCents: 6180,
-    driverName: "Devon",
-  },
-  {
-    id: "t_9701",
-    productName: "Lime",
-    destination: "Traction Ave, Arts District",
-    when: "Thu · 9:03 AM",
-    totalCents: 1424,
-    driverName: "Priya",
-  },
-  {
-    id: "t_9666",
-    productName: "Lime XL",
-    destination: "Dodger Stadium, Los Angeles",
-    when: "Tue · 6:15 PM",
-    totalCents: 4790,
-    driverName: "Marcus",
-  },
-];
-
 /**
  * What LimeCab offers beyond a car right now. The unavailable ones are listed
  * rather than hidden, because "not here yet" is an answer and a blank tab is
@@ -278,13 +224,7 @@ export const LIMECAB_SERVICES = [
 
 /** Static LA fixtures the geocoder, voice parser, and Travel Mode share. */
 export const GEOCODE_FIXTURES = [
-  ...SAVED_PLACES.map((place) => ({
-    id: place.id,
-    address: place.address,
-    context: place.label,
-    latitude: place.latitude ?? undefined,
-    longitude: place.longitude ?? undefined,
-  })),
+  ...FALLBACK_ADDRESSES,
   {
     id: "lax",
     address: "LAX Terminal 4, Los Angeles",
@@ -388,16 +328,11 @@ export const geocodeAdapter: GeocodeAdapter = {
     };
     const candidates: Location[] = [
       CURRENT_LOCATION,
-      ...SAVED_PLACES.flatMap((place) => {
-        if (place.latitude == null || place.longitude == null) return [];
-        return [
-          {
-            address: place.address,
-            latitude: place.latitude,
-            longitude: place.longitude,
-          },
-        ];
-      }),
+      ...FALLBACK_ADDRESSES.map((entry) => ({
+        address: entry.address,
+        latitude: entry.latitude,
+        longitude: entry.longitude,
+      })),
       {
         address: "LAX Terminal 4, Los Angeles",
         latitude: 33.9416,
@@ -483,13 +418,6 @@ export const DRIVER_POOL: Driver[] = [
     rating: 4.91,
     vehicle: { make: "Chevy", model: "Bolt", color: "Silver", plate: "4CAB901" },
   },
-];
-
-/** Idle drivers shown as ambient context while matching. */
-export const NEARBY_DRIVERS: MapPoint[] = [
-  { latitude: 34.0546, longitude: -118.2489, kind: "marker", heading: 42 },
-  { latitude: 34.0462, longitude: -118.2612, kind: "marker", heading: 198 },
-  { latitude: 34.0578, longitude: -118.2603, kind: "marker", heading: 311 },
 ];
 
 export function estimateTrip(pickup: Location, destination: Location) {

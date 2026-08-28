@@ -1,5 +1,10 @@
 # Handoff: driver app (Uber-shaped)
 
+**Status: shipped 2026-08-27** (offer + live job). Idle home composition is
+a follow-up: `.ux-bugs/HANDOFF-driver-ux.md` (offline map card, hunting
+peek, recommended + GO OFFLINE, trends). Do not redo offers or jobs from
+this file.
+
 For the next Claude (or Cursor) session. Rebuild the **driver home and live
 job** so it operates like Uber Driver: map-first, one offer at a time, one
 primary action per scene, phone-on-the-dash. Do not restyle the current

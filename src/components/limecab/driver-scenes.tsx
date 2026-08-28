@@ -3,10 +3,20 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import {
+  Analytics01Icon,
+  ArrowDown01Icon,
+  ArrowRight01Icon,
+  ArrowUp01Icon,
   Call02Icon,
+  HandIcon,
+  Loading03Icon,
   Location01Icon,
+  Menu01Icon,
   Navigation03Icon,
-  PowerIcon,
+  PromotionIcon,
+  Shield01Icon,
+  SlidersHorizontalIcon,
+  SteeringIcon,
 } from "@hugeicons/core-free-icons";
 
 import { ProviderCard } from "@/components/service-app/provider-card";
@@ -15,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { courierOrderLabel, isCourierProduct } from "@/lib/limecab/courier";
+import { daypart } from "@/lib/limecab/daypart";
 import { driverAppQuestion, type DriverAppState } from "@/lib/limecab/driver-state";
 import { productLabel } from "@/lib/limecab/format";
 import { formatMoney, splitAddress } from "@/lib/service-app/services";
@@ -72,103 +83,550 @@ export function advanceActionFor(state: DriverAppState): AdvanceAction | null {
 /* ------------------------------------------------------------------ duty */
 
 /**
- * Offline and online are the same peek: a status line, today's take, and the
- * heading filter. Only the copy and the one loud action change — the map must
- * not so much as blink when duty flips.
+ * Off duty is a *home*, not a dimmed dash.
+ *
+ * The driver is in the house: they read a page, glance at where it is busy on
+ * a map card, and then decide. Only the lime pill takes them on duty — not the
+ * map, not the card's expand control, not a row.
+ *
+ * The headline pair is its own component because it sits in the shell's header
+ * slot, *above* the map card, which is the whole point of the composition.
  */
-export function DriverDutyScene({
-  scene,
-  todayCents,
-  headingAddress,
+export function DriverOfflineHeadline({
+  onOpenSafety,
+  onOpenPreferences,
+}: {
+  onOpenSafety: () => void;
+  onOpenPreferences: () => void;
+}) {
+  return (
+    <div className="pt-[max(0.5rem,env(safe-area-inset-top))]">
+      <div className="flex justify-end gap-2">
+        <MapControl label="Safety toolkit" onPress={onOpenSafety}>
+          <Icon icon={Shield01Icon} size={20} aria-hidden="true" />
+        </MapControl>
+        <MapControl label="Driving preferences" onPress={onOpenPreferences}>
+          <Icon icon={SlidersHorizontalIcon} size={20} aria-hidden="true" />
+        </MapControl>
+      </div>
+      <h1 className="mt-3 text-[36px] leading-[1.05] font-semibold tracking-[-0.04em]">
+        You’re offline
+      </h1>
+      <p className="mt-1 text-[21px] font-semibold tracking-[-0.02em]">
+        Ready to go?
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The rest of the offline page: what there is to know, then the one loud
+ * thing to do. `areaLabel` is the locality the driver's own cell actually
+ * names — there is no invented neighbourhood here, and no promise of money.
+ */
+export function DriverOfflineHome({
+  areaLabel,
   busy,
   error,
   onGoOnline,
-  onGoOffline,
-  onOpenHeading,
+  onOpenTrends,
 }: {
-  scene: Extract<DriverAppState, "offline" | "online">;
-  todayCents: number;
-  headingAddress: string | null;
+  areaLabel: string | null;
   busy: boolean;
   error: string | null;
   onGoOnline: () => void;
-  onGoOffline: () => void;
-  onOpenHeading: () => void;
+  onOpenTrends: () => void;
 }) {
-  const online = scene === "online";
-  const question = driverAppQuestion(scene);
-
+  const question = driverAppQuestion("offline");
   return (
-    <>
-      <div className="flex items-center justify-between gap-3">
-        <p className="flex items-center gap-2 text-[17px] font-medium tracking-tight">
-          <span
-            className={cn(
-              "size-2.5 shrink-0 rounded-full",
-              online
-                ? "bg-lime motion-safe:animate-pulse"
-                : "bg-muted-foreground/60",
-            )}
-            aria-hidden="true"
-          />
-          {online ? question.question : "Off duty"}
-        </p>
-        {/* Drivers optimise for this number, so it is on every idle frame. */}
-        <Link
-          href="/driver/profile/earnings"
-          className="focus-visible:ring-ring rounded-full text-[21px] font-semibold tracking-[-0.03em] tabular-nums focus-visible:ring-2 focus-visible:outline-none"
-        >
-          {formatMoney(todayCents)}
-          <span className="text-muted-foreground ml-1 text-[13px] font-medium tracking-normal">
-            today
-          </span>
-        </Link>
-      </div>
-
+    <div className="flex min-h-0 flex-1 flex-col">
       <button
         type="button"
-        onClick={onOpenHeading}
-        className="ring-border hover:bg-muted focus-visible:ring-ring mt-2 flex min-h-10 w-fit max-w-full items-center gap-1.5 rounded-full px-3 text-[15px] font-medium ring-1 focus-visible:ring-2 focus-visible:outline-none"
+        onClick={onOpenTrends}
+        className="focus-visible:ring-ring group mt-5 flex w-full items-start gap-3 rounded-2xl text-left focus-visible:ring-2 focus-visible:outline-none"
       >
-        <Icon icon={Location01Icon} size={16} aria-hidden="true" />
-        <span className="truncate">
-          {headingAddress
-            ? `Heading to ${splitAddress(headingAddress).line}`
-            : "Anywhere"}
+        <span className="min-w-0 flex-1">
+          <span className="block text-[26px] leading-none font-semibold tracking-[-0.03em]">
+            Opportunities
+          </span>
+          <span className="text-muted-foreground mt-4 flex items-center gap-1.5 text-[13px] font-medium">
+            <Icon icon={Analytics01Icon} size={15} aria-hidden="true" />
+            Earnings
+          </span>
+          <span className="mt-1 block text-[19px] leading-snug font-semibold tracking-[-0.02em]">
+            {areaLabel
+              ? `Earnings trends in ${areaLabel}`
+              : "Not enough trips yet"}
+          </span>
+        </span>
+        <span className="bg-muted group-hover:bg-accent flex size-9 shrink-0 items-center justify-center rounded-full">
+          <Icon icon={ArrowRight01Icon} size={18} aria-hidden="true" />
         </span>
       </button>
 
+      {/* The one loud thing, in the thumb zone. */}
+      <div className="mt-6 md:mt-auto md:pt-8">
+        {error ? (
+          <p role="alert" className="text-destructive pb-2 text-[15px]">
+            {error}
+          </p>
+        ) : null}
+        <Button
+          size="lg"
+          className="bg-lime text-lime-foreground hover:bg-lime/85 h-16 w-full rounded-full text-[19px]"
+          aria-busy={busy || undefined}
+          disabled={busy}
+          onClick={onGoOnline}
+        >
+          {busy ? (
+            <Icon
+              icon={Loading03Icon}
+              size={22}
+              className="motion-safe:animate-spin"
+              aria-hidden="true"
+            />
+          ) : (
+            <>
+              <Icon icon={SteeringIcon} size={22} aria-hidden="true" />
+              {question.action}
+            </>
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * On duty and hunting. The peek is *status*, not a question with two
+ * primaries: the map is the subject, and the only thing this row says is what
+ * time of day it is and where the two ways deeper are.
+ *
+ * Going offline is deliberately not here — it lives on the circle in
+ * Recommended, so a knee on a dash mount cannot end a shift.
+ */
+export function DriverHuntingPeek({
+  onOpenPreferences,
+  onOpenRecommended,
+}: {
+  onOpenPreferences: () => void;
+  onOpenRecommended: () => void;
+}) {
+  const part = daypart();
+  return (
+    <div className="flex items-center gap-3">
+      <PeekIcon label="Driving preferences" onPress={onOpenPreferences}>
+        <Icon icon={SlidersHorizontalIcon} size={22} aria-hidden="true" />
+      </PeekIcon>
+      <div className="min-w-0 flex-1 text-center">
+        <p className="text-[21px] leading-tight font-semibold tracking-[-0.02em]">
+          {part.headline}
+        </p>
+        <p className="text-muted-foreground mt-0.5 text-[15px] leading-snug">
+          {part.sub}
+        </p>
+      </div>
+      <PeekIcon label="Recommended for you" onPress={onOpenRecommended}>
+        <Icon icon={Menu01Icon} size={22} aria-hidden="true" />
+      </PeekIcon>
+    </div>
+  );
+}
+
+function PeekIcon({
+  label,
+  onPress,
+  selected = false,
+  children,
+}: {
+  label: string;
+  onPress: () => void;
+  selected?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={selected || undefined}
+      onClick={onPress}
+      className={cn(
+        "focus-visible:ring-ring flex size-11 shrink-0 items-center justify-center rounded-full touch-manipulation focus-visible:ring-2 focus-visible:outline-none",
+        selected ? "bg-accent text-accent-foreground" : "hover:bg-muted",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * The hunting peek, opened out. Uber calls it "Recommended for you"; what it
+ * actually is, is the place a shift ends — so the stop control is a circle in
+ * the thumb zone with a destructive ring, not a ghost row anyone can brush.
+ *
+ * Rows with nothing true to say are honest about it. Nothing here invents a
+ * promotion, a quest, or a busy neighbourhood.
+ */
+export function DriverRecommendedScene({
+  busy,
+  error,
+  headingAddress,
+  onClose,
+  onOpenTrends,
+  onOpenHeading,
+  onOpenPreferences,
+  onGoOffline,
+}: {
+  busy: boolean;
+  error: string | null;
+  headingAddress: string | null;
+  onClose: () => void;
+  onOpenTrends: () => void;
+  onOpenHeading: () => void;
+  onOpenPreferences: () => void;
+  onGoOffline: () => void;
+}) {
+  return (
+    <>
+      <div className="flex items-center gap-3">
+        <PeekIcon label="Back to the map" onPress={onClose}>
+          <Icon icon={ArrowDown01Icon} size={22} aria-hidden="true" />
+        </PeekIcon>
+        <p className="min-w-0 flex-1 text-center text-[21px] font-semibold tracking-[-0.02em]">
+          Recommended for you
+        </p>
+        <PeekIcon label="Recommended for you" onPress={onClose} selected>
+          <Icon icon={Menu01Icon} size={22} aria-hidden="true" />
+        </PeekIcon>
+      </div>
+
+      <p className="text-muted-foreground mt-5 text-center text-[13px] font-semibold tracking-[0.08em] uppercase">
+        Later today
+      </p>
+
+      <div className="ring-border mt-3 divide-y divide-[var(--border)] overflow-hidden rounded-2xl ring-1">
+        <button
+          type="button"
+          onClick={onOpenTrends}
+          className="hover:bg-muted focus-visible:ring-ring flex min-h-16 w-full items-center gap-3.5 px-4 text-left focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
+        >
+          <Icon icon={Analytics01Icon} size={22} aria-hidden="true" />
+          <span className="flex-1 text-[17px] font-medium tracking-tight">
+            See earnings trends
+          </span>
+          <Icon
+            icon={ArrowRight01Icon}
+            size={18}
+            className="text-muted-foreground"
+            aria-hidden="true"
+          />
+        </button>
+        {/* The heading filter lives here rather than as a third chip on the
+            peek: a driver on a dash mount cannot aim at three of them. */}
+        <button
+          type="button"
+          onClick={onOpenHeading}
+          className="hover:bg-muted focus-visible:ring-ring flex min-h-16 w-full items-center gap-3.5 px-4 text-left focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
+        >
+          <Icon icon={Location01Icon} size={22} aria-hidden="true" />
+          <span className="flex-1 truncate text-[17px] font-medium tracking-tight">
+            Heading
+          </span>
+          <span className="text-muted-foreground max-w-[45%] truncate text-[15px]">
+            {headingAddress ? splitAddress(headingAddress).line : "Anywhere"}
+          </span>
+          <Icon
+            icon={ArrowRight01Icon}
+            size={18}
+            className="text-muted-foreground"
+            aria-hidden="true"
+          />
+        </button>
+        {/* No promotions exist in this build, so the row says so rather than
+            rendering a chevron into an empty screen. */}
+        <div className="flex min-h-16 items-center gap-3.5 px-4">
+          <Icon
+            icon={PromotionIcon}
+            size={22}
+            className="text-muted-foreground"
+            aria-hidden="true"
+          />
+          <span className="text-muted-foreground flex-1 text-[17px] tracking-tight">
+            No promotions right now
+          </span>
+        </div>
+      </div>
+
       <SheetActions>
-        {/* Beside the action that failed, not above the fold of a peek. */}
         {error ? (
           <p role="alert" className="text-destructive pb-1 text-[15px]">
             {error}
           </p>
         ) : null}
-        {online ? (
-          <Button
-            variant="ghost"
-            className="text-muted-foreground h-14 w-full text-[15px]"
-            disabled={busy}
-            onClick={onGoOffline}
-          >
-            <Icon icon={PowerIcon} size={18} aria-hidden="true" />
-            Go offline
-          </Button>
-        ) : (
-          <Button
-            size="lg"
-            className="h-16 w-full text-[19px]"
-            aria-busy={busy || undefined}
-            disabled={busy}
-            onClick={onGoOnline}
-          >
-            <Icon icon={PowerIcon} size={20} aria-hidden="true" />
-            {question.action}
-          </Button>
-        )}
+        <div className="flex items-center gap-4">
+          <PeekIcon label="Driving preferences" onPress={onOpenPreferences}>
+            <Icon icon={SlidersHorizontalIcon} size={22} aria-hidden="true" />
+          </PeekIcon>
+          <div className="flex flex-1 flex-col items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onGoOffline}
+              disabled={busy}
+              aria-busy={busy || undefined}
+              className="border-destructive text-destructive hover:bg-destructive/5 focus-visible:ring-destructive flex size-[72px] items-center justify-center rounded-full border-[3px] touch-manipulation focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:opacity-70"
+            >
+              <Icon
+                icon={busy ? Loading03Icon : HandIcon}
+                size={30}
+                className={cn(busy && "motion-safe:animate-spin")}
+                aria-hidden="true"
+              />
+              <span className="sr-only">Go offline</span>
+            </button>
+            <span
+              className="text-destructive text-[13px] font-semibold tracking-[0.08em] uppercase"
+              aria-hidden="true"
+            >
+              Go offline
+            </span>
+          </div>
+          {/* Balances the sliders so the circle sits on the centre line. */}
+          <span className="size-11 shrink-0" aria-hidden="true" />
+        </div>
       </SheetActions>
     </>
+  );
+}
+
+/* ---------------------------------------------------------------- trends */
+
+export type TrendCell = {
+  h3: string;
+  label: string | null;
+  latitude: number;
+  longitude: number;
+  miles: number | null;
+  current: boolean;
+  buckets: number[][];
+};
+
+/** 4am first: a driver's day does not start at midnight. */
+const CHART_HOURS = Array.from({ length: 24 }, (_, i) => (i + 4) % 24);
+
+const DAY_NAMES = [
+  "Sundays",
+  "Mondays",
+  "Tuesdays",
+  "Wednesdays",
+  "Thursdays",
+  "Fridays",
+  "Saturdays",
+];
+
+/**
+ * Trends. The driver's own completed trips, by area and hour — never a
+ * forecast, never other people's work, and never a seeded neighbourhood. A
+ * driver with no history gets one card that says exactly that.
+ */
+export function DriverTrendsScene({
+  cells,
+  day,
+  onDay,
+  expanded,
+  onSeeCharts,
+  onFocusCell,
+  onGoOnline,
+  offline,
+  busy,
+}: {
+  cells: TrendCell[];
+  day: number;
+  onDay: (day: number) => void;
+  expanded: boolean;
+  onSeeCharts: () => void;
+  onFocusCell: (cell: TrendCell) => void;
+  onGoOnline: () => void;
+  offline: boolean;
+  busy: boolean;
+}) {
+  const here = cells.find((cell) => cell.current) ?? cells[0] ?? null;
+  const hour = new Date().getHours();
+
+  return (
+    <>
+      {expanded ? (
+        <>
+          <div className="flex items-center gap-3">
+            <PeekIcon label="Back to the map" onPress={onSeeCharts}>
+              <Icon icon={ArrowDown01Icon} size={22} aria-hidden="true" />
+            </PeekIcon>
+            <p className="min-w-0 flex-1 text-center text-[21px] font-semibold tracking-[-0.02em]">
+              Earnings Trends
+            </p>
+            <span className="size-11 shrink-0" aria-hidden="true" />
+          </div>
+          {/* Today first: a driver scrolling to find Friday on a Friday is a
+              chip row that has been sorted for the calendar, not for them. */}
+          <div className="-mx-5 mt-4 flex gap-2 overflow-x-auto px-5 pb-1">
+            {DAY_NAMES.map((_, offset) => (new Date().getDay() + offset) % 7).map((index) => (
+              <button
+                key={index}
+                type="button"
+                onClick={() => onDay(index)}
+                aria-pressed={index === day}
+                className={cn(
+                  "focus-visible:ring-ring min-h-10 shrink-0 rounded-full px-4 text-[15px] font-medium tracking-tight focus-visible:ring-2 focus-visible:outline-none",
+                  index === day
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {DAY_NAMES[index]}
+              </button>
+            ))}
+          </div>
+          <div className="mt-4 flex flex-col gap-3">
+            {cells.length === 0 ? (
+              <TrendsEmptyCard />
+            ) : (
+              cells.map((cell) => (
+                <div key={cell.h3} className="ring-border rounded-2xl p-4 ring-1">
+                  <div className="flex items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[19px] font-semibold tracking-[-0.02em]">
+                        {cell.label ?? "Your area"}
+                      </p>
+                      <p className="text-muted-foreground text-[15px] tabular-nums">
+                        {cell.current
+                          ? "Current area"
+                          : cell.miles != null
+                            ? `${cell.miles.toFixed(1)} mi`
+                            : "Nearby"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      aria-label={`Show ${cell.label ?? "this area"} on the map`}
+                      onClick={() => onFocusCell(cell)}
+                      className="bg-lime/20 text-foreground hover:bg-lime/35 focus-visible:ring-ring flex size-9 shrink-0 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:outline-none"
+                    >
+                      <Icon icon={ArrowUp01Icon} size={18} aria-hidden="true" />
+                    </button>
+                  </div>
+                  <HourlyBars
+                    hours={cell.buckets[day] ?? []}
+                    currentHour={cell.current ? hour : null}
+                    className="mt-3"
+                  />
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="text-center text-[21px] font-semibold tracking-[-0.02em]">
+            Earnings Trends
+          </p>
+          <p className="text-muted-foreground mt-0.5 text-center text-[15px]">
+            {here?.label ?? "Your area"} · Showing trip trends
+          </p>
+          <div className="ring-border mt-4 rounded-2xl p-4 ring-1">
+            <p className="text-[17px] font-semibold tracking-tight">
+              Hourly trends
+            </p>
+            <p className="text-muted-foreground mt-0.5 text-[13px]">
+              {here ? "This hour is highlighted" : "Trends fill in as you complete trips"}
+            </p>
+            <HourlyBars
+              hours={here?.buckets[day] ?? []}
+              currentHour={hour}
+              className="mt-3"
+            />
+          </div>
+          <SheetActions>
+            {offline ? (
+              <Button
+                size="lg"
+                className="bg-lime text-lime-foreground hover:bg-lime/85 h-14 w-full rounded-full text-[17px]"
+                disabled={busy}
+                aria-busy={busy || undefined}
+                onClick={onGoOnline}
+              >
+                <Icon icon={SteeringIcon} size={20} aria-hidden="true" />
+                Go online
+              </Button>
+            ) : null}
+          </SheetActions>
+        </>
+      )}
+    </>
+  );
+}
+
+function TrendsEmptyCard() {
+  return (
+    <div className="ring-border rounded-2xl p-4 ring-1">
+      <p className="text-[19px] font-semibold tracking-[-0.02em]">Your area</p>
+      <p className="text-muted-foreground mt-0.5 text-[15px]">
+        Trends fill in as you complete trips.
+      </p>
+      <HourlyBars hours={[]} currentHour={null} className="mt-3" />
+    </div>
+  );
+}
+
+/**
+ * Twenty-four flex bars. No chart library for a bar per hour — and no y axis
+ * either, because the number a driver would read off one is trips, and the
+ * shape is the whole message.
+ */
+export function HourlyBars({
+  hours,
+  currentHour,
+  className,
+}: {
+  hours: number[];
+  currentHour: number | null;
+  className?: string;
+}) {
+  const peak = Math.max(0, ...hours);
+  const average = hours.length
+    ? hours.reduce((sum, n) => sum + n, 0) / hours.length
+    : 0;
+
+  return (
+    <div className={className}>
+      <div className="flex h-16 items-end gap-[3px]" aria-hidden="true">
+        {CHART_HOURS.map((hour) => {
+          const value = hours[hour] ?? 0;
+          const busy = value > 0 && value >= average;
+          return (
+            <span
+              key={hour}
+              className={cn(
+                "flex-1 rounded-[2px]",
+                hour === currentHour
+                  ? "bg-lime"
+                  : busy
+                    ? "bg-foreground/55"
+                    : "bg-muted-foreground/25",
+              )}
+              // A flat floor when there is nothing yet: an empty chart is
+              // still a chart, and it is not pretending to be data.
+              style={{ height: `${peak ? 12 + (value / peak) * 88 : 12}%` }}
+            />
+          );
+        })}
+      </div>
+      <div className="text-muted-foreground mt-1.5 flex justify-between text-[11px] font-medium tabular-nums">
+        <span>4 AM</span>
+        <span>12 PM</span>
+        <span>7 PM</span>
+        <span>3 AM</span>
+      </div>
+    </div>
   );
 }
 

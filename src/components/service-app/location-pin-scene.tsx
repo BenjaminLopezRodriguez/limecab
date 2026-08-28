@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 import { PrimaryAction } from "@/components/service-app/task-scene";
 import { SheetActions } from "@/components/service-app/service-sheet";
 
@@ -14,12 +16,18 @@ export function LocationPinScene({
   address,
   locating,
   confirmLabel,
+  secondary,
   onConfirm,
 }: {
   title: string;
   address: string | null;
   locating?: boolean;
   confirmLabel: string;
+  /**
+   * A quiet affordance about this point that is not the scene's answer —
+   * filing it, sharing it. Sits above the action band, never beside Confirm.
+   */
+  secondary?: ReactNode;
   onConfirm: () => void;
 }) {
   return (
@@ -30,6 +38,7 @@ export function LocationPinScene({
       <p className="min-h-11 text-[15px] leading-snug font-medium tracking-tight">
         {locating ? "Finding address…" : (address ?? "Move the map to place the pin")}
       </p>
+      {secondary ? <div className="-mt-1">{secondary}</div> : null}
       <SheetActions>
         <PrimaryAction onClick={onConfirm} disabled={!address || locating}>
           {confirmLabel}

@@ -1,12 +1,7 @@
 import { redirect } from "next/navigation";
 
-import { SettingSwitch } from "@/components/limecab/profile-settings";
-import {
-  DriverSubpage,
-  ProfileNote,
-  ProfileSection,
-} from "@/components/limecab/profile";
-import { DRIVER_PREFERENCES } from "@/lib/limecab/mock";
+import { DriverPreferences } from "@/components/limecab/driver-preferences";
+import { DriverSubpage } from "@/components/limecab/profile";
 import { auth } from "@/server/auth";
 import { api } from "@/trpc/server";
 
@@ -17,38 +12,20 @@ export default async function DriverPreferencesPage() {
   const { driver } = await api.driver.me();
   if (!driver) redirect("/driver/profile");
 
+  // The heading target is chosen from the driver's own saved places — they
+  // are a `users` row like anyone else.
+  const saved = await api.places.list();
+  const places = [saved.home, saved.work, ...saved.custom].flatMap((place) =>
+    place ? [place] : [],
+  );
+
   return (
     <DriverSubpage
       backHref="/driver/profile"
       backLabel="Back to profile"
-      title="Driving preferences"
+      title="Preferences"
     >
-      <ProfileSection tone="driver">
-        <SettingSwitch
-          label="Navigation voice"
-          description="Spoken turn-by-turn while a job is active."
-          defaultChecked={DRIVER_PREFERENCES.navigationVoice}
-        />
-        <SettingSwitch
-          label="Lime XL"
-          description="Offers for six-seaters when your car qualifies."
-          defaultChecked={DRIVER_PREFERENCES.acceptXl}
-        />
-        <SettingSwitch
-          label="Longer trips"
-          description="Airport and out-of-area jobs, not just neighborhood hops."
-          defaultChecked={DRIVER_PREFERENCES.longTrips}
-        />
-        <SettingSwitch
-          label="Courier jobs"
-          description="Same-day packages on the same inbox as rides."
-          defaultChecked={DRIVER_PREFERENCES.courierJobs}
-        />
-      </ProfileSection>
-      <ProfileNote>
-        Going offline from the inbox still pauses everything. These only shape
-        which offers you’re shown while you’re on duty.
-      </ProfileNote>
+      <DriverPreferences driver={driver} places={places} />
     </DriverSubpage>
   );
 }

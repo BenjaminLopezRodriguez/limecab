@@ -34,6 +34,7 @@ export function LocationSearch({
   inputClassName,
   normalizeQuery,
   renderResults,
+  rowAction,
 }: {
   adapter: GeocodeAdapter;
   value?: string;
@@ -62,6 +63,12 @@ export function LocationSearch({
    * Replace the default suggestion list. Return `undefined` to keep it.
    * Product grouping belongs in the caller, not here.
    */
+  /**
+   * A trailing control per suggestion row — filing the address, say. It sits
+   * over the row's own button rather than inside it, so choosing the place and
+   * acting on it stay two separate targets.
+   */
+  rowAction?: (suggestion: LocationSuggestion) => React.ReactNode;
   renderResults?: (input: {
     suggestions: LocationSuggestion[];
     query: string;
@@ -237,6 +244,7 @@ export function LocationSearch({
                   id={`${listId}-${index}`}
                   role="option"
                   aria-selected={index === active}
+                  className="relative"
                 >
                   <button
                     type="button"
@@ -247,6 +255,7 @@ export function LocationSearch({
                     className={cn(
                       "flex min-h-14 w-full items-center gap-3 rounded-2xl px-2 py-2 text-left",
                       index === active && "bg-accent",
+                      rowAction && "pr-12",
                     )}
                   >
                     <span
@@ -266,6 +275,11 @@ export function LocationSearch({
                       ) : null}
                     </span>
                   </button>
+                  {rowAction ? (
+                    <span className="absolute inset-y-0 right-1 flex items-center">
+                      {rowAction(suggestion)}
+                    </span>
+                  ) : null}
                 </li>
               ))}
             </ul>

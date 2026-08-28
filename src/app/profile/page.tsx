@@ -8,12 +8,7 @@ import {
   ProfileSection,
   SignOutLink,
 } from "@/components/limecab/profile";
-import {
-  PAYMENT_METHODS,
-  RIDER,
-  RIDER_PREFERENCES,
-  SAVED_PLACES,
-} from "@/lib/limecab/mock";
+import { PAYMENT_METHODS, RIDER_PREFERENCES } from "@/lib/limecab/mock";
 import { auth } from "@/server/auth";
 import { api } from "@/trpc/server";
 
@@ -21,10 +16,13 @@ export default async function ProfilePage() {
   const session = await auth();
   if (!session?.user) redirect("/signin?callbackUrl=/profile");
 
-  const name = session.user.name ?? RIDER.fullName;
-  const saved = SAVED_PLACES.filter((place) => place.source === "saved");
+  const name = session.user.name ?? "Your account";
   const primaryPay = PAYMENT_METHODS[0];
-  const rider = await api.rider.me();
+  const [rider, places] = await Promise.all([api.rider.me(), api.places.list()]);
+  // Their own slots, or nothing. An unset Home reads as unset.
+  const saved = [places.home, places.work, ...places.custom].flatMap((place) =>
+    place ? [place] : [],
+  );
   const verification =
     rider.phoneVerifiedAt && rider.identityStatus === "verified"
       ? "Verified"
@@ -41,12 +39,8 @@ export default async function ProfilePage() {
       <ProfileHero
         name={name}
         facts={[
-          {
-            icon: StarIcon,
-            label: RIDER.rating.toFixed(2),
-            iconClassName: "text-lime",
-          },
-          { label: RIDER.since },
+          { icon: StarIcon, label: "5.00", iconClassName: "text-lime" },
+          { label: "LimeCab rider" },
         ]}
       />
 
@@ -64,7 +58,7 @@ export default async function ProfilePage() {
         <ProfileLinkRow
           href="/profile/places"
           label="Saved places"
-          value={saved.map((place) => place.label).join(", ")}
+          value={saved.map((place) => place.label).join(", ") || "Set Home"}
         />
         <ProfileLinkRow
           href="/profile/payment"

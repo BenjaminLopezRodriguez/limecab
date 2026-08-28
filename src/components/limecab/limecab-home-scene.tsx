@@ -8,11 +8,13 @@ import {
   Location01Icon,
 } from "@hugeicons/core-free-icons";
 
+import Link from "next/link";
+
 import { LocationTrigger } from "@/components/service-app/location-trigger";
 import { SavedPlaces } from "@/components/service-app/saved-places";
 import { VoiceMicButton } from "@/components/limecab/limecab-voice-banner";
 import { Icon } from "@/components/ui/icon";
-import { SAVED_PLACES, TRAVEL_SPOTS } from "@/lib/limecab/mock";
+import { TRAVEL_SPOTS } from "@/lib/limecab/mock";
 import type { Location, Place } from "@/lib/service-app/services";
 import { cn } from "@/lib/utils";
 
@@ -25,8 +27,6 @@ function placeIcon(place: Place) {
   return <Icon icon={Location01Icon} size={18} />;
 }
 
-const SAVED = SAVED_PLACES.filter((place) => place.source === "saved");
-const RECENT = SAVED_PLACES.filter((place) => place.source === "recent");
 const AIRPORT = TRAVEL_SPOTS.find((place) => place.id === "lax")!;
 const CURATED = TRAVEL_SPOTS.filter((place) => place.id !== "lax");
 
@@ -40,6 +40,8 @@ export function LimeCabHomeScene({
   destination,
   destinationHint = "Where to?",
   title,
+  saved,
+  recents,
   traveling,
   onTravelingChange,
   onSearch,
@@ -50,6 +52,10 @@ export function LimeCabHomeScene({
   destinationHint?: string;
   /** Optional scene eyebrow, e.g. "Send a package". */
   title?: string;
+  /** This user's own Home, Work and custom spots. Empty is a real answer. */
+  saved: Place[];
+  /** Derived from their own trips. Nobody is shown a place they never went. */
+  recents: Place[];
   traveling: boolean;
   onTravelingChange: (next: boolean) => void;
   onSearch: (target: "destination") => void;
@@ -102,20 +108,32 @@ export function LimeCabHomeScene({
         </>
       ) : null}
 
+      {/* Both render nothing when empty — that *is* the empty state. A new
+          account is not told it lives in Echo Park. */}
       <SavedPlaces
         title="Saved places"
-        places={SAVED}
+        places={saved}
         iconFor={placeIcon}
         onSelect={choose}
       />
       <SavedPlaces
         title="Recent"
         variant="rows"
-        places={RECENT}
+        places={recents}
         iconFor={placeIcon}
         onSelect={choose}
         className="mt-1"
       />
+
+      {/* One quiet line, not a modal: Home still asks exactly one question. */}
+      {saved.length === 0 ? (
+        <Link
+          href="/profile/places"
+          className="text-muted-foreground focus-visible:ring-ring rounded-md px-1 text-sm focus-visible:ring-2 focus-visible:outline-none"
+        >
+          Save Home and Work for faster pickup
+        </Link>
+      ) : null}
 
       <button
         type="button"

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-import { Gps01Icon } from "@hugeicons/core-free-icons";
+import { BookmarkAdd01Icon, Gps01Icon } from "@hugeicons/core-free-icons";
 
 import { useAdaptiveSurface } from "@/components/service-app/adaptive-surface";
 import { LocationPinScene } from "@/components/service-app/location-pin-scene";
@@ -34,6 +34,7 @@ import {
 import { LimeCabTripPill } from "@/components/limecab/limecab-trip-pill";
 import { LimeCabQuoteScene } from "@/components/limecab/limecab-quote-scene";
 import { LimeCabRideSelectScene } from "@/components/limecab/limecab-ride-select-scene";
+import { SavePlaceSurface } from "@/components/limecab/limecab-save-place";
 import {
   limeCabNormalizeQuery,
   renderLimeCabSearchResults,
@@ -72,11 +73,8 @@ import {
   AVAILABLE_PROMO,
   CURRENT_LOCATION,
   GEOCODE_FIXTURES,
-  NEARBY_DRIVERS,
   PAYMENT_METHODS,
-  RIDER,
   RIDE_PRODUCTS,
-  SAVED_PLACES,
   quoteFor,
 } from "@/lib/limecab/mock";
 import {
@@ -87,7 +85,7 @@ import {
 } from "@/lib/limecab/for-the-way";
 import { reservedLabel } from "@/lib/limecab/reserve";
 import type { SearchIntent } from "@/lib/limecab/search-intent";
-import { createPlacesAdapter } from "@/lib/limecab/places";
+import { createPlacesAdapter, setSearchProximity } from "@/lib/limecab/places";
 import { SIM_PHASE_MS, simulatedApproachStart } from "@/lib/limecab/simulate";
 import {
   fetchDrivingRoute,
@@ -111,6 +109,7 @@ import {
   formatMoney,
   splitAddress,
   type Location,
+  type Place,
 } from "@/lib/service-app/services";
 import {
   isCommitted,
@@ -265,6 +264,19 @@ function errorMessage(error: unknown): string {
     : "Something went wrong. Nothing was dispatched.";
 }
 
+/**
+ * Where the canvas points before the device has answered. A camera position,
+ * *not* a pickup: it is never submitted, never labelled, and never Home. The
+ * rider's real pickup arrives from geolocation, recenter, or a pin.
+ */
+const CAMERA_FALLBACK = {
+  latitude: CURRENT_LOCATION.latitude!,
+  longitude: CURRENT_LOCATION.longitude!,
+};
+
+/** No address until the device, a pin, or a Places result gives us one. */
+const UNSET_PICKUP: Pickup = { address: "", followsDevice: true };
+
 const mapAdapter = env.NEXT_PUBLIC_MAPBOX_TOKEN
   ? createMapboxAdapter(env.NEXT_PUBLIC_MAPBOX_TOKEN)
   : undefined;
@@ -321,7 +333,7 @@ function LimeCabFlow({
   const [bookingMode, setBookingMode] = useState<BookingMode>(
     wantCourier ? "courier" : wantReserve ? "reserve" : "ride",
   );
-  const [pickup, setPickup] = useState(CURRENT_LOCATION);
+  const [pickup, setPickup] = useState<Pickup>(UNSET_PICKUP);
   const [destination, setDestination] = useState<Location | null>(null);
   const [stops, setStops] = useState<Location[]>([]);
   const [searchTarget, setSearchTarget] =
@@ -555,8 +567,8 @@ function LimeCabFlow({
 
   const pickupPoint = useMemo<MapPoint>(
     () => ({
-      latitude: pickup.latitude ?? CURRENT_LOCATION.latitude!,
-      longitude: pickup.longitude ?? CURRENT_LOCATION.longitude!,
+      latitude: pickup.latitude ?? CAMERA_FALLBACK.latitude,
+      longitude: pickup.longitude ?? CAMERA_FALLBACK.longitude,
       kind: "origin",
     }),
     [pickup],
@@ -658,9 +670,6 @@ function LimeCabFlow({
     }
     if (destinationPoint && state !== "home") list.push(destinationPoint);
     if (driverPoint) list.push(driverPoint);
-    // Idle cars on the home canvas: the rider's first question is whether
-    // LimeCab is even available here, and this answers it before any tap.
-    if (state === "home" || state === "matching") list.push(...NEARBY_DRIVERS);
     return list;
   }, [destinationPoint, driverPoint, pickupPoint, state, stops]);
 
@@ -795,8 +804,8 @@ function LimeCabFlow({
           ? (stops[stopIndex] ?? pickup)
           : (destination ?? pickup);
     setPin({
-      latitude: seed.latitude ?? CURRENT_LOCATION.latitude!,
-      longitude: seed.longitude ?? CURRENT_LOCATION.longitude!,
+      latitude: seed.latitude ?? CAMERA_FALLBACK.latitude,
+      longitude: seed.longitude ?? CAMERA_FALLBACK.longitude,
     });
     setPinAddress(seed.address || pickup.address);
     setPinShortName(splitAddress(seed.address || pickup.address).line);
@@ -861,7 +870,7 @@ function LimeCabFlow({
    * "I'm here" — put the pickup back on the device, without opening search.
    * Same geolocation path the search scene and the home map tap already use.
    */
-  const recenterPickup = () => {
+  const recenterPickup = useCallback(() => {
     if (recentering || typeof navigator === "undefined" || !navigator.geolocation) {
       return;
     }
@@ -884,7 +893,68 @@ function LimeCabFlow({
       () => setRecentering(false),
       { enableHighAccuracy: true, timeout: 8000 },
     );
-  };
+  }, [recentering]);
+
+  /**
+   * The pickup starts unset and is *found*, never assumed. The device first,
+   * because that is where the rider is standing; their last pickup second,
+   * because that is where they have actually been. Nothing invents an address.
+   */
+  const seeded = useRef(false);
+  const recent = api.trip.list.useQuery(undefined, {
+    enabled: signedIn && !pickup.address,
+    refetchOnWindowFocus: false,
+  });
+  useEffect(() => {
+    if (seeded.current || pickup.address) return;
+    seeded.current = true;
+    recenterPickup();
+  }, [pickup.address, recenterPickup]);
+
+  useEffect(() => {
+    if (pickup.address || recentering) return;
+    const last = recent.data?.find(
+      (row) => row.pickupLatitude != null && row.pickupLongitude != null,
+    );
+    if (!last) return;
+    setPickup({
+      address: last.pickupAddress,
+      latitude: last.pickupLatitude ?? undefined,
+      longitude: last.pickupLongitude ?? undefined,
+      followsDevice: false,
+    });
+  }, [pickup.address, recent.data, recentering]);
+
+  // Address search is biased to where the rider actually is, not to a constant.
+  useEffect(() => {
+    setSearchProximity(pickup);
+  }, [pickup]);
+
+  /**
+   * Cars near the pickup — drivers who have pinged in the last 45 seconds,
+   * snapped to their cell centre. Zero of them draws zero of them: an empty
+   * canvas is the truthful answer to "is LimeCab live here?", and three
+   * invented Priuses were the most dishonest pixels in the product.
+   */
+  const wantsNearby =
+    signedIn &&
+    (state === "home" || state === "matching") &&
+    pickup.latitude !== undefined &&
+    pickup.longitude !== undefined;
+  const nearby = api.driver.nearby.useQuery(
+    {
+      latitude: pickup.latitude ?? CAMERA_FALLBACK.latitude,
+      longitude: pickup.longitude ?? CAMERA_FALLBACK.longitude,
+    },
+    { enabled: wantsNearby, refetchInterval: 4_000 },
+  );
+  const nearbyCars = useMemo<MapPoint[]>(
+    () =>
+      wantsNearby
+        ? (nearby.data ?? []).map((car) => ({ ...car, kind: "marker" as const }))
+        : [],
+    [nearby.data, wantsNearby],
+  );
 
   return (
     <ServiceAppShell
@@ -902,7 +972,10 @@ function LimeCabFlow({
                 center={center}
                 interactive={surfaces.layout.map?.interaction === "active"}
                 onCameraChange={pinning ? setPin : undefined}
-                points={pinning ? [] : points}
+                // Idle cars on the home canvas: the rider's first question is
+                // whether LimeCab is even live here, and real pings answer it
+                // before any tap. None nearby draws none.
+                points={pinning ? [] : [...points, ...nearbyCars]}
                 route={mapRoute}
                 pinLabel={pinning ? pinShortName : undefined}
                 pinLocating={pinning && pinLocating}
@@ -1030,6 +1103,27 @@ function RecenterPickupButton({
         className={busy ? "animate-pulse" : undefined}
       />
     </button>
+  );
+}
+
+/**
+ * File this address, without choosing it. Deliberately a second target beside
+ * the row rather than a control inside it: tapping the row books there, and
+ * these two answers must not be one tap apart from each other's target.
+ */
+function SaveRowButton({ onPress }: { onPress: () => void }) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label="Save this place"
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={onPress}
+      className="text-muted-foreground"
+    >
+      <Icon icon={BookmarkAdd01Icon} size={18} />
+    </Button>
   );
 }
 
@@ -1165,8 +1259,60 @@ function LimeCabSurfaces({
   const forTheWayAsked = useRef(false);
   const voiceOpenedSearch = useRef(false);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  /** Which address the save interrupt is filing. App data, not a screen flag. */
+  const [placeToSave, setPlaceToSave] = useState<Location | null>(null);
   const applyVoiceRef = useRef<(text: string) => void>(() => undefined);
   const voice = useVoiceCapture((text) => applyVoiceRef.current(text));
+
+  /** The rider themselves, for the courier flow's "send it to me" prefill. */
+  const rider = api.rider.me.useQuery(undefined, { enabled: signedIn }).data;
+
+  /**
+   * This user's own places. Home and Work are slots; custom spots are a list;
+   * recents come from their own trips. An account with none has none — the
+   * lists render nothing rather than borrowing somebody else's Echo Park.
+   */
+  const savedQuery = api.places.list.useQuery(undefined, { enabled: signedIn });
+  const saved = useMemo<Place[]>(() => {
+    const list = savedQuery.data;
+    if (!list) return [];
+    return [list.home, list.work, ...list.custom].flatMap((place) =>
+      place ? [place] : [],
+    );
+  }, [savedQuery.data]);
+  const recents = useMemo(
+    () => savedQuery.data?.recents ?? [],
+    [savedQuery.data?.recents],
+  );
+
+  /**
+   * Custom spots a few blocks from the pickup, ranked above recents on an
+   * empty query. The only search path that touches H3 — and it never returns
+   * a cell, so the rider never sees a hex.
+   */
+  const nearbyPlaces = api.places.nearby.useQuery(
+    {
+      latitude: pickup.latitude ?? 0,
+      longitude: pickup.longitude ?? 0,
+    },
+    {
+      enabled:
+        signedIn &&
+        pickup.latitude !== undefined &&
+        pickup.longitude !== undefined,
+    },
+  );
+
+  /** Saved slots first, then what is close, then where they have been. */
+  const searchPlaces = useMemo<Place[]>(() => {
+    const near = nearbyPlaces.data ?? [];
+    const nearIds = new Set(near.map((place) => place.id));
+    return [
+      ...saved.filter((place) => !nearIds.has(place.id)),
+      ...near,
+      ...recents,
+    ];
+  }, [nearbyPlaces.data, recents, saved]);
 
   applyVoiceRef.current = (text) => {
     const parsed = submitVoiceText(text, (message) => {
@@ -1177,9 +1323,31 @@ function LimeCabSurfaces({
       voice.setTyped(text);
       return;
     }
-    const place = locationFromFixture(parsed.destinationQuery);
+    // "take me home" still parses to the query "Home"; what Home *means* is
+    // this user's saved slot, and an unset slot fails honestly rather than
+    // driving them to somebody else's Echo Park.
+    const slot = parsed.destinationQuery.trim().toLowerCase();
+    const savedSlot =
+      slot === "home"
+        ? savedQuery.data?.home
+        : slot === "work"
+          ? savedQuery.data?.work
+          : null;
+    const place =
+      slot === "home" || slot === "work"
+        ? savedSlot
+          ? {
+              address: savedSlot.address,
+              latitude: savedSlot.latitude ?? undefined,
+              longitude: savedSlot.longitude ?? undefined,
+            }
+          : null
+        : locationFromFixture(parsed.destinationQuery);
     if (!place) {
-      const message = "Couldn’t find that place. Try LAX, Home, or Griffith.";
+      const message =
+        slot === "home" || slot === "work"
+          ? `You haven’t saved a ${slot === "home" ? "Home" : "Work"} yet.`
+          : "Couldn’t find that place. Try LAX, Home, or Griffith.";
       setVoiceError(message);
       setSearchError(message);
       voice.setTyped(text);
@@ -1378,18 +1546,29 @@ function LimeCabSurfaces({
       setBookingMode("courier");
       setProductId("courier-small");
       if (intent === "store") {
+        // The store becomes the pickup; the rider is the recipient. "Here" is
+        // wherever they actually are — with no fix there is no here, so the
+        // flow asks for a drop-off instead of inventing one.
+        const here =
+          pickup.address && pickup.latitude !== undefined
+            ? {
+                address: pickup.address,
+                latitude: pickup.latitude,
+                longitude: pickup.longitude,
+              }
+            : null;
         setPickup({ ...result, followsDevice: false });
-        setDestination({
-          address: CURRENT_LOCATION.address,
-          latitude: CURRENT_LOCATION.latitude,
-          longitude: CURRENT_LOCATION.longitude,
-        });
+        setDestination(here);
         setCourierValues({
           ...defaultOptionValues(COURIER_OPTIONS),
           fulfillment: "buy",
-          recipientName: RIDER.fullName,
-          recipientPhone: RIDER.phone,
+          recipientName: rider?.name ?? "",
+          recipientPhone: rider?.phone ?? "",
         });
+        if (!here) {
+          openSearch("destination");
+          return;
+        }
       } else {
         setDestination(result);
         setCourierValues(defaultOptionValues(COURIER_OPTIONS));
@@ -1530,7 +1709,7 @@ function LimeCabSurfaces({
     setRating(null);
     setTipCents(null);
     setPromoApplied(false);
-    setPickup(CURRENT_LOCATION);
+    setPickup(UNSET_PICKUP);
     setState("home");
   };
 
@@ -1596,6 +1775,7 @@ function LimeCabSurfaces({
     setDetail(null);
     setCancelStage(null);
     setUnavailable(null);
+    setPlaceToSave(null);
     setForTheWayOpen(false);
   }, [standby]);
 
@@ -1625,6 +1805,8 @@ function LimeCabSurfaces({
       {visible === "home" || rideMinimized ? (
         <LimeCabHomeScene
           destination={destination}
+          saved={saved}
+          recents={recents}
           title={
             courier ? "Where is it going?" : reserve ? "Book ahead" : undefined
           }
@@ -1676,6 +1858,24 @@ function LimeCabSurfaces({
                       : courier
                         ? "Set drop-off"
                         : "Set destination"
+                }
+                secondary={
+                  signedIn && pinAddress && !pinLocating ? (
+                    <Button
+                      variant="ghost"
+                      className="text-muted-foreground -ml-2 h-10 px-2"
+                      onClick={() => {
+                        surfaces.perform("openDetails");
+                        setPlaceToSave({
+                          address: pinAddress,
+                          latitude: pin?.latitude,
+                          longitude: pin?.longitude,
+                        });
+                      }}
+                    >
+                      Save this place
+                    </Button>
+                  ) : null
                 }
                 onConfirm={() => {
                   if (!pin || !pinAddress) return;
@@ -1871,7 +2071,7 @@ function LimeCabSurfaces({
         <LocationSearchScene
           open={state === "location_search"}
           adapter={placesAdapter}
-          places={SAVED_PLACES}
+          places={searchPlaces}
           title={searchTitle(searchTarget, courier)}
           route={{
             origin: pickupLine,
@@ -1929,6 +2129,29 @@ function LimeCabSurfaces({
               />
             )
           }
+          rowAction={
+            signedIn
+              ? (suggestion) => (
+                  <SaveRowButton
+                    onPress={() => {
+                      void (async () => {
+                        let result: Location;
+                        try {
+                          result = await placesAdapter.retrieve(suggestion.id);
+                        } catch {
+                          result =
+                            locationFromFixture(suggestion.address) ?? {
+                              address: suggestion.address,
+                            };
+                        }
+                        surfaces.perform("openDetails");
+                        setPlaceToSave(result);
+                      })();
+                    }}
+                  />
+                )
+              : undefined
+          }
           normalizeQuery={limeCabNormalizeQuery}
           renderResults={(input) =>
             renderLimeCabSearchResults({
@@ -1976,6 +2199,14 @@ function LimeCabSurfaces({
         }}
         discountCents={discountCents}
         tipCents={tipCents}
+      />
+
+      {/* Filing an address is a question *about* the task, so it suspends the
+          scene underneath and hands it back untouched. It never books. */}
+      <SavePlaceSurface
+        open={placeToSave !== null}
+        location={placeToSave}
+        onClose={() => closeInterrupt(() => setPlaceToSave(null))}
       />
 
       <LimeCabForTheWaySurface

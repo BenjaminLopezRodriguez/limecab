@@ -150,6 +150,8 @@ export const trips = createTable(
     pickupLatitude: d.doublePrecision(),
     pickupLongitude: d.doublePrecision(),
     pickupMeetingPoint: d.varchar({ length: 256 }),
+    /** Res-8 cell of the pickup. Null on rows written before this column. */
+    pickupH3: d.varchar({ length: 16 }),
 
     destinationAddress: d.varchar({ length: 512 }).notNull(),
     destinationLatitude: d.doublePrecision(),
@@ -197,6 +199,7 @@ export const trips = createTable(
     index("limecab_trip_user_id_idx").on(t.userId),
     index("limecab_trip_status_idx").on(t.status),
     index("limecab_trip_requested_at_idx").on(t.requestedAt),
+    index("limecab_trip_pickup_h3_idx").on(t.pickupH3),
     unique("limecab_trip_request_idempotency_unique").on(t.requestIdempotencyKey),
   ],
 );
@@ -222,9 +225,26 @@ export const drivers = createTable(
     vehicleColor: d.varchar({ length: 32 }).notNull(),
     vehiclePlate: d.varchar({ length: 16 }).notNull(),
     available: d.boolean().default(false).notNull(),
+    /**
+     * Which offers this driver wants. Three booleans rather than a JSON blob:
+     * they are queried (`courierJobs` filters the inbox), and a column that is
+     * filtered on should be a column.
+     */
+    acceptXl: d.boolean().default(true).notNull(),
+    longTrips: d.boolean().default(true).notNull(),
+    courierJobs: d.boolean().default(true).notNull(),
     headingAddress: d.varchar({ length: 512 }),
     headingLatitude: d.doublePrecision(),
     headingLongitude: d.doublePrecision(),
+    /**
+     * Last known fix. A different thing from the heading columns above: that
+     * is where the driver wants to end up, this is where they are standing.
+     */
+    lastLatitude: d.doublePrecision(),
+    lastLongitude: d.doublePrecision(),
+    /** Res-8 cell of the fix, so matching is an equality and not a bbox. */
+    lastH3: d.varchar({ length: 16 }),
+    lastSeenAt: d.timestamp({ withTimezone: true }),
     createdAt: d
       .timestamp({ withTimezone: true })
       .$defaultFn(() => /* @__PURE__ */ new Date())
@@ -233,8 +253,54 @@ export const drivers = createTable(
   (t) => [
     unique("limecab_driver_user_id_unique").on(t.userId),
     index("limecab_driver_available_idx").on(t.available),
+    index("limecab_driver_last_h3_idx").on(t.lastH3),
   ],
 );
+
+/**
+ * A user's own places. Home and Work are *slots* — one each, upserted by
+ * kind — and `custom` is a list, so there is deliberately no unique on
+ * `(userId, kind)`: it would block a second custom spot.
+ *
+ * `h3` is `SEARCH_H3_RES` and is a query filter only. It is never drawn and
+ * never leaves the server.
+ */
+export const savedPlaces = createTable(
+  "saved_place",
+  (d) => ({
+    id: d
+      .varchar({ length: 255 })
+      .notNull()
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: d
+      .varchar({ length: 255 })
+      .notNull()
+      .references(() => users.id),
+    kind: d
+      .varchar({ length: 16 })
+      .$type<"home" | "work" | "custom">()
+      .notNull(),
+    label: d.varchar({ length: 64 }).notNull(),
+    address: d.varchar({ length: 512 }).notNull(),
+    latitude: d.doublePrecision().notNull(),
+    longitude: d.doublePrecision().notNull(),
+    h3: d.varchar({ length: 16 }).notNull(),
+    createdAt: d
+      .timestamp({ withTimezone: true })
+      .$defaultFn(() => /* @__PURE__ */ new Date())
+      .notNull(),
+    updatedAt: d.timestamp({ withTimezone: true }).$onUpdate(() => new Date()),
+  }),
+  (t) => [
+    index("limecab_saved_place_user_idx").on(t.userId),
+    index("limecab_saved_place_h3_idx").on(t.h3),
+  ],
+);
+
+export const savedPlacesRelations = relations(savedPlaces, ({ one }) => ({
+  user: one(users, { fields: [savedPlaces.userId], references: [users.id] }),
+}));
 
 export const tripsRelations = relations(trips, ({ one, many }) => ({
   user: one(users, { fields: [trips.userId], references: [users.id] }),

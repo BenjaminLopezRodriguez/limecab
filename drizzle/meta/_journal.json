@@ -29,6 +29,20 @@
       "when": 1787772000000,
       "tag": "0003_phone_heading",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787880875931,
+      "tag": "0004_places_h3",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787924073281,
+      "tag": "0005_broad_oracle",
+      "breakpoints": true
     }
   ]
 }
