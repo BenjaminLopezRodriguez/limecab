@@ -164,3 +164,38 @@ Repro: Home → tap the map card → `location_pin`. Console fills with
 "Maximum update depth exceeded". Reverting the surfaces fixes above does not
 change it. Suspect the `setPin` ↔ `onCameraChange`/`easeTo` feedback now that
 Home and the search scene have new props.
+
+## 2026-08-27 — GO–GET handoff (shipped + verified)
+
+`.ux-bugs/HANDOFF-goget-2026.md` §1–§6 were implemented in a parallel session
+(`cf56c18`, `73318ef`) and verified here against the handoff's acceptance
+criteria at 390×844 and 1280. Live on production (`lime.cab`).
+
+Verified: §1 mic → honest-empty typed fallback · §2 one query splits into
+"Ride there" / "Get from a store" · §3 travel toggle on → airport + spots,
+off → old Home · §4 Services → When? → "Reserved for 9:00 PM" · §5 Comfort →
+interrupt → cafe stop on route + rail, Lime → no interrupt · §6 store row →
+buy-for-me with pickup = store, photo honest-empty. `/driver` untouched. No
+SurfaceManager invariant warnings.
+
+### Bugs found
+| ID | Slug | File | Severity | Status |
+|----|------|------|----------|--------|
+| R2 | pin-scene-render-loop | service-app/mapbox-canvas.tsx | P0 | fixed 2026-08-27 |
+| F1 | quote-charges-what-server-wont | limecab-app.tsx | P0 | fixed 2026-08-27 |
+| G1 | reverse-geocode-always-502 | api/map/reverse, api/map/places | P1 | fixed 2026-08-27 |
+
+### Bugs fixed
+| ID | Slug | File | Fix |
+|----|------|------|-----|
+| R2 | pin-scene-render-loop | mapbox-canvas.tsx | `setPadding` is a `jumpTo` that fires `moveend`; in pin mode that fed `onCameraChange` → `setPin` → camera → repeat (~256 errors / 4s). Only gesture events (`originalEvent`) move the pin now |
+| F1 | quote-charges-what-server-wont | limecab-app.tsx | For the Way added $5 to the quote, but `trip.request` takes no add-on and prices server-side — rider saw $46.02, would be charged $41.02. Drink is now a "paid at the counter" line; the stop stays real |
+| G1 | reverse-geocode-always-502 | map routes | Mapbox v5 reverse geocoding 422s when `limit` is sent with multiple `types`. Dropped `limit`, kept types |
+
+### Recurring patterns
+- A programmatic camera move fires the same events as a gesture. Anything that
+  writes map state from a map event must first prove a human caused it.
+- A client-side total is a claim about what will be charged. If the server
+  prices the request itself, the client may only *display* what it sends.
+- A route that maps every upstream failure to 502 hides the upstream's actual
+  complaint. The 422 body named the fix exactly.
