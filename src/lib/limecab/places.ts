@@ -51,8 +51,7 @@ export function createPlacesAdapter(): GeocodeAdapter {
           const body = (await res.json()) as {
             suggestions?: Awaited<ReturnType<GeocodeAdapter["suggest"]>>;
           };
-          const remote = body.suggestions ?? [];
-          if (remote.length) return remote.slice(0, 8);
+          return (body.suggestions ?? []).slice(0, 8);
         }
       } catch {
         /* Mapbox down or unconfigured — static list still answers. */

@@ -1,7 +1,7 @@
 # Handoff: driver home UX (Uber operating model)
 
-**Status: open work order.** Screenshots 2026-08-27, in
-`.ux-bugs/refs/uber-driver/`. This is a **composition pass on idle duty**,
+**Status: shipped 2026-08-28** (idle UX + P1 wiring fixes in follow-up commit).
+Screenshots 2026-08-27, in `.ux-bugs/refs/uber-driver/`. This is a **composition pass on idle duty**,
 not a rebuild of offers or live jobs, and not a restyle of rider Home.
 
 `src/app/driver/page.tsx` stays the **gate** (load / register / `DriverApp`).

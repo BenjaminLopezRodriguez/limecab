@@ -151,3 +151,21 @@ export function driverSceneForTripStatus(
       return null;
   }
 }
+
+/** First paint for `/driver` — derived from the inbox the page already loaded. */
+export function driverSceneFromInbox(
+  inbox:
+    | {
+        driver?: { available: boolean } | null;
+        active?: { status: string }[];
+      }
+    | null
+    | undefined,
+): DriverAppState {
+  const activeStatus = inbox?.active?.[0]?.status;
+  if (activeStatus) {
+    const fromTrip = driverSceneForTripStatus(activeStatus);
+    if (fromTrip) return fromTrip;
+  }
+  return inbox?.driver?.available ? "online" : "offline";
+}

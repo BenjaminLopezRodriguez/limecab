@@ -56,6 +56,8 @@ const SNAP_FOR: Record<SheetPresentation, number> = {
 
 const SNAP_POINTS = [PEEK, SHEET, EXPANDED];
 
+export { EXPANDED as SHEET_EXPANDED_SNAP };
+
 const DESKTOP_MAX: Record<SheetPresentation, string> = {
   peek: "md:max-h-[22dvh]",
   sheet: "md:max-h-[40dvh]",
@@ -101,6 +103,7 @@ export function ServiceSheet({
   label = "Your request",
   description = "Drag to resize.",
   presentation = "sheet",
+  onSnapChange,
 }: {
   children: ReactNode;
   className?: string;
@@ -108,6 +111,8 @@ export function ServiceSheet({
   label?: string;
   description?: string;
   presentation?: SheetPresentation;
+  /** Fired when the mobile drawer snaps to a new rung. */
+  onSnapChange?: (snap: number) => void;
 }) {
   const isMobile = useServiceAppMobile();
   const surface = useOptionalAdaptiveSurface();
@@ -185,7 +190,11 @@ export function ServiceSheet({
       swipeDirection="down"
       snapPoints={SNAP_POINTS}
       snapPoint={snap}
-      onSnapPointChange={setSnap}
+      onSnapPointChange={(value) => {
+        setSnap(value);
+        const next = typeof value === "number" ? value : rung;
+        onSnapChange?.(next);
+      }}
     >
       <DrawerContent
         data-presentation={presentation}

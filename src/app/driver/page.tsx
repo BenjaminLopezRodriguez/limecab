@@ -5,6 +5,7 @@ import { useState } from "react";
 import { DriverApp } from "@/components/limecab/driver-app";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { driverSceneFromInbox } from "@/lib/limecab/driver-state";
 import { api } from "@/trpc/react";
 
 /**
@@ -54,6 +55,7 @@ export default function DriverPage() {
   return (
     <DriverApp
       driverInitial={(inbox.data.driver.name || "D").charAt(0).toUpperCase()}
+      initialScene={driverSceneFromInbox(inbox.data)}
     />
   );
 }

@@ -5,6 +5,7 @@ import {
   DRIVER_APP_STATES,
   driverAppQuestion,
   driverSceneForTripStatus,
+  driverSceneFromInbox,
   isDriving,
   reduceDriverAppState,
   type DriverAppEvent,
@@ -83,4 +84,22 @@ test("a live trip status lands on its job scene, and nothing else does", () => {
   for (const status of ["requested", "complete", "cancelled", "nonsense"]) {
     assert.equal(driverSceneForTripStatus(status), null, status);
   }
+});
+
+test("driverSceneFromInbox matches duty and active trip", () => {
+  assert.equal(
+    driverSceneFromInbox({ driver: { available: false }, active: [] }),
+    "offline",
+  );
+  assert.equal(
+    driverSceneFromInbox({ driver: { available: true }, active: [] }),
+    "online",
+  );
+  assert.equal(
+    driverSceneFromInbox({
+      driver: { available: false },
+      active: [{ status: "matched" }],
+    }),
+    "to_pickup",
+  );
 });

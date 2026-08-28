@@ -900,14 +900,17 @@ function LimeCabFlow({
    * because that is where the rider is standing; their last pickup second,
    * because that is where they have actually been. Nothing invents an address.
    */
-  const seeded = useRef(false);
+  const pickupSeeded = useRef(false);
+  const resetPickupSeed = useCallback(() => {
+    pickupSeeded.current = false;
+  }, []);
   const recent = api.trip.list.useQuery(undefined, {
     enabled: signedIn && !pickup.address,
     refetchOnWindowFocus: false,
   });
   useEffect(() => {
-    if (seeded.current || pickup.address) return;
-    seeded.current = true;
+    if (pickupSeeded.current || pickup.address) return;
+    pickupSeeded.current = true;
     recenterPickup();
   }, [pickup.address, recenterPickup]);
 
@@ -1068,6 +1071,7 @@ function LimeCabFlow({
         setFailure={setFailure}
         status={status}
         estimate={estimate}
+        resetPickupSeed={resetPickupSeed}
       />
     </ServiceAppShell>
   );
@@ -1175,6 +1179,7 @@ function LimeCabSurfaces({
   setFailure,
   status,
   estimate,
+  resetPickupSeed,
 }: {
   state: ServiceAppState;
   setState: (next: ServiceAppState) => void;
@@ -1232,6 +1237,7 @@ function LimeCabSurfaces({
   setFailure: (next: string | null) => void;
   status: ServiceStatus;
   estimate: { miles: number; minutes: number } | null;
+  resetPickupSeed: () => void;
 }) {
   const surface = useAdaptiveSurface();
   const surfaces = useSurfaceManager<LimeCabSurfaceId, LimeCabAction>();
@@ -1273,12 +1279,10 @@ function LimeCabSurfaces({
    * lists render nothing rather than borrowing somebody else's Echo Park.
    */
   const savedQuery = api.places.list.useQuery(undefined, { enabled: signedIn });
-  const saved = useMemo<Place[]>(() => {
+  const savedSlots = useMemo<Place[]>(() => {
     const list = savedQuery.data;
     if (!list) return [];
-    return [list.home, list.work, ...list.custom].flatMap((place) =>
-      place ? [place] : [],
-    );
+    return [list.home, list.work].flatMap((place) => (place ? [place] : []));
   }, [savedQuery.data]);
   const recents = useMemo(
     () => savedQuery.data?.recents ?? [],
@@ -1303,16 +1307,16 @@ function LimeCabSurfaces({
     },
   );
 
-  /** Saved slots first, then what is close, then where they have been. */
+  /** Home/Work slots, then nearby customs, then recents — not every custom. */
   const searchPlaces = useMemo<Place[]>(() => {
     const near = nearbyPlaces.data ?? [];
     const nearIds = new Set(near.map((place) => place.id));
     return [
-      ...saved.filter((place) => !nearIds.has(place.id)),
+      ...savedSlots.filter((place) => !nearIds.has(place.id)),
       ...near,
       ...recents,
     ];
-  }, [nearbyPlaces.data, recents, saved]);
+  }, [nearbyPlaces.data, recents, savedSlots]);
 
   applyVoiceRef.current = (text) => {
     const parsed = submitVoiceText(text, (message) => {
@@ -1710,6 +1714,7 @@ function LimeCabSurfaces({
     setTipCents(null);
     setPromoApplied(false);
     setPickup(UNSET_PICKUP);
+    resetPickupSeed();
     setState("home");
   };
 
@@ -1805,7 +1810,7 @@ function LimeCabSurfaces({
       {visible === "home" || rideMinimized ? (
         <LimeCabHomeScene
           destination={destination}
-          saved={saved}
+          saved={savedSlots}
           recents={recents}
           title={
             courier ? "Where is it going?" : reserve ? "Book ahead" : undefined

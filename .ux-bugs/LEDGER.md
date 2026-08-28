@@ -226,8 +226,17 @@ them. `page.tsx` stays the register/load gate.
 
 | ID | Slug | File | Severity | Status |
 |----|------|------|----------|--------|
-| D6 | offline-is-still-a-peek | driver-app.tsx / driver-scenes.tsx | P0 | open |
-| D7 | online-peek-is-go-offline | DriverDutyScene | P0 | open |
-| D8 | no-demand-overlay | mapbox-canvas.tsx | P0 | open |
-| D9 | no-earnings-trends | (missing) | P1 | open |
-| D10 | prefs-not-uber-shaped | driver/profile/preferences | P1 | open |
+| D6 | offline-is-still-a-peek | driver-app.tsx / driver-scenes.tsx | P0 | fixed 2026-08-28 |
+| D7 | online-peek-is-go-offline | DriverDutyScene | P0 | fixed 2026-08-28 |
+| D8 | no-demand-overlay | mapbox-canvas.tsx | P0 | fixed 2026-08-27 |
+| D9 | no-earnings-trends | (missing) | P1 | fixed 2026-08-27 |
+| D10 | prefs-not-uber-shaped | driver/profile/preferences | P1 | fixed 2026-08-28 |
+
+### Bugs fixed (driver UX P1 follow-up)
+| ID | Slug | File | Fix |
+|----|------|------|-----|
+| D6 | offline-is-still-a-peek | driver-app.tsx / page.tsx | `driverSceneFromInbox` seeds first paint; `useLayoutEffect` applies surfaces before paint |
+| D7 | online-peek-is-go-offline | driver-app.tsx setDuty | `perform(goOnline)` only after `setAvailable` succeeds; pill keeps spinner |
+| D11 | search-lists-all-customs | limecab-app.tsx searchPlaces | Empty query: Home/Work slots + H3 nearby customs + recents only |
+| D12 | pickup-no-reseed | limecab-app.tsx reset | `resetPickupSeed()` clears one-shot geolocation after a trip |
+| D13 | demand-stuck-on-pan | driver-app.tsx recenter | `setCamera(null)` on recenter / collapseIdleMap |

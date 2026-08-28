@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -19,7 +26,7 @@ import { AdaptiveSurface } from "@/components/service-app/adaptive-surface";
 import { createMapboxAdapter } from "@/components/service-app/mapbox-adapter";
 import { ServiceAppShell } from "@/components/service-app/service-app-shell";
 import { ServiceMap } from "@/components/service-app/service-map";
-import { ServiceSheet } from "@/components/service-app/service-sheet";
+import { ServiceSheet, SHEET_EXPANDED_SNAP } from "@/components/service-app/service-sheet";
 import { SurfaceSkeleton } from "@/components/service-app/surface-skeleton";
 import {
   ManagedSurface,
@@ -60,10 +67,10 @@ import { isCourierProduct } from "@/lib/limecab/courier";
 import {
   driverAppQuestion,
   driverSceneForTripStatus,
+  type DriverAppState,
   isDriving,
   reduceDriverAppState,
   type DriverAppEvent,
-  type DriverAppState,
 } from "@/lib/limecab/driver-state";
 import { cellCenter, cellPolygon, toDriverCell } from "@/lib/limecab/h3";
 import { CURRENT_LOCATION } from "@/lib/limecab/mock";
@@ -115,15 +122,27 @@ const PING_MS = 4_000;
 /** The demand lattice is per-cell, so panning inside one cell is not a refetch. */
 const DEMAND_MS = 15_000;
 
-export function DriverApp({ driverInitial }: { driverInitial: string }) {
+export function DriverApp({
+  driverInitial,
+  initialScene,
+}: {
+  driverInitial: string;
+  initialScene: DriverAppState;
+}) {
   return (
     <SurfaceManagerProvider manager={driverSurfaces}>
-      <DriverFlow driverInitial={driverInitial} />
+      <DriverFlow driverInitial={driverInitial} initialScene={initialScene} />
     </SurfaceManagerProvider>
   );
 }
 
-function DriverFlow({ driverInitial }: { driverInitial: string }) {
+function DriverFlow({
+  driverInitial,
+  initialScene,
+}: {
+  driverInitial: string;
+  initialScene: DriverAppState;
+}) {
   const surfaces = useSurfaceManager<DriverSurfaceId, DriverSurfaceAction>();
   const router = useRouter();
   /**
@@ -133,7 +152,7 @@ function DriverFlow({ driverInitial }: { driverInitial: string }) {
    */
   const { perform, apply } = surfaces;
 
-  const [scene, setScene] = useState<DriverAppState>("offline");
+  const [scene, setScene] = useState<DriverAppState>(initialScene);
   /** The one ride being offered. App data, not a scene and not a boolean. */
   const [offeredId, setOfferedId] = useState<string | null>(null);
   const [declined, setDeclined] = useState<string[]>([]);
@@ -204,7 +223,7 @@ function DriverFlow({ driverInitial }: { driverInitial: string }) {
   // scene *change* ends every idle panel — there is nothing to return to — but
   // the first run must not, or it would close a panel opened on the same tick.
   const lastScene = useRef(scene);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (lastScene.current !== scene) {
       setPanel(null);
       setFocus(null);
@@ -463,6 +482,8 @@ function DriverFlow({ driverInitial }: { driverInitial: string }) {
 
   const collapseIdleMap = useCallback(() => {
     setFocus(null);
+    setCamera(null);
+    setRecenterAt(Date.now());
     perform("collapseIdleMap");
   }, [perform]);
 
@@ -510,6 +531,7 @@ function DriverFlow({ driverInitial }: { driverInitial: string }) {
 
   const recenter = useCallback(() => {
     setFocus(null);
+    setCamera(null);
     setRecenterAt(Date.now());
   }, []);
 
@@ -881,7 +903,6 @@ function DriverSurfaces({
   const setDuty = (next: boolean) => {
     if (surface.progress.locked) return;
     setFailure(null);
-    surfaces.perform(next ? "goOnline" : "goOffline");
     void surface
       .transition({
         intent: "progress",
@@ -893,8 +914,10 @@ function DriverSurfaces({
         },
       })
       .then(
-        () => go(next ? "go_online" : "go_offline"),
-        // The transition restores the peek; the reason goes beside the button.
+        () => {
+          surfaces.perform(next ? "goOnline" : "goOffline");
+          go(next ? "go_online" : "go_offline");
+        },
         (reason: unknown) => setFailure(errorMessage(reason)),
       );
   };
@@ -1093,6 +1116,13 @@ function DriverSurfaces({
                   : "Your duty session"
             }
             presentation={posture}
+            onSnapChange={
+              panel === "recommended"
+                ? (snap) => {
+                    if (snap < SHEET_EXPANDED_SNAP) onCloseRecommended();
+                  }
+                : undefined
+            }
           >
             {loading ? <SurfaceSkeleton lines={2} /> : null}
 
