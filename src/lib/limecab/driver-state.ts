@@ -55,6 +55,7 @@ export type DriverAppEvent =
   | "arrived"
   | "started"
   | "completed"
+  | "released"
   | "done";
 
 /** Scenes where a job is running. Duty cannot be dropped inside one. */
@@ -88,6 +89,10 @@ export function reduceDriverAppState(
 
     case "completed":
       return state === "on_trip" ? "complete" : state;
+
+    // The job dropped before start — back in the hunt, still online.
+    case "released":
+      return state === "to_pickup" || state === "at_pickup" ? "online" : state;
 
     // The fare splash is read, not dismissed into a dead end: Uber puts the
     // driver straight back in the hunt, still online.

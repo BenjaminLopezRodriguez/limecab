@@ -332,6 +332,22 @@ export const driverSurfaces = createSurfaceManager({
     /** Back in the hunt, still online. The next offer may land immediately. */
     resumeIdle: { intent: "progress", surfaces: IDLE },
 
+    /** Cancel asked: the live job recedes, it is not torn down. */
+    askCancelJob: { intent: "interrupt", surfaces: ASIDE },
+    /** "Keep this job" — the captured layout returns exactly as it was. */
+    dismissCancelJob: {
+      intent: "return",
+      surfaces: { interrupt: { emphasis: "hidden" } },
+    },
+    /**
+     * The accepted job is gone. History clears — there is no curb to return
+     * to — and the hunt peek comes back.
+     */
+    jobReleased: {
+      intent: "progress",
+      surfaces: { ...IDLE, interrupt: { emphasis: "hidden" } },
+    },
+
     openHeading: { intent: "interrupt", surfaces: HEADING },
     openSafety: { intent: "interrupt", surfaces: ASIDE },
 

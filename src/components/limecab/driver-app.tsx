@@ -35,6 +35,7 @@ import {
   SHEET_EXPANDED_SNAP,
   SHEET_OVERLAY_SNAP,
 } from "@/components/service-app/service-sheet";
+import { ConfirmActionSurface } from "@/components/service-app/confirm-action-surface";
 import { SurfaceSkeleton } from "@/components/service-app/surface-skeleton";
 import {
   ManagedSurface,
@@ -133,7 +134,7 @@ const placesAdapter = createPlacesAdapter();
 const OFFER_SECONDS = 20;
 
 /** While hunting, a four-second list refresh is a missed ride. */
-const HUNTING_MS = 1_000;
+const HUNTING_MS = 3_000;
 const RESTING_MS = 4_000;
 
 /** The fare stays up for a beat, then the driver is back in the hunt. */
@@ -1230,6 +1231,9 @@ function DriverSurfaces({
    */
   const [failure, setFailure] = useState<string | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
+  /** Interrupt, not a scene: "cancel this job?" sits over the live sheet. */
+  const [cancelAsk, setCancelAsk] = useState(false);
+  const cancelAskRef = useRef(false);
 
   const setAvailable = api.driver.setAvailable.useMutation();
   const setHeading = api.driver.setHeading.useMutation();
@@ -1441,6 +1445,46 @@ function DriverSurfaces({
   const resumeIdle = useCallback(() => {
     onResumed();
   }, [onResumed]);
+
+  const jobNoun = helpJob ? "visit" : courier ? "delivery" : "ride";
+
+  const askCancelJob = () => {
+    if (!job || scene === "on_trip" || surface.progress.locked) return;
+    setFailure(null);
+    cancelAskRef.current = true;
+    surfaces.perform("askCancelJob");
+    setCancelAsk(true);
+  };
+
+  const dismissCancelJob = () => {
+    if (!cancelAskRef.current) return;
+    cancelAskRef.current = false;
+    setCancelAsk(false);
+    surfaces.perform("dismissCancelJob");
+  };
+
+  const confirmCancelJob = async () => {
+    if (!job || surface.progress.locked) return;
+    const tripId = job.id;
+    const keepQueue = queued.length > 0;
+    await advance.mutateAsync({ tripId, action: "cancel" });
+    await refresh();
+    cancelAskRef.current = false;
+    setCancelAsk(false);
+    if (keepQueue) {
+      surfaces.perform("dismissCancelJob");
+      return;
+    }
+    surfaces.perform("jobReleased");
+    go("released");
+  };
+
+  useEffect(() => {
+    if (!cancelAsk) return;
+    if (scene === "to_pickup" || scene === "at_pickup") return;
+    cancelAskRef.current = false;
+    setCancelAsk(false);
+  }, [cancelAsk, scene]);
 
   useEffect(() => {
     if (scene !== "complete") return;
@@ -1668,6 +1712,11 @@ function DriverSurfaces({
                     busy={surface.progress.locked}
                     error={failure}
                     onAdvance={runAdvance}
+                    onCancel={
+                      visible === "to_pickup" || visible === "at_pickup"
+                        ? askCancelJob
+                        : undefined
+                    }
                   />
                 )
               ) : (
@@ -1719,6 +1768,25 @@ function DriverSurfaces({
           />
         ) : null}
       </AdaptiveSurface.Interrupt>
+
+      <ConfirmActionSurface
+        open={cancelAsk}
+        onOpenChange={(open) => {
+          if (!open) dismissCancelJob();
+        }}
+        id="cancel-job"
+        intent="destructive"
+        title={`Cancel this ${jobNoun}?`}
+        description={
+          queued.length > 0
+            ? `This ${jobNoun} ends. The next job stays on your list.`
+            : `You’ll go back to looking for work. The rider is released.`
+        }
+        confirmLabel={`Cancel ${jobNoun}`}
+        cancelLabel={`Keep ${jobNoun}`}
+        onConfirm={confirmCancelJob}
+        onCancel={dismissCancelJob}
+      />
 
       <AdaptiveSurface.Interrupt
         id="interrupt"

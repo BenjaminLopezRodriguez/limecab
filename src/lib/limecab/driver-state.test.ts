@@ -22,6 +22,7 @@ const EVENTS: DriverAppEvent[] = [
   "arrived",
   "started",
   "completed",
+  "released",
   "done",
 ];
 
@@ -54,6 +55,11 @@ test("only the one legal event moves each scene", () => {
         // Dropping duty is always allowed outside a job — including from the
         // fare splash, which is not itself a job.
         assert.equal(next, "offline", `${from} + ${event}`);
+      } else if (
+        event === "released" &&
+        (from === "to_pickup" || from === "at_pickup")
+      ) {
+        assert.equal(next, "online", `${from} + ${event}`);
       } else {
         assert.equal(next, from, `${from} + ${event} must not move`);
       }
@@ -133,6 +139,13 @@ test("rankLiveJobs keeps the current leg in front of queued accepts", () => {
 test("accepting while already on a job does not leave that job", () => {
   assert.equal(reduceDriverAppState("to_pickup", "accepted"), "to_pickup");
   assert.equal(reduceDriverAppState("on_trip", "accepted"), "on_trip");
+});
+
+test("releasing a job before start returns the driver to the hunt", () => {
+  assert.equal(reduceDriverAppState("to_pickup", "released"), "online");
+  assert.equal(reduceDriverAppState("at_pickup", "released"), "online");
+  assert.equal(reduceDriverAppState("on_trip", "released"), "on_trip");
+  assert.equal(reduceDriverAppState("online", "released"), "online");
 });
 
 test("a courier trip carrying a list is a Shop job", () => {

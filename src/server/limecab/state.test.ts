@@ -72,3 +72,12 @@ test("driver actions are gated by phase", () => {
   assert.equal(driverMay("requested", "complete"), false);
   assert.equal(driverMay("complete", "complete"), false);
 });
+
+test("driver may cancel only before the ride starts", () => {
+  assert.equal(driverMay("requested", "cancel"), false);
+  assert.ok(driverMay("matched", "cancel"));
+  assert.ok(driverMay("arriving", "cancel"));
+  assert.equal(driverMay("in_progress", "cancel"), false);
+  assert.equal(driverMay("complete", "cancel"), false);
+  assert.equal(driverMay("cancelled", "cancel"), false);
+});

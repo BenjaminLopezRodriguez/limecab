@@ -64,7 +64,7 @@ const registerInput = z.object({
 const tripIdInput = z.object({ tripId: z.string().min(1).max(255) });
 
 const advanceInput = tripIdInput.extend({
-  action: z.enum(["arrive", "start", "complete"]),
+  action: z.enum(["arrive", "start", "complete", "cancel"]),
   pickupCode: z.string().max(8).optional(),
   submittedPin: z.string().max(8).optional(),
   leftAtDoor: z.boolean().optional(),
@@ -889,6 +889,7 @@ export const driverRouter = createTRPCRouter({
                 ...(courier ? { deliveryVerifiedAt: now } : {}),
               }
             : {}),
+          ...(to === "cancelled" ? { cancelledAt: now } : {}),
         })
         .where(
           and(

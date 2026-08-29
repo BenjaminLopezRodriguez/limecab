@@ -10,7 +10,7 @@ import {
   type TripStatus,
 } from "./state.ts";
 
-/** status -> the one action a driver may take there. */
+/** status -> the advance a driver may take there. Cancel is extra on matched/arriving. */
 const DRIVER_PATH: [TripStatus, DriverAction][] = [
   ["requested", "accept"],
   ["matched", "arrive"],
@@ -18,23 +18,37 @@ const DRIVER_PATH: [TripStatus, DriverAction][] = [
   ["in_progress", "complete"],
 ];
 
+const CANCEL_FROM: readonly TripStatus[] = ["matched", "arriving"];
+
+function allowedOn(status: TripStatus, action: DriverAction): boolean {
+  const step = DRIVER_PATH.find(([from]) => from === status);
+  if (step && action === step[1]) return true;
+  return action === "cancel" && CANCEL_FROM.includes(status);
+}
+
 test("driverMay rejects out-of-order actions", () => {
   const actions = Object.keys(DRIVER_ACTION_TARGET) as DriverAction[];
-  for (const [status, allowed] of DRIVER_PATH) {
+  for (const status of TRIP_STATUSES) {
+    if (status === "complete" || status === "cancelled") {
+      for (const action of actions) {
+        assert.equal(driverMay(status, action), false, `${status} + ${action}`);
+      }
+      continue;
+    }
     for (const action of actions) {
       assert.equal(
         driverMay(status, action),
-        action === allowed,
+        allowedOn(status, action),
         `${status} + ${action}`,
       );
     }
   }
-  // Terminal statuses permit nothing at all.
-  for (const status of ["complete", "cancelled"] as TripStatus[]) {
-    for (const action of actions) {
-      assert.equal(driverMay(status, action), false, `${status} + ${action}`);
-    }
-  }
+});
+
+test("driver cancel is legal from matched and arriving only", () => {
+  assert.ok(canTransition("matched", DRIVER_ACTION_TARGET.cancel));
+  assert.ok(canTransition("arriving", DRIVER_ACTION_TARGET.cancel));
+  assert.equal(canTransition("in_progress", DRIVER_ACTION_TARGET.cancel), false);
 });
 
 test("driverMay rejects a made-up action", () => {

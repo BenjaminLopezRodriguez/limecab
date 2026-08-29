@@ -133,10 +133,10 @@ Both are load-bearing. Do not "simplify" them back.
 ## Do not redo (from the previous session, still true)
 
 1. **Sheet height from content** — comparison/status scenes measured their body
-   and sprang to full screen, swallowing the map. The rest ladder
-   (peek 22% / sheet 40% / expanded 60%) stays. Overlay is the overflow
-   destination of that same drawer, reached by scroll/swipe, never by
-   springing on mount. Keyboard-first work is still a `TaskScene`.
+   and sprang to full screen, swallowing the map. The fixed ladder
+   (peek 22% / sheet 40% / expanded 60%) stays. Taller work is a `TaskScene`.
+   Overlay is a snap of the same drawer (listed sheets / explicit
+   `presentation`), not the overflow destination.
 2. **Map inset to "sit above the sheet"** — caused `resize()` + `fitBounds` on
    every snap, every mount, every rAF ping. The map now sits *under* the sheet
    with padding only. Do not reintroduce an inset.
@@ -222,11 +222,10 @@ them:
 - Committed ride state is not unwound by Back. Minimize hides; cancel confirms.
 - Task map is not rounded. Sheet may have `rounded-t-3xl`.
 - No globe: mercator, pitch 0.
-- Nothing measures the drawer for map padding. The snap fraction is the
-  contract between the sheet and the map.
-- Overlay is the overflow destination, reached by scroll/swipe. Do not spring
-  the sheet to overlay from content height. Inner scroll stays locked until
-  overlay so that gesture expands the drawer.
+- Nothing measures the drawer. The snap fraction is the contract between the
+  sheet and the map.
+- Overlay is not the overflow destination. Do not redo sheet height from
+  content. Inner scroll stays on at rest rungs.
 - No `--token` on Vercel CLI. Prod: `vercel deploy --prod -y --no-wait`.
 
 ## Key files

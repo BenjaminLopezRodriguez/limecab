@@ -17,6 +17,7 @@ import {
   Shield01Icon,
   SlidersHorizontalIcon,
   SteeringIcon,
+  Cancel01Icon,
 } from "@hugeicons/core-free-icons";
 
 import { ProviderCard } from "@/components/service-app/provider-card";
@@ -664,7 +665,7 @@ export function HourlyBars({
 /**
  * The moment the whole app exists for. Fare first, deadhead second, street
  * strings third — that is the order a driver decides in, in about two
- * seconds. Accept is the only primary; the countdown is the decline.
+ * seconds. Accept is the only primary; the X and the countdown are decline.
  */
 export function DriverOfferScene({
   trip,
@@ -721,13 +722,31 @@ export function DriverOfferScene({
           </div>
         </div>
       ) : null}
-      <div className="flex items-end justify-between gap-3">
+      <div className="flex items-start justify-between gap-3">
         <p className="text-[52px] leading-none font-semibold tracking-[-0.04em] tabular-nums">
           {formatMoney(trip.totalCents)}
         </p>
-        <p className="text-muted-foreground shrink-0 pb-1 text-[17px] font-medium tabular-nums">
-          {secondsLeft}s
-        </p>
+        <div className="flex shrink-0 items-center gap-1">
+          <p className="text-muted-foreground px-1 text-[17px] font-medium tabular-nums">
+            {secondsLeft}s
+          </p>
+          <Button
+            variant="ghost"
+            size="icon-lg"
+            className="size-11"
+            aria-label={
+              help
+                ? "Decline visit"
+                : courier
+                  ? "Decline delivery"
+                  : "Decline ride"
+            }
+            disabled={busy}
+            onClick={onDecline}
+          >
+            <Icon icon={Cancel01Icon} size={20} aria-hidden="true" />
+          </Button>
+        </div>
       </div>
 
       {/* A visit is decided on fare, then Care-or-tasks, then the clock —
@@ -804,14 +823,6 @@ export function DriverOfferScene({
       >
         {busy ? "Taking this ride…" : "Accept"}
       </Button>
-      <Button
-        variant="ghost"
-        className="text-muted-foreground mt-1 h-12 w-full"
-        disabled={busy}
-        onClick={onDecline}
-      >
-        Decline
-      </Button>
     </>
   );
 }
@@ -830,6 +841,7 @@ export function DriverJobScene({
   busy,
   error,
   onAdvance,
+  onCancel,
 }: {
   scene: Extract<DriverAppState, "to_pickup" | "at_pickup" | "on_trip">;
   trip: JobTrip;
@@ -842,6 +854,7 @@ export function DriverJobScene({
   busy: boolean;
   error: string | null;
   onAdvance: () => void;
+  onCancel?: () => void;
 }) {
   const question = driverAppQuestion(scene, kind);
   const courier = kind === "courier" || kind === "shop";
@@ -1034,6 +1047,16 @@ export function DriverJobScene({
         >
           {question.action}
         </Button>
+        {onCancel && scene !== "on_trip" ? (
+          <Button
+            variant="ghost"
+            className="text-muted-foreground h-12 w-full"
+            disabled={busy}
+            onClick={onCancel}
+          >
+            {question.exit}
+          </Button>
+        ) : null}
       </SheetActions>
     </>
   );

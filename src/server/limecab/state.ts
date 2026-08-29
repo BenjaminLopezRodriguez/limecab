@@ -31,7 +31,7 @@ const ALLOWED: Record<TripStatus, readonly TripStatus[]> = {
 };
 
 export type RiderAction = "cancel";
-export type DriverAction = "accept" | "arrive" | "start" | "complete";
+export type DriverAction = "accept" | "arrive" | "start" | "complete" | "cancel";
 
 const RIDER_ACTIONS: Record<TripStatus, readonly RiderAction[]> = {
   requested: ["cancel"],
@@ -44,8 +44,8 @@ const RIDER_ACTIONS: Record<TripStatus, readonly RiderAction[]> = {
 
 const DRIVER_ACTIONS: Record<TripStatus, readonly DriverAction[]> = {
   requested: ["accept"],
-  matched: ["arrive"],
-  arriving: ["start"],
+  matched: ["arrive", "cancel"],
+  arriving: ["start", "cancel"],
   in_progress: ["complete"],
   complete: [],
   cancelled: [],
@@ -61,6 +61,7 @@ export const DRIVER_ACTION_TARGET: Record<DriverAction, TripStatus> = {
   arrive: "arriving",
   start: "in_progress",
   complete: "complete",
+  cancel: "cancelled",
 };
 
 export function isTripStatus(value: string): value is TripStatus {
