@@ -49,7 +49,10 @@ export function LimeCabConfirmPickupScene({
       />
 
       <SheetActions>
-        <PrimaryAction disabled={busy || locating || !address} onClick={onConfirm}>
+        <PrimaryAction
+          disabled={Boolean(busy) || Boolean(locating) || !address}
+          onClick={onConfirm}
+        >
           Confirm pickup
         </PrimaryAction>
       </SheetActions>
