@@ -19,6 +19,37 @@ export type RideProduct = {
   status: "available" | "coming_soon";
 };
 
+/**
+ * Cheaper private ride in exchange for a longer pickup. Same car class as
+ * Lime; matching deprioritizes it so a standard request is filled first.
+ */
+export const WAIT_SAVE_PRODUCT_ID = "lime-wait-save";
+
+export const WAIT_SAVE_PRODUCT: RideProduct = {
+  id: WAIT_SAVE_PRODUCT_ID,
+  name: "Wait & Save",
+  description: "Pay less if you can wait",
+  seats: 4,
+  etaMinutes: 12,
+  priceCents: 88,
+  status: "available",
+};
+
+export function isWaitSaveProduct(id: string | null | undefined): boolean {
+  return id === WAIT_SAVE_PRODUCT_ID;
+}
+
+/** Pickup line in the picker and on the quote — wait window vs clock ETA. */
+export function ridePickupCopy(product: {
+  id: string;
+  etaMinutes: number;
+}): string {
+  if (isWaitSaveProduct(product.id)) {
+    return `Wait up to ${product.etaMinutes} min`;
+  }
+  return `${product.etaMinutes} min away`;
+}
+
 export type Vehicle = {
   make: string;
   model: string;

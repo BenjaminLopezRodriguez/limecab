@@ -5,11 +5,11 @@ import { StarIcon } from "@hugeicons/core-free-icons";
 import { CompletionPanel } from "@/components/service-app/completion-panel";
 import { SheetActions } from "@/components/service-app/service-sheet";
 import { PrimaryAction } from "@/components/service-app/task-scene";
-import { DetailButton } from "@/components/limecab/limecab-parts";
+import { DetailButton, TipPanel } from "@/components/limecab/limecab-parts";
 import { Icon } from "@/components/ui/icon";
 import { RouteRail } from "@/components/limecab/limecab-status-scene";
 import type { DetailKind } from "@/components/limecab/limecab-interrupts";
-import { TIP_PRESETS, type Trip } from "@/lib/limecab/domain";
+import type { Trip } from "@/lib/limecab/domain";
 import { courierProofLabel } from "@/lib/limecab/courier";
 import { formatMoney } from "@/lib/service-app/services";
 import { cn } from "@/lib/utils";
@@ -107,44 +107,6 @@ export function LimeCabCompleteScene({
         </DetailButton>
       </SheetActions>
     </>
-  );
-}
-
-/** Flat tip amounts. Percentages make the rider do arithmetic to be kind. */
-function TipPanel({
-  value,
-  onTip,
-}: {
-  value: number | null;
-  onTip: (next: number | null) => void;
-}) {
-  return (
-    <div className="bg-muted/60 rounded-2xl p-4">
-      <p className="text-[15px] font-medium tracking-tight">
-        {value ? "Tip added to your total" : "Add a tip?"}
-      </p>
-      <div className="mt-3 flex gap-2">
-        {TIP_PRESETS.map((amount) => {
-          const selected = value === amount;
-          return (
-            <button
-              key={amount}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => onTip(selected ? null : amount)}
-              className={cn(
-                "ring-border focus-visible:ring-ring h-12 flex-1 rounded-full text-[15px] font-semibold tabular-nums ring-1 focus-visible:ring-2 focus-visible:outline-none",
-                selected
-                  ? "bg-accent ring-foreground text-foreground ring-2"
-                  : "bg-card active:bg-accent",
-              )}
-            >
-              {formatMoney(amount)}
-            </button>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 

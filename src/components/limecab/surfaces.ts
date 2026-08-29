@@ -116,6 +116,22 @@ export const limeCabSurfaces = createSurfaceManager({
         search: { emphasis: "hidden" },
       },
     },
+    /**
+     * Add a stop to a live ride. The ride sheet stays mounted (suspended);
+     * search is the temporary question, then `resumeRide` restores it.
+     */
+    addRideStop: {
+      intent: "interrupt",
+      surfaces: {
+        primary: { emphasis: "suspended" },
+        map: {
+          emphasis: "background",
+          presentation: "locating",
+          interaction: "passive",
+        },
+        search: { emphasis: "primary", presentation: "fullscreen" },
+      },
+    },
     /** Share trip from the live sheet. Same interrupt as Safety. */
     openTravelShare: {
       intent: "interrupt",
@@ -194,6 +210,22 @@ export const limeCabSurfaces = createSurfaceManager({
       intent: "progress",
       surfaces: {
         map: { emphasis: "background", presentation: "route" },
+        primary: { emphasis: "primary", presentation: "sheet" },
+        search: { emphasis: "hidden" },
+      },
+    },
+    /**
+     * Pickup is the remaining unknown. The map is the subject; the sheet
+     * names the point and a search tile revises it.
+     */
+    confirmPickup: {
+      intent: "progress",
+      surfaces: {
+        map: {
+          emphasis: "primary",
+          presentation: "locating",
+          interaction: "active",
+        },
         primary: { emphasis: "primary", presentation: "sheet" },
         search: { emphasis: "hidden" },
       },
@@ -349,28 +381,52 @@ export const LIMECAB_SCENE_SURFACES: Record<
     primary: { emphasis: "primary", presentation: "expanded" },
     search: { emphasis: "hidden" },
   },
+  confirm_pickup: {
+    map: {
+      emphasis: "primary",
+      presentation: "locating",
+      interaction: "active",
+    },
+    primary: { emphasis: "primary", presentation: "sheet" },
+    search: { emphasis: "hidden" },
+  },
   quote: {
     map: { emphasis: "background", presentation: "route" },
     primary: { emphasis: "primary", presentation: "sheet" },
     search: { emphasis: "hidden" },
   },
   matching: {
-    map: { emphasis: "background", presentation: "dispatch" },
+    map: {
+      emphasis: "background",
+      presentation: "dispatch",
+      interaction: "active",
+    },
     primary: { emphasis: "primary", presentation: "sheet" },
   },
   assigned: {
-    map: { emphasis: "background", presentation: "tracking" },
-    primary: { emphasis: "primary", presentation: "expanded" },
+    map: {
+      emphasis: "background",
+      presentation: "tracking",
+      interaction: "active",
+    },
+    primary: { emphasis: "primary", presentation: "sheet" },
   },
   provider_en_route: {
-    map: { emphasis: "background", presentation: "tracking" },
-    primary: { emphasis: "primary", presentation: "expanded" },
-  },
-  // Not peek: the driver card is the answer to "how is this going", and a
-  // 22% strip cannot hold it. The canvas still owns most of the screen.
-  active: {
-    map: { emphasis: "background", presentation: "trip" },
+    map: {
+      emphasis: "background",
+      presentation: "tracking",
+      interaction: "active",
+    },
     primary: { emphasis: "primary", presentation: "sheet" },
+  },
+  // Expanded: the in-car sheet is tools and the driver, not a curb strip.
+  active: {
+    map: {
+      emphasis: "background",
+      presentation: "trip",
+      interaction: "active",
+    },
+    primary: { emphasis: "primary", presentation: "expanded" },
   },
   completing: {
     map: { emphasis: "background", presentation: "trip" },

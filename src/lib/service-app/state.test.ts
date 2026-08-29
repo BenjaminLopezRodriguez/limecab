@@ -83,6 +83,11 @@ test("location_pin asks where on the map", () => {
   assert.equal(q.exit, "Back");
 });
 
+test("an in-progress ride asks what you need, not whether it is happening", () => {
+  const q = serviceAppQuestion("active");
+  assert.equal(q.question, "What do you need from here?");
+});
+
 const configured = ctx({
   hasLocation: true,
   hasService: true,
@@ -267,4 +272,83 @@ test("an ordinary ride flow is untouched by either flag", () => {
   );
   assert.equal(backServiceAppState("service_select", ride), "home");
   assert.equal(backServiceAppState("quote", ride), "service_select");
+});
+
+/* ---- pickup confirmation before purchase (rides that ask where, spatially) */
+
+const pickupFirst = (over: Partial<ServiceAppContext> = {}) =>
+  ctx({
+    hasLocation: true,
+    hasService: true,
+    needsPickupConfirm: true,
+    ...over,
+  });
+
+test("choosing a ride asks to confirm pickup instead of quoting", () => {
+  assert.equal(
+    reduceServiceAppState("service_select", "select_service", pickupFirst()),
+    "confirm_pickup",
+  );
+});
+
+test("confirming pickup submits the request", () => {
+  assert.equal(
+    reduceServiceAppState("confirm_pickup", "request", pickupFirst()),
+    "matching",
+  );
+});
+
+test("request from anywhere else still does not jump to matching", () => {
+  assert.equal(
+    reduceServiceAppState("service_select", "request", pickupFirst()),
+    "service_select",
+  );
+});
+
+test("back from confirm pickup revises the ride, not the destination", () => {
+  assert.equal(
+    backServiceAppState("confirm_pickup", pickupFirst()),
+    "service_select",
+  );
+});
+
+test("revising pickup from search lands back on confirm pickup", () => {
+  assert.equal(
+    reduceServiceAppState(
+      "location_search",
+      "select_location",
+      pickupFirst(),
+    ),
+    "confirm_pickup",
+  );
+  assert.equal(
+    reduceServiceAppState("location_search", "cancel_search", pickupFirst()),
+    "confirm_pickup",
+  );
+});
+
+test("confirm pickup asks where, not whether to purchase", () => {
+  const q = serviceAppQuestion("confirm_pickup");
+  assert.equal(q.question, "Where should we pick you up?");
+  assert.equal(q.action, "Confirm pickup");
+  assert.equal(q.exit, "Back to rides");
+});
+
+test("a flow that still quotes is untouched by the pickup flag", () => {
+  assert.equal(
+    reduceServiceAppState(
+      "configure",
+      "configure_done",
+      configured,
+    ),
+    "quote",
+  );
+  assert.equal(
+    reduceServiceAppState(
+      "service_select",
+      "select_service",
+      ctx({ hasLocation: true, hasService: true }),
+    ),
+    "quote",
+  );
 });

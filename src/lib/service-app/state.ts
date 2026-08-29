@@ -5,8 +5,9 @@
  * events, never a pile of booleans. Back revises the previous decision and
  * never clears the draft.
  *
- * The states after `quote` are *truthful* lifecycle states — only move into
- * them when the backend has confirmed the corresponding fact.
+ * The states after the planning scenes (`quote`, `confirm_pickup`) are
+ * *truthful* lifecycle states — only move into them when the backend has
+ * confirmed the corresponding fact.
  */
 
 export const SERVICE_APP_STATES = [
@@ -15,6 +16,7 @@ export const SERVICE_APP_STATES = [
   "location_pin",
   "service_select",
   "configure",
+  "confirm_pickup",
   "quote",
   "matching",
   "assigned",
@@ -86,14 +88,28 @@ export type ServiceAppContext = {
    * on `configure`, then choose among services with that answer in hand.
    */
   selectAfterConfigure?: boolean;
+  /**
+   * Whether the pickup is confirmed spatially after the other planning
+   * questions, instead of going straight to the quote. The map becomes the
+   * subject; the sheet only names the point and commits it.
+   */
+  needsPickupConfirm?: boolean;
 };
+
+/** The purchase scene — quote, or a spatial pickup confirm when that is the last unknown. */
+function afterPlanning(ctx: ServiceAppContext): ServiceAppState {
+  return ctx.needsPickupConfirm ? "confirm_pickup" : "quote";
+}
 
 /** The state entered once both location and service are known. */
 function afterIntent(ctx: ServiceAppContext): ServiceAppState {
   // Options-then-place: reaching this with the place known means configure is
-  // already behind the rider, so the next question is the price.
-  if (ctx.locationAfterConfigure) return ctx.hasLocation ? "quote" : "configure";
-  return ctx.needsConfigure ? "configure" : "quote";
+  // already behind the rider, so the next question is the price — or the
+  // curb, when pickup still has to be placed.
+  if (ctx.locationAfterConfigure) {
+    return ctx.hasLocation ? afterPlanning(ctx) : "configure";
+  }
+  return ctx.needsConfigure ? "configure" : afterPlanning(ctx);
 }
 
 /** States that describe a committed request. Back does not unwind these. */
@@ -149,12 +165,12 @@ export function reduceServiceAppState(
       if (ctx.locationAfterConfigure && !ctx.hasLocation) {
         return "location_search";
       }
-      return "quote";
+      return afterPlanning(ctx);
 
     // `request` is the optimistic-but-truthful step: the request has been
     // submitted, so "matching" is the honest description of what is happening.
     case "request":
-      return state === "quote" ? "matching" : state;
+      return state === "quote" || state === "confirm_pickup" ? "matching" : state;
 
     case "matched":
       return "assigned";
@@ -200,9 +216,14 @@ export function backServiceAppState(
       return ctx.needsServiceSelect === false
         ? "location_search"
         : "service_select";
+    case "confirm_pickup":
+      // The last thing answered was which ride, so that is what back revises.
+      if (ctx.locationAfterConfigure) return "location_search";
+      return ctx.needsConfigure ? "configure" : "service_select";
     case "quote":
       // The last thing answered was the place, so that is what back revises.
       if (ctx.locationAfterConfigure) return "location_search";
+      if (ctx.needsPickupConfirm) return "confirm_pickup";
       return ctx.needsConfigure ? "configure" : "service_select";
     default:
       // Committed states are not unwound by Back. Leaving a committed request
@@ -253,6 +274,12 @@ export function serviceAppQuestion(state: ServiceAppState): {
         action: "Continue to the quote",
         exit: "Back to services",
       };
+    case "confirm_pickup":
+      return {
+        question: "Where should we pick you up?",
+        action: "Confirm pickup",
+        exit: "Back to rides",
+      };
     case "quote":
       return {
         question: "Do you want to request this?",
@@ -279,9 +306,9 @@ export function serviceAppQuestion(state: ServiceAppState): {
       };
     case "active":
       return {
-        question: "How is the service going?",
-        action: "Follow progress",
-        exit: "Cancel service",
+        question: "What do you need from here?",
+        action: "Ride tools",
+        exit: "None",
       };
     case "completing":
       return {

@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import {
   useOptionalAdaptiveSurface,
@@ -14,6 +22,16 @@ import {
 } from "@/components/ui/drawer";
 import { publishSheetSnap } from "@/components/service-app/map-overlay";
 import { useServiceAppMobile } from "@/hooks/use-service-app-mobile";
+import {
+  SHEET_DISMISS_SNAP,
+  SHEET_EXPANDED_SNAP,
+  SHEET_OVERLAY_SNAP,
+  SHEET_PEEK_SNAP,
+  SHEET_SNAP,
+  sheetContentOverflows,
+  sheetInnerScrolls,
+  sheetSnapPoints,
+} from "@/lib/service-app/sheet-interaction";
 import { cn } from "@/lib/utils";
 
 /**
@@ -29,42 +47,35 @@ import { cn } from "@/lib/utils";
  *
  * Desktop: a floating card inside `AdaptiveSurface.Panel`, over the canvas.
  *
- * The ladder is fractions of the screen, never the scene's content height —
+ * Rest rungs are fractions of the screen, never the scene's content height —
  * measuring made comparison and status scenes swallow the map.
  *   peek       — a status strip; canvas is the subject
  *   sheet      — 40%
  *   expanded   — 60%
- * `overlay` snaps the same drawer to the viewport. `TaskScene` (`fullscreen`)
- * is a different chrome — a dialog, not a snap.
+ * Overlay is the overflow destination of this same drawer: if the scene does
+ * not fit, a scroll/swipe grows it toward the viewport. Inner scrolling stays
+ * locked until overlay so that gesture is the expansion, not a clipped list.
+ * `TaskScene` (`fullscreen`) is a different chrome — a dialog, not a snap.
  *
  * A snap drawer is 100dvh tall and translated down, so only its top slice is
- * on screen. The body is sized to that slice *in CSS*, from the drawer's own
- * `--drawer-snap-point-offset` — no `getBoundingClientRect`, no ResizeObserver,
- * and no portal. `SheetActions` is then an ordinary sticky footer inside the
- * scrollport, which is why it can appear and disappear (progressive
- * disclosure) without ever resizing the map.
+ * on screen. The popup's padding-bottom is the off-screen remainder plus the
+ * live swipe, sized from the known snap fraction — no `getBoundingClientRect`,
+ * no ResizeObserver on the translating popup, and no portal. `SheetActions`
+ * is then an ordinary sticky footer inside the scrollport, which is why it
+ * can appear and disappear (progressive disclosure) without ever resizing
+ * the map.
  */
 type SheetPresentation = Exclude<SurfacePresentation, "compact-interrupt">;
 
-const PEEK = 0.22;
-const SHEET = 0.4;
-const EXPANDED = 0.6;
-const OVERLAY = 1;
-
 const SNAP_FOR: Record<SheetPresentation, number> = {
-  peek: PEEK,
-  sheet: SHEET,
-  expanded: EXPANDED,
-  fullscreen: EXPANDED,
-  overlay: OVERLAY,
+  peek: SHEET_PEEK_SNAP,
+  sheet: SHEET_SNAP,
+  expanded: SHEET_EXPANDED_SNAP,
+  fullscreen: SHEET_EXPANDED_SNAP,
+  overlay: SHEET_OVERLAY_SNAP,
 };
 
-const DISMISS = 0;
-const SNAP_POINTS = [PEEK, SHEET, EXPANDED];
-const LISTED_SNAP_POINTS = [PEEK, SHEET, EXPANDED, OVERLAY];
-const OVERLAY_POINTS = [OVERLAY];
-
-export { EXPANDED as SHEET_EXPANDED_SNAP, OVERLAY as SHEET_OVERLAY_SNAP };
+export { SHEET_EXPANDED_SNAP, SHEET_OVERLAY_SNAP };
 
 const DESKTOP_MAX: Record<SheetPresentation, string> = {
   peek: "md:max-h-[22dvh]",
@@ -73,9 +84,6 @@ const DESKTOP_MAX: Record<SheetPresentation, string> = {
   fullscreen: "md:max-h-[60dvh]",
   overlay: "md:h-full md:max-h-full",
 };
-
-/** Swipe handle (h-3) plus the popup's top border. */
-const SHEET_CHROME_PX = 13;
 
 /**
  * Constrained thumb-zone for a scene: one primary action, optionally a
@@ -123,8 +131,8 @@ export function ServiceSheet({
   description?: string;
   presentation?: SheetPresentation;
   /**
-   * Listed sheets: the top snap is overlay (1). The 6rem default cap would
-   * make that snap unreachable, so this also lifts max-height to 100dvh.
+   * Listed sheets: overlay is reachable even before overflow is measured.
+   * Overflowing scenes get the same top snap without this flag.
    */
   overlaySnap?: boolean;
   /** Fired when the mobile drawer snaps to a new rung. */
@@ -142,6 +150,8 @@ export function ServiceSheet({
   const busy = surface?.progress.locked ? true : undefined;
   const rung = SNAP_FOR[presentation];
   const [snap, setSnap] = useState<string | number | null>(rung);
+  const [overflows, setOverflows] = useState(overlaySnap);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setSnap(rung);
@@ -156,41 +166,64 @@ export function ServiceSheet({
   /**
    * The rung the drawer is on, as a fraction of the viewport — the same number
    * the map gets. The drawer is taller than the screen and translated down, so
-   * this *is* the height of the slice on screen: sizing the body from the known
-   * fraction is exact, and needs no geometry from the translating popup.
+   * this *is* the height of the slice on screen.
    */
   const fraction = typeof snap === "number" ? snap : rung;
-  const points = overlaySnap
-    ? LISTED_SNAP_POINTS
-    : presentation === "overlay"
-      ? OVERLAY_POINTS
-      : SNAP_POINTS;
-  // Peek is already a thin strip — a 0 snap would make a short flick leave
-  // the task. Dismiss lives on sheet/expanded/overlay, where "all the way
-  // down" is a real gesture.
-  const snapPoints =
-    onDismiss && presentation !== "peek" ? [DISMISS, ...points] : points;
+  const innerScrolls = sheetInnerScrolls(fraction);
+  const overlayReachable =
+    overlaySnap || presentation === "overlay" || overflows || innerScrolls;
+  const snapPoints = sheetSnapPoints({
+    presentation,
+    overlay: overlayReachable,
+    dismiss: Boolean(onDismiss),
+  });
+  const registerPanel = surface?.registerPanel;
+  const setScrollNode = useCallback(
+    (node: HTMLDivElement | null) => {
+      scrollRef.current = node;
+      registerPanel?.(node);
+    },
+    [registerPanel],
+  );
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const check = () => {
+      setOverflows(sheetContentOverflows(el.scrollHeight, el.clientHeight));
+    };
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    for (const child of el.children) {
+      if (child instanceof Element) observer.observe(child);
+    }
+    return () => observer.disconnect();
+  }, [children, fraction, sheetOpen]);
 
   const body = (
-    <div
-      style={
-        isMobile
-          ? { height: `calc(${fraction} * 100dvh - ${SHEET_CHROME_PX}px)` }
-          : undefined
-      }
-      className={cn(
-        "flex flex-col overflow-hidden",
-        !isMobile && "min-h-0 flex-1",
-      )}
-    >
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <div
-        ref={surface?.registerPanel}
+        ref={setScrollNode}
         data-sheet-scroll=""
         className={cn(
-          "flex min-h-0 flex-1 flex-col overflow-y-auto",
+          "flex min-h-0 flex-1 flex-col",
+          innerScrolls ? "overflow-y-auto" : "overflow-hidden",
           isMobile ? "px-5 pt-1" : "px-6 pt-6",
         )}
         aria-busy={busy}
+        onWheel={(event) => {
+          if (innerScrolls) {
+            if (event.currentTarget.scrollTop <= 0 && event.deltaY < 0) {
+              setSnap(SHEET_EXPANDED_SNAP);
+              onSnapChange?.(SHEET_EXPANDED_SNAP);
+            }
+            return;
+          }
+          if (!overlayReachable || event.deltaY <= 0) return;
+          setSnap(SHEET_OVERLAY_SNAP);
+          onSnapChange?.(SHEET_OVERLAY_SNAP);
+        }}
       >
         {children}
       </div>
@@ -202,7 +235,9 @@ export function ServiceSheet({
       <div
         className={cn(
           "bg-card text-card-foreground border-border flex min-h-0 flex-col overflow-hidden rounded-3xl border shadow-lg",
-          DESKTOP_MAX[presentation],
+          overlaySnap || presentation === "overlay" || innerScrolls
+            ? "md:h-full md:max-h-full"
+            : DESKTOP_MAX[presentation],
           className,
         )}
       >
@@ -226,7 +261,7 @@ export function ServiceSheet({
       onSnapPointChange={(value) => {
         setSnap(value);
         const next = typeof value === "number" ? value : rung;
-        if (onDismiss && next === DISMISS) {
+        if (onDismiss && next === SHEET_DISMISS_SNAP) {
           onDismiss();
           return;
         }
@@ -235,11 +270,17 @@ export function ServiceSheet({
     >
       <DrawerContent
         data-presentation={presentation}
+        style={
+          {
+            "--sheet-rest-inset": `${(1 - fraction) * 100}dvh`,
+          } as CSSProperties
+        }
         className={cn(
           interrupted && "opacity-55 brightness-95",
-          (overlaySnap || presentation === "overlay") &&
-            "[--drawer-content-max-height:100dvh]",
-          presentation === "overlay" && "data-[swipe-direction=down]:rounded-none",
+          "[--drawer-content-max-height:100dvh]",
+          "pb-[max(0px,calc(var(--sheet-rest-inset)+var(--drawer-swipe-movement-y,0px)))]",
+          presentation === "overlay" &&
+            "data-[swipe-direction=down]:rounded-none",
           className,
         )}
       >

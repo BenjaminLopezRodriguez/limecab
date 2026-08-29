@@ -32,6 +32,7 @@ import {
   type DetailKind,
 } from "@/components/limecab/limecab-interrupts";
 import { LimeCabTripPill } from "@/components/limecab/limecab-trip-pill";
+import { LimeCabConfirmPickupScene } from "@/components/limecab/limecab-confirm-pickup-scene";
 import { LimeCabQuoteScene } from "@/components/limecab/limecab-quote-scene";
 import { LimeCabRideSelectScene } from "@/components/limecab/limecab-ride-select-scene";
 import { SavePlaceSurface } from "@/components/limecab/limecab-save-place";
@@ -60,6 +61,7 @@ import {
 import {
   clockTime,
   estimateFare,
+  isWaitSaveProduct,
   type Pickup,
   type RideProduct,
   type Trip,
@@ -126,6 +128,7 @@ import { pointAlongPath } from "@/lib/service-app/map-adapter";
 import {
   addStop,
   applyRouteChoice,
+  MAX_INTERMEDIATE_STOPS,
   nextEmptyField,
   removeStop,
   type SearchField,
@@ -148,7 +151,10 @@ import {
   type ServiceAppEvent,
   type ServiceAppState,
 } from "@/lib/service-app/state";
-import type { ServiceStatus } from "@/lib/service-app/status";
+import {
+  serviceStatusView,
+  type ServiceStatus,
+} from "@/lib/service-app/status";
 import { cn } from "@/lib/utils";
 import { env } from "@/env";
 import { api, type RouterOutputs } from "@/trpc/react";
@@ -200,6 +206,11 @@ const PHASE_HINT_MS: Partial<Record<ServiceAppState, number>> = {
   provider_en_route: SIM_PHASE_MS.arriving,
   active: SIM_PHASE_MS.in_progress,
 };
+
+/** Whole seconds left in this scene. Floor, never round. */
+function phaseSecondsLeft(phaseMs: number, t: number) {
+  return Math.max(0, Math.floor((phaseMs / 1000) * (1 - t)));
+}
 
 const placesAdapter = createPlacesAdapter();
 
@@ -388,6 +399,7 @@ function LimeCabFlow({
    */
   const [rideMinimized, setRideMinimized] = useState(false);
   const [recentering, setRecentering] = useState(false);
+  const [mapRecenterAt, setMapRecenterAt] = useState(0);
   const [phaseStart, setPhaseStart] = useState(() => Date.now());
   const [now, setNow] = useState(() => Date.now());
 
@@ -503,10 +515,13 @@ function LimeCabFlow({
   // The scene says which step; the recipe says how the surfaces sit around it.
   // While the ride is minimized, `minimizeRide` owns the posture instead —
   // the server advancing matched → arriving must not pop the sheet back up.
+  // Depend on `apply`, not the manager object: layout changes (interrupts)
+  // must not re-apply the scene recipe and wipe a suspended ride.
+  const applySurfaces = surfaces.apply;
   useEffect(() => {
     if (rideMinimized) return;
-    surfaces.apply("progress", LIMECAB_SCENE_SURFACES[state]);
-  }, [rideMinimized, state, surfaces]);
+    applySurfaces("progress", LIMECAB_SCENE_SURFACES[state]);
+  }, [applySurfaces, rideMinimized, state]);
 
   useEffect(() => {
     onTaskChange?.(state !== "home" && !rideMinimized);
@@ -603,6 +618,7 @@ function LimeCabFlow({
         needsServiceSelect: boolean;
         locationAfterConfigure: boolean;
         selectAfterConfigure: boolean;
+        needsPickupConfirm: boolean;
       }>,
     ) =>
       setState((current) =>
@@ -616,6 +632,9 @@ function LimeCabFlow({
           // when, then what kind, then where.
           locationAfterConfigure: help || (shop && shopStore !== null),
           selectAfterConfigure: help,
+          // Immediate rides confirm the curb after the product; courier,
+          // Reserve, and Help still purchase on the quote.
+          needsPickupConfirm: !courier && !reserve && !help,
           pinEntry,
           ...overrides,
         }),
@@ -625,7 +644,6 @@ function LimeCabFlow({
 
   const duration = PHASE_HINT_MS[state] ?? 0;
   const t = duration > 0 ? Math.min(1, (now - phaseStart) / duration) : 0;
-  const arrived = state === "provider_en_route" && t >= ARRIVED_AT;
 
   const destinationPoint = useMemo<MapPoint | null>(
     () =>
@@ -755,38 +773,23 @@ function LimeCabFlow({
 
   const status = useMemo<ServiceStatus>(() => {
     if (failure) return { state: "failed", reason: failure };
+    const secondsLeft = phaseSecondsLeft(duration, t);
     switch (state) {
       case "matching":
-        return {
-          state: "matching",
-          typicalSeconds: Math.max(
-            8,
-            Math.round(((PHASE_HINT_MS.matching ?? 5000) / 1000) * (1 - t)),
-          ),
-        };
+        return { state: "matching", typicalSeconds: secondsLeft };
       case "assigned":
         return {
           state: "assigned",
           providerName: trip?.driver.name,
-          etaSeconds: Math.max(
-            6,
-            Math.round(
-              (SIM_PHASE_MS.matched * (1 - t) + SIM_PHASE_MS.arriving) / 1000,
-            ),
-          ),
+          etaSeconds: secondsLeft,
         };
       case "provider_en_route":
-        return arrived
+        return secondsLeft === 0
           ? { state: "arriving", providerName: trip?.driver.name }
           : {
               state: "provider_en_route",
               providerName: trip?.driver.name,
-              etaSeconds: Math.max(
-                6,
-                Math.round(
-                  (SIM_PHASE_MS.arriving / 1000) * (1 - t / ARRIVED_AT),
-                ),
-              ),
+              etaSeconds: secondsLeft,
             };
       case "active":
         return {
@@ -796,13 +799,10 @@ function LimeCabFlow({
           currentStep: destination
             ? `On the way to ${splitAddress(destination.address).line}`
             : "On the way",
-          remainingSeconds: Math.max(
-            6,
-            Math.round((SIM_PHASE_MS.in_progress / 1000) * (1 - t)),
-          ),
+          remainingSeconds: secondsLeft,
         };
       case "completing":
-        return { state: "completing", remainingSeconds: 20 };
+        return { state: "completing" };
       case "complete":
         return {
           state: "complete",
@@ -813,25 +813,26 @@ function LimeCabFlow({
       default:
         return { state: "pending" };
     }
-  }, [arrived, courier, destination, failure, state, t, trip]);
+  }, [courier, destination, duration, failure, state, t, trip]);
 
   const mapPosture = surfaces.layout.map?.presentation ?? "bounded";
   const pinning = state === "location_pin";
+  const confirmingPickup = state === "confirm_pickup";
+  const locatingPickup = pinning || confirmingPickup;
   const center =
-    pinning && pin
+    locatingPickup && pin
       ? pin
       : liveVehicle && driverPoint
         ? driverPoint
-        : state === "home" || !destinationPoint
+        : confirmingPickup || state === "home" || !destinationPoint
           ? pickupPoint
           : destinationPoint;
   const fallbackTrip = useMemo(
-    () =>
-      destinationPoint ? [pickupPoint, destinationPoint] : undefined,
+    () => (destinationPoint ? [pickupPoint, destinationPoint] : undefined),
     [destinationPoint, pickupPoint],
   );
   const mapRoute =
-    pinning || state === "home"
+    locatingPickup || state === "home"
       ? undefined
       : state === "matching" ||
           state === "assigned" ||
@@ -843,6 +844,7 @@ function LimeCabFlow({
   const canReviseRoute =
     state === "service_select" ||
     state === "configure" ||
+    state === "confirm_pickup" ||
     state === "quote";
   /** A committed request that is still running: minimizable, not revisable. */
   const liveRide = isCommitted(state) && state !== "complete";
@@ -856,6 +858,12 @@ function LimeCabFlow({
     // to the ride already running.
     if (rideMinimized) return restoreRide();
     setSearchTarget(target);
+    if (isCommitted(state)) {
+      if (surfaces.layout.search.emphasis !== "primary") {
+        surfaces.perform("addRideStop");
+      }
+      return;
+    }
     surfaces.perform(
       target === "pickup" ? "openPickupSearch" : "openDestinationSearch",
     );
@@ -889,7 +897,17 @@ function LimeCabFlow({
   };
 
   useEffect(() => {
-    if (!pinning || !pin) return;
+    if (!locatingPickup || !pin) return;
+    const seeded =
+      Boolean(pickup.address) &&
+      pickup.latitude !== undefined &&
+      pickup.longitude !== undefined &&
+      Math.abs(pin.latitude - pickup.latitude) < 1e-5 &&
+      Math.abs(pin.longitude - pickup.longitude) < 1e-5;
+    // The pin was just placed on the known pickup. Don't reverse until
+    // the rider actually moves the map — a failed geocode would replace
+    // the real street with "Pinned location".
+    if (seeded && state === "confirm_pickup") return;
     let cancelled = false;
     setPinLocating(true);
     const timer = window.setTimeout(() => {
@@ -905,15 +923,17 @@ function LimeCabFlow({
             );
           }
           if (!cancelled) {
-            setPinAddress(resolved?.address ?? "Pinned location");
-            setPinShortName(
-              resolved?.shortName ??
-                splitAddress(resolved?.address ?? "").line ??
-                "Pinned location",
-            );
+            if (resolved?.address) {
+              setPinAddress(resolved.address);
+              setPinShortName(
+                resolved.shortName ??
+                  splitAddress(resolved.address).line ??
+                  "Pinned location",
+              );
+            }
           }
         } catch {
-          if (!cancelled) setPinAddress("Pinned location");
+          // Keep the seeded address; "Pinned location" is only when we have none.
         } finally {
           if (!cancelled) setPinLocating(false);
         }
@@ -923,7 +943,28 @@ function LimeCabFlow({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [pin, pinning]);
+  }, [
+    locatingPickup,
+    pin,
+    pickup.address,
+    pickup.latitude,
+    pickup.longitude,
+    state,
+  ]);
+
+  /** Seed the pin from the current pickup when the curb becomes the question. */
+  useEffect(() => {
+    if (state !== "confirm_pickup") return;
+    setPin({
+      latitude: pickup.latitude ?? CAMERA_FALLBACK.latitude,
+      longitude: pickup.longitude ?? CAMERA_FALLBACK.longitude,
+    });
+    setPinAddress(pickup.address || null);
+    setPinShortName(splitAddress(pickup.address).line || null);
+    setPinLocating(false);
+    // Pickup is read on entry; panning must not re-seed from a stale address.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
 
   /**
    * Back on a live ride. Not `go("back")` and not a cancellation: one named
@@ -945,7 +986,11 @@ function LimeCabFlow({
    * Same geolocation path the search scene and the home map tap already use.
    */
   const recenterPickup = useCallback(() => {
-    if (recentering || typeof navigator === "undefined" || !navigator.geolocation) {
+    if (
+      recentering ||
+      typeof navigator === "undefined" ||
+      !navigator.geolocation
+    ) {
       return;
     }
     setRecentering(true);
@@ -961,6 +1006,12 @@ function LimeCabFlow({
               longitude,
               followsDevice: true,
             });
+            setPin({ latitude, longitude });
+            setPinAddress(resolved?.address ?? "Current location");
+            setPinShortName(
+              resolved?.shortName ??
+                splitAddress(resolved?.address ?? "Current location").line,
+            );
             setRecentering(false);
           });
       },
@@ -1028,7 +1079,10 @@ function LimeCabFlow({
   const nearbyCars = useMemo<MapPoint[]>(
     () =>
       wantsNearby
-        ? (nearby.data ?? []).map((car) => ({ ...car, kind: "marker" as const }))
+        ? (nearby.data ?? []).map((car) => ({
+            ...car,
+            kind: "marker" as const,
+          }))
         : [],
     [nearby.data, wantsNearby],
   );
@@ -1036,9 +1090,7 @@ function LimeCabFlow({
   return (
     <ServiceAppShell
       layout={state === "home" || rideMinimized ? "home" : "task"}
-      onMapPress={
-        rideMinimized ? restoreRide : () => openPin("pickup", "home")
-      }
+      onMapPress={rideMinimized ? restoreRide : () => openPin("pickup", "home")}
       map={
         standby ? null : (
           <ManagedSurface<LimeCabSurfaceId> id="map">
@@ -1048,25 +1100,26 @@ function LimeCabFlow({
                 mode={LIMECAB_MAP_MODE[mapPosture] ?? "home"}
                 center={center}
                 interactive={surfaces.layout.map?.interaction === "active"}
-                onCameraChange={pinning ? setPin : undefined}
+                recenterAt={mapRecenterAt}
+                onCameraChange={locatingPickup ? setPin : undefined}
                 // Idle cars on the home canvas: the rider's first question is
                 // whether LimeCab is even live here, and real pings answer it
                 // before any tap. None nearby draws none.
-                points={pinning ? [] : [...points, ...nearbyCars]}
+                points={locatingPickup ? [] : [...points, ...nearbyCars]}
                 route={mapRoute}
-                pinLabel={pinning ? pinShortName : undefined}
-                pinLocating={pinning && pinLocating}
+                pinLabel={locatingPickup ? pinShortName : undefined}
+                pinLocating={locatingPickup && pinLocating}
                 label={
-                  pinning ||
+                  locatingPickup ||
                   rideMinimized ||
                   (state !== "home" && state !== "location_search")
                     ? null
                     : pickupLine
                 }
                 callout={
-                  pinning || status.state === "failed"
+                  locatingPickup || status.state === "failed"
                     ? null
-                    : serviceCallout(status)
+                    : serviceStatusView(status).callout
                 }
               />
               {!pinning &&
@@ -1078,7 +1131,9 @@ function LimeCabFlow({
                   // A visit has one address; the bar would otherwise show it
                   // twice with an arrow between. A shop list has a store and
                   // no drop-off yet — same origin-only bar, so Back exists.
-                  destination={help || !destination ? "" : destinationLine}
+                  destination={
+                    help || !destination || confirmingPickup ? "" : destinationLine
+                  }
                   // Back revises while the request is still a draft; once it is
                   // committed, Back minimizes. It never unwinds and never
                   // cancels — cancelling has its own confirmation.
@@ -1090,7 +1145,7 @@ function LimeCabFlow({
                         : undefined
                   }
                   onEdit={
-                    canReviseRoute && destination
+                    canReviseRoute && destination && !confirmingPickup
                       ? () => openSearch.current("destination")
                       : undefined
                   }
@@ -1102,10 +1157,20 @@ function LimeCabFlow({
               {!pinning &&
               !rideMinimized &&
               state !== "home" &&
-              !isCommitted(state) ? (
+              state !== "location_search" &&
+              (!isCommitted(state) || liveRide) ? (
                 <RecenterPickupButton
-                  busy={recentering}
-                  onPress={recenterPickup}
+                  busy={!isCommitted(state) && recentering}
+                  label={
+                    liveRide
+                      ? "Recenter the map"
+                      : "Recenter pickup on my location"
+                  }
+                  onPress={
+                    liveRide
+                      ? () => setMapRecenterAt((n) => n + 1)
+                      : recenterPickup
+                  }
                 />
               ) : null}
             </div>
@@ -1167,9 +1232,11 @@ function LimeCabFlow({
  */
 function RecenterPickupButton({
   busy,
+  label = "Recenter pickup on my location",
   onPress,
 }: {
   busy: boolean;
+  label?: string;
   onPress: () => void;
 }) {
   return (
@@ -1177,9 +1244,9 @@ function RecenterPickupButton({
       type="button"
       onClick={onPress}
       disabled={busy}
-      aria-label="Recenter pickup on my location"
+      aria-label={label}
       className={cn(
-        "bg-card ring-border focus-visible:ring-ring absolute right-3 z-10 inline-flex size-11 items-center justify-center rounded-full shadow-[0_4px_16px_rgba(26,24,20,0.12)] ring-1 touch-manipulation focus-visible:ring-2 focus-visible:outline-none disabled:opacity-60",
+        "bg-card ring-border focus-visible:ring-ring absolute right-3 z-10 inline-flex size-11 touch-manipulation items-center justify-center rounded-full shadow-[0_4px_16px_rgba(26,24,20,0.12)] ring-1 focus-visible:ring-2 focus-visible:outline-none disabled:opacity-60",
         // Sits in the gap the sheet leaves. The rung is a known fraction, so
         // this is one CSS expression and not another measured overlay.
         "bottom-[calc(var(--sheet-snap,0)*100dvh+1rem)] md:bottom-6",
@@ -1213,18 +1280,6 @@ function SaveRowButton({ onPress }: { onPress: () => void }) {
       <Icon icon={BookmarkAdd01Icon} size={18} />
     </Button>
   );
-}
-
-/** Short physical-world marker text. Empty outside arrival-shaped states. */
-function serviceCallout(status: ServiceStatus): string | null {
-  if (status.state === "assigned" || status.state === "provider_en_route") {
-    if (status.etaSeconds < 60) {
-      return `${Math.max(1, Math.round(status.etaSeconds))}s`;
-    }
-    return `${Math.max(1, Math.ceil(status.etaSeconds / 60))} MIN`;
-  }
-  if (status.state === "arriving") return "HERE";
-  return null;
 }
 
 function LimeCabSurfaces({
@@ -1283,6 +1338,7 @@ function LimeCabSurfaces({
       needsServiceSelect: boolean;
       locationAfterConfigure: boolean;
       selectAfterConfigure: boolean;
+      needsPickupConfirm: boolean;
     }>,
   ) => void;
   pickup: Pickup;
@@ -1374,8 +1430,7 @@ function LimeCabSurfaces({
   const [voiceError, setVoiceError] = useState<string | null>(null);
   /** Which address the save interrupt is filing. App data, not a screen flag. */
   const [placeToSave, setPlaceToSave] = useState<Location | null>(null);
-  const [searchAudience, setSearchAudience] =
-    useState<SearchAudience>("self");
+  const [searchAudience, setSearchAudience] = useState<SearchAudience>("self");
   const [locatingHere, setLocatingHere] = useState(false);
   const applyVoiceRef = useRef<(text: string) => void>(() => undefined);
   const voice = useVoiceCapture((text) => applyVoiceRef.current(text));
@@ -1581,16 +1636,27 @@ function LimeCabSurfaces({
   }, [visible, product?.id]);
 
   useEffect(() => {
-    if (visible === "quote" || visible === "matching") return;
+    if (
+      visible === "quote" ||
+      visible === "confirm_pickup" ||
+      visible === "location_search" ||
+      visible === "matching"
+    ) {
+      return;
+    }
     if (visible === "assigned" || visible === "provider_en_route") return;
-    if (visible === "active" || visible === "completing" || visible === "complete") {
+    if (
+      visible === "active" ||
+      visible === "completing" ||
+      visible === "complete"
+    ) {
       return;
     }
     forTheWayAsked.current = false;
   }, [visible]);
 
   useEffect(() => {
-    if (visible !== "quote") return;
+    if (visible !== "quote" && visible !== "confirm_pickup") return;
     if (!forTheWayEligible(product?.id)) return;
     if (forTheWayAsked.current || snack) return;
     forTheWayAsked.current = true;
@@ -1728,6 +1794,17 @@ function LimeCabSurfaces({
     setDestination(draft.destination);
     setStops(draft.stops);
 
+    // A stop (or destination edit) on a live ride is an interruption. Apply
+    // the draft and restore the ride — never progress back to planning.
+    if (isCommitted(state)) {
+      if (next === "complete") {
+        surfaces.perform("resumeRide");
+      } else {
+        setSearchTarget(targetFromField(next));
+      }
+      return;
+    }
+
     // Home map card: adjusting pickup returns to home, does not open search.
     if (pinEntry === "home" && searchTarget === "pickup") {
       setPinEntry("search");
@@ -1736,10 +1813,11 @@ function LimeCabSurfaces({
     }
 
     if (next === "complete") {
-      surfaces.perform("destinationSelected");
+      const pickupConfirm = !courier && !reserve && !help && Boolean(product);
+      surfaces.perform(pickupConfirm ? "confirmPickup" : "destinationSelected");
       go("select_location", {
         hasLocation: true,
-        hasService: courier || reserve,
+        hasService: courier || reserve || Boolean(product),
         needsConfigure: courier || reserve,
         needsServiceSelect: !courier && !reserve,
       });
@@ -1793,10 +1871,9 @@ function LimeCabSurfaces({
       try {
         result = await placesAdapter.retrieve(suggestion.id);
       } catch {
-        result =
-          locationFromFixture(suggestion.address) ?? {
-            address: suggestion.address,
-          };
+        result = locationFromFixture(suggestion.address) ?? {
+          address: suggestion.address,
+        };
       }
       if (intent === "ride") {
         chooseLocation(result);
@@ -1901,9 +1978,12 @@ function LimeCabSurfaces({
 
   const confirmRide = () => {
     if (product?.status !== "available") return;
-    surfaces.perform("chooseRide");
+    surfaces.perform(courier || reserve || help ? "chooseRide" : "confirmPickup");
     go("select_service", { hasService: true });
   };
+
+  const planningScene: ServiceAppState =
+    courier || reserve || help ? "quote" : "confirm_pickup";
 
   /**
    * The perceived-performance path. One semantic action moves three surfaces;
@@ -1911,7 +1991,7 @@ function LimeCabSurfaces({
    * order — the quote is gone before "Finding your driver" appears, and no
    * driver exists until dispatch says so.
    */
-  const requestRide = () => {
+  const requestRide = (origin: Pickup = pickup) => {
     if (!destination || !product || surface.progress.locked) return;
     setFailure(null);
     idempotencyKey.current ??= crypto.randomUUID();
@@ -1921,7 +2001,7 @@ function LimeCabSurfaces({
         surfaces.perform("requestRide");
         await surface.transition({
           intent: "progress",
-          from: "quote",
+          from: planningScene,
           to: "matching",
           interim: "map",
           task: () => {
@@ -1936,17 +2016,15 @@ function LimeCabSurfaces({
                     shop ? shopListUnitCount(shopList) : undefined,
                   )
                 : [
-                  reserve && scheduledAt ? reservedLabel(scheduledAt) : null,
-                  snack
-                    ? `${snack.label} at Grand Central Market`
-                    : null,
-                  pickup.meetingPoint,
-                ]
-                  .filter(Boolean)
-                  .join(" · ") || undefined;
+                    reserve && scheduledAt ? reservedLabel(scheduledAt) : null,
+                    snack ? `${snack.label} at Grand Central Market` : null,
+                    origin.meetingPoint,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || undefined;
             return startTrip({
               pickup: {
-                ...pickup,
+                ...origin,
                 meetingPoint: meeting,
               },
               destination,
@@ -1973,19 +2051,40 @@ function LimeCabSurfaces({
         // happening. No driver exists until the server sends one.
         setState("matching");
       } catch {
-        // Dispatch refused the request: the quote comes back untouched and
-        // carries the error the transition captured.
-        surfaces.perform("requestFailed");
-        setState("quote");
+        // Dispatch refused the request: the planning surface comes back
+        // untouched and carries the error the transition captured.
+        surfaces.perform(
+          planningScene === "confirm_pickup" ? "confirmPickup" : "requestFailed",
+        );
+        setState(planningScene);
       }
     })();
+  };
+
+  const confirmPickupAndRequest = () => {
+    const committed =
+      pin && pinAddress
+        ? {
+            ...pickup,
+            address: pinAddress,
+            latitude: pin.latitude,
+            longitude: pin.longitude,
+            followsDevice: false,
+          }
+        : pickup;
+    setPickup(committed);
+    if (signedIn) {
+      requestRide(committed);
+      return;
+    }
+    window.location.href = "/signin";
   };
 
   const backToQuote = () => {
     setFailure(null);
     clearTrip();
     surfaces.perform("requestFailed");
-    setState("quote");
+    setState(planningScene);
   };
 
   const reset = () => {
@@ -2137,10 +2236,10 @@ function LimeCabSurfaces({
               : shop
                 ? "Shop"
                 : courier
-                ? "Where is it going?"
-                : reserve
-                  ? "Book ahead"
-                  : undefined
+                  ? "Where is it going?"
+                  : reserve
+                    ? "Book ahead"
+                    : undefined
           }
           destinationHint={
             help
@@ -2176,9 +2275,11 @@ function LimeCabSurfaces({
             label={
               visible === "location_pin"
                 ? "Location"
-                : courier
-                  ? "Your delivery"
-                  : "Your ride"
+                : visible === "confirm_pickup"
+                  ? "Confirm pickup"
+                  : courier
+                    ? "Your delivery"
+                    : "Your ride"
             }
             presentation={sheetPresentation(
               surfaces.layout.primary?.presentation ?? "sheet",
@@ -2235,6 +2336,18 @@ function LimeCabSurfaces({
                     longitude: pin.longitude,
                   });
                 }}
+              />
+            ) : null}
+
+            {visible === "confirm_pickup" ? (
+              <LimeCabConfirmPickupScene
+                address={
+                  pinAddress ? splitAddress(pinAddress).line || pinAddress : null
+                }
+                locating={pinLocating}
+                busy={surface.progress.locked}
+                onSearch={() => openSearch("pickup")}
+                onConfirm={confirmPickupAndRequest}
               />
             ) : null}
 
@@ -2351,7 +2464,13 @@ function LimeCabSurfaces({
                   (stop) => stop.shortName ?? splitAddress(stop.address).line,
                 )}
                 pickupLabel={
-                  help ? "Where" : shop ? "Shop" : courier ? "Pick up" : "Pickup"
+                  help
+                    ? "Where"
+                    : shop
+                      ? "Shop"
+                      : courier
+                        ? "Pick up"
+                        : "Pickup"
                 }
                 destinationLabel={courier ? "Drop-off" : "Destination"}
                 payment={payment}
@@ -2364,18 +2483,18 @@ function LimeCabSurfaces({
                     ? "Pricing your visit"
                     : shop
                       ? "Pricing your trip"
-                    : courier
-                      ? "Pricing your delivery"
-                      : "Pricing your ride"
+                      : courier
+                        ? "Pricing your delivery"
+                        : "Pricing your ride"
                 }
                 etaLine={
                   help && scheduledAt
                     ? `${helpVisitLabel(scheduledAt)} · ${helpKindLabel(product.id)}`
                     : courier
-                    ? `Pickup in ~${product.etaMinutes} min · Deliver by ${clockTime(product.etaMinutes + quote.minutes)}`
-                    : reserve && scheduledAt
-                      ? reservedLabel(scheduledAt)
-                      : undefined
+                      ? `Pickup in ~${product.etaMinutes} min · Deliver by ${clockTime(product.etaMinutes + quote.minutes)}`
+                      : reserve && scheduledAt
+                        ? reservedLabel(scheduledAt)
+                        : undefined
                 }
                 confirmLabel={
                   signedIn
@@ -2390,19 +2509,21 @@ function LimeCabSurfaces({
                   help
                     ? "A visit is priced as an hour at the house. Nothing is charged in this demo."
                     : shop
-                    ? "Item cost is paid in store by the courier. This price is the trip. This build does not reimburse or scan receipts."
-                    : courierValues.fulfillment === "buy"
-                      ? "Item cost is paid in store; this fare is the trip. Nothing is charged in this demo."
-                      : undefined
+                      ? "Item cost is paid in store by the courier. This price is the trip. This build does not reimburse or scan receipts."
+                      : courierValues.fulfillment === "buy"
+                        ? "Item cost is paid in store; this fare is the trip. Nothing is charged in this demo."
+                        : isWaitSaveProduct(product.id)
+                          ? "Same private Lime ride. A later pickup for a lower fare."
+                          : undefined
                 }
                 signInLabel={
                   help
                     ? "Sign in to schedule a visit"
                     : shop
-                    ? "Sign in to send a courier"
-                    : courier
-                      ? "Sign in to send a delivery"
-                      : "Sign in to request a ride"
+                      ? "Sign in to send a courier"
+                      : courier
+                        ? "Sign in to send a delivery"
+                        : "Sign in to request a ride"
                 }
                 onEditPickup={() => openSearch("pickup")}
                 onOpenDetail={openDetail}
@@ -2445,19 +2566,20 @@ function LimeCabSurfaces({
                   help && scheduledAt
                     ? `${helpVisitLabel(scheduledAt)} · ${product ? helpKindLabel(product.id) : ""}`.trim()
                     : shop
-                    ? visible === "active" || visible === "completing"
-                      ? "On the way to you"
-                      : `Buying your list · ${shopItemCountLabel(shopListUnitCount(shopList))}, then delivering`
-                    : snack &&
-                  (visible === "assigned" || visible === "provider_en_route")
-                    ? `Picking up your ${snack.label.toLowerCase()}, then you`
-                    : courier &&
-                        courierValues.fulfillment === "buy" &&
-                        (visible === "matching" || visible === "assigned")
-                      ? "Courier will text to confirm the item — messaging isn’t wired, so they will pick the described item."
-                      : reserve && scheduledAt
-                        ? reservedLabel(scheduledAt)
-                        : undefined
+                      ? visible === "active" || visible === "completing"
+                        ? "On the way to you"
+                        : `Buying your list · ${shopItemCountLabel(shopListUnitCount(shopList))}, then delivering`
+                      : snack &&
+                          (visible === "assigned" ||
+                            visible === "provider_en_route")
+                        ? `Picking up your ${snack.label.toLowerCase()}, then you`
+                        : courier &&
+                            courierValues.fulfillment === "buy" &&
+                            (visible === "matching" || visible === "assigned")
+                          ? "Courier will text to confirm the item — messaging isn’t wired, so they will pick the described item."
+                          : reserve && scheduledAt
+                            ? reservedLabel(scheduledAt)
+                            : undefined
                 }
                 onOpenDetail={openDetail}
                 onShareTrip={
@@ -2468,6 +2590,35 @@ function LimeCabSurfaces({
                       }
                     : undefined
                 }
+                onAddStop={
+                  status.state === "active" &&
+                  showDriver &&
+                  !courier &&
+                  !help &&
+                  !shop
+                    ? () => {
+                        const added = addStop({
+                          origin: pickup,
+                          destination,
+                          stops,
+                        });
+                        if (!added) return;
+                        setStops(added.draft.stops);
+                        openSearch(targetFromField(added.next));
+                      }
+                    : undefined
+                }
+                canAddStop={stops.length < MAX_INTERMEDIATE_STOPS}
+                onTip={
+                  status.state === "active" &&
+                  showDriver &&
+                  !courier &&
+                  !help &&
+                  !shop
+                    ? () => openDetail("tip")
+                    : undefined
+                }
+                tipCents={tipCents}
                 onBackToQuote={backToQuote}
                 onCancel={() => {
                   setCancelError(null);
@@ -2496,7 +2647,11 @@ function LimeCabSurfaces({
                       : "You've arrived"
                 }
                 totalLabel={
-                  help ? "Visit total" : courier ? "Delivery total" : "Trip total"
+                  help
+                    ? "Visit total"
+                    : courier
+                      ? "Delivery total"
+                      : "Trip total"
                 }
                 providerNoun={
                   help
@@ -2513,7 +2668,10 @@ function LimeCabSurfaces({
 
       <ManagedSurface<LimeCabSurfaceId> id="search">
         <LocationSearchScene
-          open={state === "location_search"}
+          open={
+            state === "location_search" ||
+            surfaces.layout.search.emphasis === "primary"
+          }
           adapter={placesAdapter}
           places={searchPlaces}
           title={searchContract.title}
@@ -2585,10 +2743,14 @@ function LimeCabSurfaces({
             />
           }
           onSelect={chooseLocation}
-          onChooseOnMap={onChooseOnMap}
+          onChooseOnMap={isCommitted(state) ? undefined : onChooseOnMap}
           onDismiss={() => {
             setSearchError(null);
             voice.stop();
+            if (isCommitted(state)) {
+              surfaces.perform("resumeRide");
+              return;
+            }
             // Leaving a search returns to the scene that asked for it. For
             // Shop that is the list whenever the *store* is what is being
             // revised, whether or not a drop-off is already set.
@@ -2627,10 +2789,9 @@ function LimeCabSurfaces({
                         try {
                           result = await placesAdapter.retrieve(suggestion.id);
                         } catch {
-                          result =
-                            locationFromFixture(suggestion.address) ?? {
-                              address: suggestion.address,
-                            };
+                          result = locationFromFixture(suggestion.address) ?? {
+                            address: suggestion.address,
+                          };
                         }
                         surfaces.perform("openDetails");
                         setPlaceToSave(result);
@@ -2687,6 +2848,46 @@ function LimeCabSurfaces({
         }}
         discountCents={discountCents}
         tipCents={tipCents}
+        onTip={setTipCents}
+        onAddStop={
+          status.state === "active" &&
+          showDriver &&
+          !courier &&
+          !help &&
+          !shop
+            ? () => {
+                const added = addStop({
+                  origin: pickup,
+                  destination,
+                  stops,
+                });
+                if (!added) return;
+                setStops(added.draft.stops);
+                openSearch(targetFromField(added.next));
+              }
+            : undefined
+        }
+        canAddStop={stops.length < MAX_INTERMEDIATE_STOPS}
+        onShareTrip={
+          showDriver
+            ? () => {
+                surfaces.perform("openTravelShare");
+                setDetail("safety");
+              }
+            : undefined
+        }
+        shareLabel={traveling ? "Share with someone at home" : "Share trip"}
+        onOpen={(kind) => setDetail(kind)}
+        onCancel={
+          cancellable
+            ? () => {
+                setCancelError(null);
+                surfaces.perform("interruptCancel");
+                setCancelStage("confirm");
+              }
+            : undefined
+        }
+        cancelLabel={`Cancel ${help ? "visit" : courier ? "delivery" : "ride"}`}
       />
 
       {/* Filing an address is a question *about* the task, so it suspends the

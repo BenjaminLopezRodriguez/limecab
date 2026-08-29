@@ -37,9 +37,18 @@ function leg(
 const activePool = leg(POOL_PRODUCT_ID, downtown, echo, {
   status: "in_progress",
 });
-const nearbyPool = { id: "nearby", ...leg(POOL_PRODUCT_ID, nearPickup, nearDest, { arrivalMinutes: 12 }) };
-const farPool = { id: "far", ...leg(POOL_PRODUCT_ID, pasadena, south, { arrivalMinutes: 3 }) };
-const nearbyLime = { id: "lime", ...leg("lime", nearPickup, nearDest, { arrivalMinutes: 2 }) };
+const nearbyPool = {
+  id: "nearby",
+  ...leg(POOL_PRODUCT_ID, nearPickup, nearDest, { arrivalMinutes: 12 }),
+};
+const farPool = {
+  id: "far",
+  ...leg(POOL_PRODUCT_ID, pasadena, south, { arrivalMinutes: 3 }),
+};
+const nearbyLime = {
+  id: "lime",
+  ...leg("lime", nearPickup, nearDest, { arrivalMinutes: 2 }),
+};
 
 test("lime-pool is the existing Pool product", () => {
   assert.equal(isPoolProduct("lime-pool"), true);
@@ -81,5 +90,18 @@ test("an empty car still ranks by nearest deadhead, Pool included", () => {
   assert.deepEqual(
     ranked.map((trip) => trip.id),
     ["lime", "far", "nearby"],
+  );
+});
+
+test("Wait & Save ranks behind a standard Lime request", () => {
+  const waitSave = {
+    id: "wait",
+    ...leg("lime-wait-save", nearPickup, nearDest, { arrivalMinutes: 2 }),
+  };
+  const ranked = rankOpenOffers([waitSave, nearbyLime, farPool], null);
+  assert.equal(ranked.at(-1)?.id, "wait");
+  assert.ok(
+    ranked.findIndex((trip) => trip.id === "lime") <
+      ranked.findIndex((trip) => trip.id === "wait"),
   );
 });

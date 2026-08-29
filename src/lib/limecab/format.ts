@@ -10,7 +10,9 @@ export { civilDateInZone, DRIVER_TZ, mondayCivilDateInZone };
 
 export function productLabel(productId: string): string {
   if (isCourierProduct(productId)) return "Courier";
-  return RIDE_PRODUCTS.find((product) => product.id === productId)?.name ?? "Lime";
+  return (
+    RIDE_PRODUCTS.find((product) => product.id === productId)?.name ?? "Lime"
+  );
 }
 
 /** "Yesterday · 6:42 PM" — no date library, just the platform. */
@@ -38,8 +40,11 @@ export function tripStatusLabel(status: string, courier: boolean): string {
   if (status === "cancelled") return "Cancelled";
   if (status === "complete") return courier ? "Delivered" : "Completed";
   if (status === "in_progress") return courier ? "En route" : "On the way";
-  if (status === "arriving") return courier ? "Courier arriving" : "Driver arriving";
-  if (status === "matched") return courier ? "Courier assigned" : "Driver assigned";
-  if (status === "requested") return courier ? "Finding a courier" : "Finding a driver";
+  if (status === "arriving")
+    return courier ? "Courier arriving" : "Driver arriving";
+  if (status === "matched")
+    return courier ? "Courier assigned" : "Driver assigned";
+  if (status === "requested")
+    return courier ? "Finding a courier" : "Finding a driver";
   return "In progress";
 }

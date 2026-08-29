@@ -31,13 +31,20 @@ export type ServiceStatus =
   | { state: "cancelled" }
   | { state: "failed"; reason?: string };
 
+/** A glanceable tile: the numeral, then a unit. Never a sentence. */
+export type GlanceMetric = {
+  value: string;
+  unit?: string;
+};
+
 export type ServiceStatusView = {
   headline: string;
   detail: string;
   /** Label above the estimate, e.g. "Arrival". Null when the estimate stands alone. */
   estimateLabel: string | null;
-  estimate: string;
-  /** Short marker text for the map, e.g. "7 MIN" or "HERE". */
+  /** The live tile. Time counters have no unit. Null at zero. */
+  estimate: GlanceMetric | null;
+  /** Short marker text for the map: the same number, or "HERE". */
   callout: string | null;
   milestones: readonly string[];
   milestoneIndex: number;
@@ -64,32 +71,69 @@ function capitalize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+function counted(n: number, singular: string, plural: string) {
+  return n === 1 ? `1 ${singular}` : `${n} ${plural}`;
+}
+
+/** Spoken form of a stacked metric, e.g. "12 seconds". */
+export function glanceLabel(metric: GlanceMetric): string {
+  if (!metric.unit) {
+    const n = Number(metric.value);
+    if (Number.isFinite(n)) return counted(n, "second", "seconds");
+    return metric.value;
+  }
+  return `${metric.value} ${metric.unit}`;
+}
+
+/**
+ * One centered numeral. At most two digits. Floors — a countdown must
+ * not jump ahead. Never a unit, never a price.
+ */
+export function formatTimeCounter(seconds: number): GlanceMetric {
+  const total = Math.max(0, Math.min(99, Math.floor(seconds)));
+  return { value: String(total) };
+}
+
+/** Hide the tile at zero — that count ending *is* the scene change. */
+function liveTicker(seconds: number | undefined): GlanceMetric | null {
+  if (seconds === undefined) return null;
+  const metric = formatTimeCounter(seconds);
+  return metric.value === "0" ? null : metric;
+}
+
+/** Clock ETA as a two-digit time counter — never "Any moment", never rounded. */
+export function formatEtaMetric(seconds: number): GlanceMetric {
+  return formatTimeCounter(seconds);
+}
+
 /** A clock-style ETA. Used when the user is waiting on someone's arrival. */
 export function formatEta(seconds: number): string {
-  if (seconds <= 5) return "Any moment";
-  if (seconds < 60) return `${Math.round(seconds)} sec`;
-  const minutes = Math.max(1, Math.round(seconds / 60));
-  return `${minutes} min`;
+  return glanceLabel(formatEtaMetric(seconds));
+}
+
+/** Matching wait: the same two-digit counter, never "Usually under…". */
+export function formatTypicalMetric(seconds: number): GlanceMetric {
+  return formatTimeCounter(seconds);
 }
 
 /** A duration band. Used when the answer is "how long does this usually take". */
 export function formatTypical(seconds: number): string {
-  if (seconds <= 60) return "Usually under 1 min";
-  const minutes = Math.max(1, Math.round(seconds / 60));
-  return `Usually under ${minutes} min`;
+  return glanceLabel(formatTypicalMetric(seconds));
+}
+
+/** Remaining work as a two-digit time counter — never "20 sec remaining". */
+export function formatRemainingMetric(seconds: number): GlanceMetric {
+  return formatTimeCounter(seconds);
 }
 
 /** A remaining-work estimate. Used while work is visibly in progress. */
 export function formatRemaining(seconds: number): string {
-  if (seconds <= 8) return "Almost done";
-  if (seconds < 60) return `${Math.round(seconds)} sec remaining`;
-  const minutes = Math.max(1, Math.round(seconds / 60));
-  return `~${minutes} min remaining`;
+  return glanceLabel(formatRemainingMetric(seconds));
 }
 
-function calloutMinutes(seconds: number) {
-  if (seconds < 60) return `${Math.max(1, Math.round(seconds))}s`;
-  return `${Math.max(1, Math.ceil(seconds / 60))} MIN`;
+function calloutCount(seconds: number) {
+  const n = Math.max(0, Math.floor(seconds));
+  return n === 0 ? null : String(n);
 }
 
 export function serviceStatusView(
@@ -105,7 +149,7 @@ export function serviceStatusView(
         headline: "Not requested yet",
         detail: status.note ?? "Nothing is dispatched until you confirm.",
         estimateLabel: null,
-        estimate: "",
+        estimate: null,
         callout: null,
         milestones: track,
         milestoneIndex: 0,
@@ -119,7 +163,7 @@ export function serviceStatusView(
         headline: `Finding a ${l.provider}`,
         detail: `Contacting nearby ${l.provider}s`,
         estimateLabel: null,
-        estimate: formatTypical(status.typicalSeconds ?? 60),
+        estimate: liveTicker(status.typicalSeconds ?? 60),
         callout: null,
         milestones: track,
         milestoneIndex: 0,
@@ -135,8 +179,8 @@ export function serviceStatusView(
           : `${capitalize(l.provider)} assigned`,
         detail: `Your ${l.provider} is heading to you`,
         estimateLabel: "Arriving in",
-        estimate: formatEta(status.etaSeconds),
-        callout: calloutMinutes(status.etaSeconds),
+        estimate: liveTicker(status.etaSeconds),
+        callout: calloutCount(status.etaSeconds),
         milestones: track,
         milestoneIndex: 1,
         showProgress: false,
@@ -149,10 +193,10 @@ export function serviceStatusView(
         headline: status.providerName
           ? `${status.providerName} is on the way`
           : `${capitalize(l.provider)} on the way`,
-        detail: "Follow the route on the map",
+        detail: `Your ${l.provider} is heading to you`,
         estimateLabel: "Arriving in",
-        estimate: formatEta(status.etaSeconds),
-        callout: calloutMinutes(status.etaSeconds),
+        estimate: liveTicker(status.etaSeconds),
+        callout: calloutCount(status.etaSeconds),
         milestones: track,
         milestoneIndex: 1,
         showProgress: false,
@@ -165,9 +209,9 @@ export function serviceStatusView(
         headline: status.providerName
           ? `${status.providerName} has arrived`
           : `Your ${l.provider} has arrived`,
-        detail: "Meet them outside",
+        detail: "They're outside",
         estimateLabel: null,
-        estimate: "Now",
+        estimate: null,
         callout: "HERE",
         milestones: track,
         milestoneIndex: 1,
@@ -183,10 +227,7 @@ export function serviceStatusView(
         headline: `${capitalize(l.service)} in progress`,
         detail: status.currentStep ?? `${done} of ${total} steps complete`,
         estimateLabel: null,
-        estimate:
-          status.remainingSeconds === undefined
-            ? `${done} of ${total} complete`
-            : formatRemaining(status.remainingSeconds),
+        estimate: liveTicker(status.remainingSeconds),
         callout: null,
         milestones: track,
         milestoneIndex: 2,
@@ -201,10 +242,7 @@ export function serviceStatusView(
         headline: "Wrapping up",
         detail: "Preparing your receipt",
         estimateLabel: null,
-        estimate:
-          status.remainingSeconds === undefined
-            ? "Almost done"
-            : formatRemaining(status.remainingSeconds),
+        estimate: liveTicker(status.remainingSeconds),
         callout: null,
         milestones: track,
         milestoneIndex: 2,
@@ -218,7 +256,7 @@ export function serviceStatusView(
         headline: `${capitalize(l.service)} complete`,
         detail: status.summary ?? "",
         estimateLabel: null,
-        estimate: "",
+        estimate: null,
         callout: null,
         milestones: track,
         milestoneIndex: 3,
@@ -232,7 +270,7 @@ export function serviceStatusView(
         headline: `${capitalize(l.service)} cancelled`,
         detail: "Nothing was dispatched.",
         estimateLabel: null,
-        estimate: "",
+        estimate: null,
         callout: null,
         milestones: track,
         milestoneIndex: 0,
@@ -246,7 +284,7 @@ export function serviceStatusView(
         headline: `${capitalize(l.service)} couldn't complete`,
         detail: status.reason ?? "Nothing was dispatched.",
         estimateLabel: null,
-        estimate: "",
+        estimate: null,
         callout: null,
         milestones: track,
         milestoneIndex: 0,

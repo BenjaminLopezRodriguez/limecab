@@ -18,6 +18,14 @@ Before changing the sheet, map slot, SheetActions, trip pill, or payment UI, rea
 
 Pad the camera for the sheet. Do not shrink the map box with `--map-overlay-bottom`. Do not round the task map.
 
+## Scroll expands to overlay
+
+Rest rungs stay peek / sheet / expanded. Overlay is the overflow destination of the same drawer, not a new scene.
+
+- If the scene fits, it cannot be scrolled and cannot reach overlay.
+- If it does not fit, the swipe/scroll that would have been an inner scroll grows the sheet toward overlay. Inner scrolling stays locked until that snap.
+- Do not measure content and spring to overlay on mount. `TaskScene` remains the chrome for keyboard-first work.
+
 ## Actions
 
 Confirm / payment ribbon: progressive disclosure, ribbon + one primary, pinned to the **visible** sheet bottom. No portal into a JS-measured 100dvh drawer.

@@ -8,6 +8,7 @@ import {
 } from "@hugeicons/core-free-icons";
 
 import { PrimaryAction } from "@/components/service-app/task-scene";
+import { LiveSheetHeader } from "@/components/service-app/live-sheet";
 import { SurfaceSkeleton } from "@/components/service-app/surface-skeleton";
 import { SheetActions } from "@/components/service-app/service-sheet";
 import { DetailLines } from "@/components/limecab/limecab-parts";
@@ -15,11 +16,12 @@ import { Icon } from "@/components/ui/icon";
 import type { DetailKind } from "@/components/limecab/limecab-interrupts";
 import {
   clockTime,
+  ridePickupCopy,
   type PaymentMethod,
   type RideProduct,
 } from "@/lib/limecab/domain";
 import { AVAILABLE_PROMO } from "@/lib/limecab/mock";
-import { formatMoney } from "@/lib/service-app/services";
+import { formatMoney, formatMoneyMetric } from "@/lib/service-app/services";
 import { cn } from "@/lib/utils";
 
 /** The fare, everything that changes it, and the one button that commits. */
@@ -83,20 +85,15 @@ export function LimeCabQuoteScene({
 
   return (
     <div className="flex min-h-full flex-col">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-[17px] font-medium tracking-tight">
-            {product.name}
-          </h2>
-          <p className="text-muted-foreground text-sm tabular-nums">
-            {etaLine ??
-              `${clockTime(product.etaMinutes + quoteMinutes)} dropoff · ${product.etaMinutes} min away`}
-          </p>
-        </div>
-        <p className="shrink-0 text-[28px] leading-none font-semibold tracking-[-0.02em] tabular-nums">
-          {formatMoney(payableCents)}
-        </p>
-      </div>
+      <LiveSheetHeader
+        instruction={product.name}
+        secondary={
+          etaLine ??
+          `${clockTime(product.etaMinutes + quoteMinutes)} dropoff · ${ridePickupCopy(product)}`
+        }
+        metric={formatMoneyMetric(payableCents)}
+        metricAriaLabel={`Total ${formatMoney(payableCents)}`}
+      />
 
       <Itinerary
         className="mt-4"

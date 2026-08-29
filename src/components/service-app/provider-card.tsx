@@ -24,6 +24,7 @@ export function ProviderCard({
   badge,
   actions,
   compact = false,
+  prominent = false,
   className,
 }: {
   provider: Provider;
@@ -34,13 +35,15 @@ export function ProviderCard({
   /** Contact affordances: call, message, share. */
   actions?: ReactNode;
   compact?: boolean;
+  /** In-car: the driver is the subject, not a footnote under status copy. */
+  prominent?: boolean;
   className?: string;
 }) {
   return (
     <div
       className={cn(
         "bg-card ring-border rounded-2xl ring-1",
-        compact ? "p-3" : "p-4",
+        compact ? "p-3" : prominent ? "p-5" : "p-4",
         className,
       )}
     >
@@ -49,7 +52,11 @@ export function ProviderCard({
           aria-hidden="true"
           className={cn(
             "bg-accent text-accent-foreground flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold tracking-tight",
-            compact ? "size-10 text-sm" : "size-12 text-[17px]",
+            compact
+              ? "size-10 text-sm"
+              : prominent
+                ? "size-16 text-[22px]"
+                : "size-12 text-[17px]",
           )}
         >
           {provider.avatarUrl ? (
@@ -65,7 +72,12 @@ export function ProviderCard({
         </span>
 
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[17px] leading-tight font-semibold tracking-tight">
+          <p
+            className={cn(
+              "truncate leading-tight font-semibold tracking-tight",
+              prominent ? "text-[19px]" : "text-[17px]",
+            )}
+          >
             {provider.name}
           </p>
           {typeof provider.rating === "number" ? (

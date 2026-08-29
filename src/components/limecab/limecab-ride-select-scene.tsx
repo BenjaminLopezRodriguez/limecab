@@ -4,6 +4,7 @@ import { useMemo, type ReactNode } from "react";
 import {
   ArrowRight01Icon,
   Car01Icon,
+  Clock01Icon,
   CreditCardIcon,
   SparklesIcon,
   UserGroupIcon,
@@ -14,6 +15,7 @@ import { SheetActions } from "@/components/service-app/service-sheet";
 import { Icon } from "@/components/ui/icon";
 import {
   clockTime,
+  ridePickupCopy,
   type PaymentMethod,
   type Pickup,
   type RideProduct,
@@ -24,6 +26,7 @@ import { cn } from "@/lib/utils";
 
 const PRODUCT_ICON: Record<string, ReactNode> = {
   lime: <Icon icon={Car01Icon} size={24} />,
+  "lime-wait-save": <Icon icon={Clock01Icon} size={24} />,
   "lime-xl": <Icon icon={UserGroupIcon} size={24} />,
   "lime-comfort": <Icon icon={SparklesIcon} size={24} />,
   "lime-pool": <Icon icon={UserGroupIcon} size={24} />,
@@ -153,7 +156,7 @@ function RideRow({
   const available = product.status === "available";
   const dropoff = clockTime(product.etaMinutes + tripMinutes);
   const detail = available
-    ? `${product.etaMinutes} min away · ${dropoff} dropoff`
+    ? `${ridePickupCopy(product)} · ${dropoff} dropoff`
     : UNAVAILABLE;
 
   return (

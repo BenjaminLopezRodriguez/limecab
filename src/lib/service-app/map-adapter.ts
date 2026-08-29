@@ -56,7 +56,7 @@ export type MapViewProps = {
    * drawn a shade louder. Undefined or empty draws nothing.
    */
   coverage?: GeoJSON.FeatureCollection;
-  /** Short physical-world marker, e.g. "7 MIN" or "HERE". */
+  /** Short physical-world marker, e.g. "12" or "HERE". */
   callout?: string | null;
   /** Corner caption, usually the current address. */
   label?: string | null;

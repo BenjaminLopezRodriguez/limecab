@@ -37,6 +37,13 @@ export {
   ProviderEta,
 } from "@/components/service-app/service-status";
 export {
+  LiveSheetHeader,
+  LiveSheetIdentity,
+  LiveSheetDock,
+  LiveMetric,
+  type LiveMetricValue,
+} from "@/components/service-app/live-sheet";
+export {
   SurfaceManagerProvider,
   ManagedSurface,
   SurfaceManagerDebug,

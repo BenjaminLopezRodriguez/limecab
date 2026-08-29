@@ -3,6 +3,8 @@
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { TIP_PRESETS } from "@/lib/limecab/domain";
+import { formatMoney } from "@/lib/service-app/services";
 import { cn } from "@/lib/utils";
 
 /** The affordance that discloses a detail surface. Never the primary action. */
@@ -69,6 +71,44 @@ export function DetailLines({
           {footnote}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/** Flat tip amounts. Percentages make the rider do arithmetic to be kind. */
+export function TipPanel({
+  value,
+  onTip,
+}: {
+  value: number | null;
+  onTip: (next: number | null) => void;
+}) {
+  return (
+    <div className="bg-muted/60 rounded-2xl p-4">
+      <p className="text-[15px] font-medium tracking-tight">
+        {value ? "Tip added to your total" : "Add a tip?"}
+      </p>
+      <div className="mt-3 flex gap-2">
+        {TIP_PRESETS.map((amount) => {
+          const selected = value === amount;
+          return (
+            <button
+              key={amount}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => onTip(selected ? null : amount)}
+              className={cn(
+                "ring-border focus-visible:ring-ring h-12 flex-1 rounded-full text-[15px] font-semibold tabular-nums ring-1 focus-visible:ring-2 focus-visible:outline-none",
+                selected
+                  ? "bg-accent ring-foreground text-foreground ring-2"
+                  : "bg-card active:bg-accent",
+              )}
+            >
+              {formatMoney(amount)}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

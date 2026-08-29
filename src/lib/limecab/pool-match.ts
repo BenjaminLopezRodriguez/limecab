@@ -22,7 +22,7 @@
  *   https://www.uber.com/blog/machine-learning/
  */
 
-import { distanceMiles, tripMinutes } from "./domain.ts";
+import { distanceMiles, isWaitSaveProduct, tripMinutes } from "./domain.ts";
 import { cellDisk, isCell, toDriverCell } from "./h3.ts";
 
 export const POOL_PRODUCT_ID = "lime-pool";
@@ -58,7 +58,8 @@ function point(
   latitude?: number | null,
   longitude?: number | null,
 ): Point | null {
-  if (typeof latitude !== "number" || typeof longitude !== "number") return null;
+  if (typeof latitude !== "number" || typeof longitude !== "number")
+    return null;
   return { latitude, longitude, address: "" };
 }
 
@@ -205,7 +206,8 @@ export function poolFits(active: PoolLeg, offer: PoolLeg): boolean {
 /**
  * Inbox order. A live Pool job pulls compatible Pool offers to the front,
  * cheapest detour first. Empty cars keep nearest-deadhead. Non-Pool never
- * jumps a fitting Pool stack.
+ * jumps a fitting Pool stack. Wait & Save sits behind every other ride —
+ * the rider traded matching priority for the lower fare.
  */
 export function rankOpenOffers<T extends PoolLeg>(
   open: readonly T[],
@@ -218,10 +220,14 @@ export function rankOpenOffers<T extends PoolLeg>(
       const bFit = poolFits(current, b);
       if (aFit !== bFit) return aFit ? -1 : 1;
       if (aFit && bFit) {
-        const detour = poolDetourMinutes(current, a) - poolDetourMinutes(current, b);
+        const detour =
+          poolDetourMinutes(current, a) - poolDetourMinutes(current, b);
         if (detour !== 0) return detour;
       }
     }
+    const aWait = isWaitSaveProduct(a.productId);
+    const bWait = isWaitSaveProduct(b.productId);
+    if (aWait !== bWait) return aWait ? 1 : -1;
     return (a.arrivalMinutes ?? 0) - (b.arrivalMinutes ?? 0);
   });
 }

@@ -42,7 +42,8 @@ export default async function RidePreferencesPage() {
         />
       </ProfileSection>
       <ProfileNote>
-        Default ride is Lime. You still pick XL or Comfort each time you book.
+        Default ride is Lime. You still pick XL, Comfort, or Wait & Save each
+        time you book.
       </ProfileNote>
     </TabSubpage>
   );

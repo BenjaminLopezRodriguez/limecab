@@ -107,6 +107,29 @@ export function formatMoney(cents: number, currency = "USD", locale = "en-US") {
 }
 
 /**
+ * Money for a live tile: dollars as the numeral, cents as the unit.
+ * `$18` / `.40` — glanceable, not a caption.
+ */
+export function formatMoneyMetric(
+  cents: number,
+  currency = "USD",
+  locale = "en-US",
+): { value: string; unit: string } {
+  const symbol =
+    new Intl.NumberFormat(locale, { style: "currency", currency })
+      .formatToParts(0)
+      .find((part) => part.type === "currency")?.value ?? "$";
+  const negative = cents < 0;
+  const abs = Math.abs(cents);
+  const dollars = Math.floor(abs / 100);
+  const remainder = abs % 100;
+  return {
+    value: `${negative ? "-" : ""}${symbol}${dollars}`,
+    unit: `.${remainder.toString().padStart(2, "0")}`,
+  };
+}
+
+/**
  * Collapses a request history into recent places, most recent first.
  * Deduplicates by address so the same destination is not listed twice.
  */

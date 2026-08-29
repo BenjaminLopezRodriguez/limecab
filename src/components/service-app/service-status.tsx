@@ -2,8 +2,10 @@
 
 import type { ReactNode } from "react";
 
+import { LiveSheetHeader } from "@/components/service-app/live-sheet";
 import { Progress } from "@/components/ui/progress";
 import {
+  glanceLabel,
   serviceStatusView,
   type ServiceStatus,
   type StatusLabels,
@@ -77,45 +79,62 @@ export function ServiceProgress({
   );
 }
 
-/** Milestone rail. Shows *where* in the lifecycle the request is. */
+/** Dash rail. Current activity above, `_ _ _ _` below. */
 export function ServiceMilestones({
   milestones,
   index,
+  live = true,
+  label,
   className,
 }: {
   milestones: readonly string[];
   index: number;
+  /** Shimmer the current dash only while the request is live. */
+  live?: boolean;
+  /** “Doing x”. Defaults to the current milestone. */
+  label?: string;
   className?: string;
 }) {
   if (milestones.length === 0) return null;
+
+  const last = milestones.length - 1;
+  const current = Math.min(Math.max(0, index), last);
+  const finished = !live && current >= last;
+  const activity = label ?? milestones[current] ?? "";
+
   return (
-    <ol className={cn("flex justify-between gap-1", className)}>
-      {milestones.map((label, position) => {
-        const done = position <= index;
-        return (
-          <li
-            key={label}
-            className="flex min-w-0 flex-1 flex-col items-center gap-1.5"
-          >
-            <span
-              className={cn(
-                "size-2 rounded-full",
-                done ? "bg-foreground" : "bg-muted-foreground/30",
-              )}
-              aria-hidden="true"
-            />
-            <span
-              className={cn(
-                "w-full truncate text-center text-[10px]",
-                done ? "text-foreground" : "text-muted-foreground",
-              )}
+    <div className={className}>
+      {activity ? (
+        <p className="text-muted-foreground mb-2 truncate text-xs">{activity}</p>
+      ) : null}
+      <ol
+        className="flex gap-1.5"
+        aria-label={`${activity}, step ${current + 1} of ${milestones.length}`}
+      >
+        {milestones.map((name, position) => {
+          const done = finished || position < current;
+          const active = live && position === current && !finished;
+          return (
+            <li
+              key={name}
+              className="min-w-0 flex-1"
+              aria-current={active ? "step" : undefined}
             >
-              {label}
-            </span>
-          </li>
-        );
-      })}
-    </ol>
+              <span className="sr-only">{name}</span>
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "block h-1 w-full rounded-full",
+                  done && "bg-foreground",
+                  active && "bg-lime service-step-shimmer",
+                  !done && !active && "bg-muted-foreground/20",
+                )}
+              />
+            </li>
+          );
+        })}
+      </ol>
+    </div>
   );
 }
 
@@ -125,16 +144,6 @@ export function ServiceMilestones({
  * `actions` is a slot — cancellation, "contact provider", "view receipt" and
  * anything else product-specific belongs to the consuming app, not here.
  */
-/** States whose estimate is a duration band or a phrase, not a live metric. */
-const BAND_STATES = new Set<ServiceStatus["state"]>([
-  "pending",
-  "matching",
-  "completing",
-  "complete",
-  "cancelled",
-  "failed",
-]);
-
 export function ServiceStatusPanel({
   status,
   labels,
@@ -152,63 +161,33 @@ export function ServiceStatusPanel({
   className?: string;
 }) {
   const view = serviceStatusView(status, labels);
-  // A band ("usually under a minute") is not an answer; an arrival time or a
-  // remaining time is. Only the answer gets hero weight.
-  const hero = !BAND_STATES.has(status.state);
 
   return (
     <div className={className}>
-      {/* One live region for the whole answer: the headline and the metric
-          change together, and both are minute-granular. */}
       <div aria-live="polite">
-        <p className="flex items-center gap-2 text-[17px] leading-snug font-medium tracking-tight">
-          <span
-            className={cn(
-              "size-2 shrink-0 rounded-full",
-              view.live ? "bg-foreground" : "bg-muted-foreground/40",
-            )}
-            aria-hidden="true"
-          />
-          {view.headline}
-        </p>
-
-        {view.estimate ? (
-          <ProviderEta
-            className={hero ? "mt-3" : "mt-2"}
-            label={view.estimateLabel}
-            value={view.estimate}
-            hero={hero}
-          />
-        ) : null}
-
-        {view.detail ? (
-          <p className="text-muted-foreground mt-2 text-[15px] leading-relaxed">
-            {view.detail}
-          </p>
-        ) : null}
+        <LiveSheetHeader
+          instruction={view.headline}
+          secondary={view.detail || undefined}
+          metric={view.estimate}
+          metricAriaLabel={
+            view.estimate
+              ? view.estimateLabel
+                ? `${view.estimateLabel} ${glanceLabel(view.estimate)}`
+                : glanceLabel(view.estimate)
+              : undefined
+          }
+        />
       </div>
 
       {subtitle ? (
         <p className="text-muted-foreground mt-4 truncate text-sm">{subtitle}</p>
       ) : null}
 
-      {view.showProgress ? (
-        <ServiceProgress
-          className="mt-5"
-          value={view.progress}
-          completedSteps={
-            status.state === "active" ? status.completedSteps : undefined
-          }
-          totalSteps={
-            status.state === "active" ? status.totalSteps : undefined
-          }
-        />
-      ) : null}
-
       <ServiceMilestones
         className="mt-5"
         milestones={view.milestones}
         index={view.milestoneIndex}
+        live={view.live}
       />
 
       {error ? (

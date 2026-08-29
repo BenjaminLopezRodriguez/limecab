@@ -2,8 +2,8 @@
 
 import type { ReactNode } from "react";
 
-import { Separator } from "@/components/ui/separator";
-import { formatMoney } from "@/lib/service-app/services";
+import { LiveSheetHeader } from "@/components/service-app/live-sheet";
+import { formatMoney, formatMoneyMetric } from "@/lib/service-app/services";
 import { cn } from "@/lib/utils";
 
 /**
@@ -39,14 +39,18 @@ export function CompletionPanel({
 }) {
   return (
     <section className={cn("flex flex-col", className)}>
-      <h2 className="text-[22px] leading-snug font-semibold tracking-[-0.02em] text-balance">
-        {headline}
-      </h2>
-      {summary ? (
-        <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed tabular-nums">
-          {summary}
-        </p>
-      ) : null}
+      <LiveSheetHeader
+        instruction={headline}
+        secondary={summary}
+        metric={
+          typeof totalCents === "number" ? formatMoneyMetric(totalCents, currency) : null
+        }
+        metricAriaLabel={
+          typeof totalCents === "number"
+            ? `${totalLabel} ${formatMoney(totalCents, currency)}`
+            : undefined
+        }
+      />
 
       {detail ? <div className="mt-5">{detail}</div> : null}
 
@@ -59,20 +63,6 @@ export function CompletionPanel({
             </div>
           ))}
         </dl>
-      ) : null}
-
-      {typeof totalCents === "number" ? (
-        <>
-          <Separator className="my-4" />
-          <div className="flex items-baseline gap-3">
-            <p className="text-[15px] font-medium tracking-tight">
-              {totalLabel}
-            </p>
-            <p className="ml-auto text-[28px] leading-none font-semibold tracking-[-0.02em] tabular-nums">
-              {formatMoney(totalCents, currency)}
-            </p>
-          </div>
-        </>
       ) : null}
 
       {actions ? <div className="mt-6 flex flex-col gap-2">{actions}</div> : null}

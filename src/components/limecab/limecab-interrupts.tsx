@@ -12,7 +12,7 @@ import { ConfirmActionSurface } from "@/components/service-app/confirm-action-su
 import { PrimaryAction } from "@/components/service-app/task-scene";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
-import { DetailLines } from "@/components/limecab/limecab-parts";
+import { DetailButton, DetailLines, TipPanel } from "@/components/limecab/limecab-parts";
 import {
   vehicleLabel,
   type PaymentMethod,
@@ -36,7 +36,9 @@ export type DetailKind =
   | "payment"
   | "promo"
   | "contact"
-  | "safety";
+  | "safety"
+  | "tip"
+  | "more";
 
 const DETAIL_TITLE: Record<DetailKind, string> = {
   fare: "Fare details",
@@ -46,6 +48,8 @@ const DETAIL_TITLE: Record<DetailKind, string> = {
   promo: "Promo code",
   contact: "Contact your driver",
   safety: "Safety",
+  tip: "Add a tip",
+  more: "Ride options",
 };
 
 const CANCEL_REASONS = [
@@ -101,6 +105,14 @@ export function LimeCabDetailSurface({
   onTogglePromo,
   discountCents,
   tipCents,
+  onTip,
+  onAddStop,
+  canAddStop,
+  onShareTrip,
+  shareLabel = "Share trip",
+  onOpen,
+  onCancel,
+  cancelLabel = "Cancel ride",
 }: {
   detail: DetailKind | null;
   onClose: () => void;
@@ -119,6 +131,14 @@ export function LimeCabDetailSurface({
   onTogglePromo: () => void;
   discountCents: number;
   tipCents: number | null;
+  onTip?: (next: number | null) => void;
+  onAddStop?: () => void;
+  canAddStop?: boolean;
+  onShareTrip?: () => void;
+  shareLabel?: string;
+  onOpen?: (kind: DetailKind) => void;
+  onCancel?: () => void;
+  cancelLabel?: string;
 }) {
   return (
     <AdaptiveSurface.Interrupt
@@ -204,8 +224,9 @@ export function LimeCabDetailSurface({
 
       {detail === "contact" && trip ? (
         <p className="text-muted-foreground text-sm leading-relaxed">
-          Calling and messaging {trip.driver.name} needs a dispatch connection,
-          which this build doesn&apos;t have. Nothing was sent.
+          {trip.driver.name} can&apos;t be reached from this build. Calling and
+          messaging need a dispatch connection, which isn&apos;t here. Nothing
+          was sent.
         </p>
       ) : null}
 
@@ -220,6 +241,59 @@ export function LimeCabDetailSurface({
             footnote="Emergency calling needs a live trip service, so this build has none. Sharing hands these details to your own phone's share sheet — nothing is sent from here."
           />
           <ShareTripButton trip={trip} destinationLine={destinationLine} />
+        </div>
+      ) : null}
+
+      {detail === "tip" && onTip ? (
+        <div className="flex flex-col gap-3">
+          <TipPanel value={tipCents} onTip={onTip} />
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            Your rating and tip stay on this device. This build has no endpoint
+            to send them to, so nothing was submitted.
+          </p>
+        </div>
+      ) : null}
+
+      {detail === "more" ? (
+        <div className="flex flex-col gap-2">
+          {onAddStop && canAddStop !== false ? (
+            <DetailButton
+              onPress={() => {
+                onClose();
+                onAddStop();
+              }}
+            >
+              Add a stop
+            </DetailButton>
+          ) : null}
+          {onTip && onOpen ? (
+            <DetailButton onPress={() => onOpen("tip")}>
+              {tipCents ? "Change tip" : "Add a tip"}
+            </DetailButton>
+          ) : null}
+          {onShareTrip ? (
+            <DetailButton onPress={onShareTrip}>{shareLabel}</DetailButton>
+          ) : null}
+          {onOpen ? (
+            <>
+              <DetailButton onPress={() => onOpen("trip")}>
+                Trip details
+              </DetailButton>
+              <DetailButton onPress={() => onOpen("safety")}>
+                Safety
+              </DetailButton>
+            </>
+          ) : null}
+          {onCancel ? (
+            <DetailButton
+              onPress={() => {
+                onClose();
+                onCancel();
+              }}
+            >
+              {cancelLabel}
+            </DetailButton>
+          ) : null}
         </div>
       ) : null}
 

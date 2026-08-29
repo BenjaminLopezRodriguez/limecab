@@ -17,17 +17,26 @@ test("airport cheap lands on LAX and Pool", () => {
 });
 
 test("comfort and quiet select Lime Comfort", () => {
-  assert.equal(parseRideUtterance("Griffith comfort").productHint, "lime-comfort");
+  assert.equal(
+    parseRideUtterance("Griffith comfort").productHint,
+    "lime-comfort",
+  );
   assert.equal(
     parseRideUtterance("quiet ride to the pier").destinationQuery,
     "Santa Monica Pier",
   );
-  assert.equal(parseRideUtterance("quiet ride to the pier").productHint, "lime-comfort");
+  assert.equal(
+    parseRideUtterance("quiet ride to the pier").productHint,
+    "lime-comfort",
+  );
 });
 
 test("bags and six people are XL", () => {
   assert.equal(parseRideUtterance("home with bags").productHint, "lime-xl");
-  assert.equal(parseRideUtterance("work for six people").productHint, "lime-xl");
+  assert.equal(
+    parseRideUtterance("work for six people").productHint,
+    "lime-xl",
+  );
 });
 
 test("saved places match Home, Work, Union Station", () => {
@@ -54,4 +63,15 @@ test("default product is Lime when no preference is spoken", () => {
   const parsed = parseRideUtterance("Dodger Stadium");
   assert.equal(parsed.destinationQuery, "Dodger Stadium");
   assert.equal(parsed.productHint, "lime");
+});
+
+test("wait and save fills Wait & Save, not Pool", () => {
+  const parsed = parseRideUtterance("Wait & Save to LAX");
+  assert.equal(parsed.destinationQuery, "LAX Terminal 4");
+  assert.equal(parsed.productHint, "lime-wait-save");
+  assert.ok(parsed.notes.includes("Wait & Save"));
+  assert.equal(
+    parseRideUtterance("take me to the pier wait and save").productHint,
+    "lime-wait-save",
+  );
 });

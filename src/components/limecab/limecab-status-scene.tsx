@@ -1,21 +1,34 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { CallIcon, Message01Icon } from "@hugeicons/core-free-icons";
+import {
+  MoreHorizontalIcon,
+  PlusSignIcon,
+  StarIcon,
+} from "@hugeicons/core-free-icons";
 
-import { ProviderCard } from "@/components/service-app/provider-card";
+import {
+  LiveSheetDock,
+  LiveSheetHeader,
+  LiveSheetIdentity,
+} from "@/components/service-app/live-sheet";
 import { ServiceStatusPanel } from "@/components/service-app/service-status";
 import { SheetActions } from "@/components/service-app/service-sheet";
 import { PrimaryAction } from "@/components/service-app/task-scene";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
-import { DetailButton } from "@/components/limecab/limecab-parts";
 import type { DetailKind } from "@/components/limecab/limecab-interrupts";
 import type { Pickup, RideProduct, Trip } from "@/lib/limecab/domain";
 import { courierOrderLabel } from "@/lib/limecab/courier";
+import { vehiclePaintClass } from "@/lib/limecab/vehicle-paint";
 import { isHelpProduct } from "@/lib/limecab/help";
 import type { Location } from "@/lib/service-app/services";
-import type { ServiceStatus, StatusLabels } from "@/lib/service-app/status";
+import {
+  glanceLabel,
+  serviceStatusView,
+  type ServiceStatus,
+  type StatusLabels,
+} from "@/lib/service-app/status";
 import { cn } from "@/lib/utils";
 
 /** States where the rider is still waiting at a curb for a specific car. */
@@ -43,6 +56,10 @@ export function LimeCabStatusScene({
   liveSubtitle,
   onOpenDetail,
   onShareTrip,
+  onAddStop,
+  canAddStop = true,
+  onTip,
+  tipCents,
   onBackToQuote,
   onCancel,
 }: {
@@ -63,6 +80,11 @@ export function LimeCabStatusScene({
   liveSubtitle?: string;
   onOpenDetail: (kind: DetailKind) => void;
   onShareTrip?: () => void;
+  /** In-car only: adding a stop is an interruption, not a new scene. */
+  onAddStop?: () => void;
+  canAddStop?: boolean;
+  onTip?: () => void;
+  tipCents?: number | null;
   onBackToQuote: () => void;
   onCancel: () => void;
 }) {
@@ -72,8 +94,149 @@ export function LimeCabStatusScene({
   const visit = isHelpProduct(product?.id);
   const pin = curbside && trip;
   const courierLive = status.state === "active" && trip?.courier;
-  const hasDetails = Boolean(pin) || Boolean(courierLive) || Boolean(showDriver && trip);
   const hasFooter = Boolean(failure) || Boolean(cancelError) || cancellable;
+  const inCar =
+    status.state === "active" &&
+    Boolean(onAddStop) &&
+    Boolean(showDriver && trip) &&
+    !courierLive &&
+    !visit;
+  const view = serviceStatusView(status, labels);
+  const identified = Boolean(showDriver && trip);
+  const meetAt = pickup.meetingPoint ?? pickupLine;
+  const faceFooter = Boolean(failure) || Boolean(cancelError);
+
+  if (identified && trip) {
+    const instruction = curbside
+      ? `Meet at ${meetAt}`
+      : inCar && destinationLine
+        ? `On the way to ${destinationLine}`
+        : view.headline;
+    const secondary = curbside ? view.detail : undefined;
+    const metric = view.estimate;
+    const paint = vehiclePaintClass(trip.driver.vehicle.color);
+
+    return (
+      <>
+        <div aria-live="polite">
+          <LiveSheetHeader
+            instruction={instruction}
+            secondary={secondary}
+            chip={
+              pin ? (
+                <PinChip
+                  pin={pin.pickupPin}
+                  label={
+                    pin.courier
+                      ? `${courierOrderLabel(pin.id)} pickup`
+                      : visit
+                        ? "Optional code"
+                        : "PIN"
+                  }
+                  ariaLabel={
+                    pin.courier
+                      ? `${courierOrderLabel(pin.id)} pickup code ${pin.pickupPin}`
+                      : visit
+                        ? `Ask for this if you want to: ${pin.pickupPin}`
+                        : `Give your ${labels.provider} this code: ${pin.pickupPin}`
+                  }
+                />
+              ) : null
+            }
+            metric={metric}
+            metricAriaLabel={
+              metric
+                ? view.estimateLabel
+                  ? `${view.estimateLabel} ${glanceLabel(metric)}`
+                  : glanceLabel(metric)
+                : undefined
+            }
+          />
+        </div>
+
+        {courierLive ? (
+          courierLive.proof === "hand" && courierLive.deliveryPin ? (
+            <PickupPin
+              className="mt-4"
+              compact
+              pin={courierLive.deliveryPin}
+              title={`${courierOrderLabel(trip.id)} · Recipient PIN`}
+              detail={`Give this to ${courierLive.recipientName}`}
+              provider="recipient"
+            />
+          ) : (
+            <p className="bg-muted/60 mt-4 rounded-2xl px-4 py-3 text-sm leading-relaxed">
+              In transit to {courierLive.recipientName}
+              {courierLive.proof === "door"
+                ? " · leave at door"
+                : courierLive.proof === "signature"
+                  ? " · signature required"
+                  : ""}
+            </p>
+          )
+        ) : null}
+
+        <LiveSheetIdentity
+          className="mt-5"
+          name={trip.driver.name}
+          badge={
+            <span className="flex items-center gap-3">
+              <Plate value={trip.driver.vehicle.plate} hero />
+              {paint ? (
+                <span
+                  aria-hidden="true"
+                  className={cn("h-10 w-12 shrink-0 rounded-xl", paint)}
+                />
+              ) : null}
+            </span>
+          }
+          detail={`${trip.driver.vehicle.color} ${trip.driver.vehicle.make} ${trip.driver.vehicle.model}`}
+          visual={
+            <IdentityVisual
+              name={trip.driver.name}
+              rating={trip.driver.rating}
+            />
+          }
+        />
+
+        <LiveSheetDock
+          className="mt-5"
+          message="Send a message"
+          onMessage={() => onOpenDetail("contact")}
+          actions={
+            <>
+              {inCar && onAddStop && canAddStop ? (
+                <IconAction label="Add a stop" onPress={onAddStop}>
+                  <Icon icon={PlusSignIcon} size={18} />
+                </IconAction>
+              ) : null}
+              <IconAction
+                label="Ride options"
+                onPress={() => onOpenDetail("more")}
+              >
+                <Icon icon={MoreHorizontalIcon} size={18} />
+              </IconAction>
+            </>
+          }
+        />
+
+        {faceFooter ? (
+          <SheetActions>
+            {failure ? (
+              <PrimaryAction onClick={onBackToQuote}>
+                Back to the quote
+              </PrimaryAction>
+            ) : null}
+            {cancelError ? (
+              <p role="alert" className="text-destructive text-sm leading-relaxed">
+                {cancelError}
+              </p>
+            ) : null}
+          </SheetActions>
+        ) : null}
+      </>
+    );
+  }
 
   return (
     <>
@@ -85,101 +248,6 @@ export function LimeCabStatusScene({
           (product && destination
             ? `${product.name} · ${destinationLine}`
             : undefined)
-        }
-        actions={
-          hasDetails ? (
-            <div className="flex flex-col gap-3">
-              {/* The rider's half of the verification the driver is also shown. */}
-              {pin ? (
-                <PickupPin
-                  pin={pin.pickupPin}
-                  title={
-                    pin.courier
-                      ? `${courierOrderLabel(pin.id)} · Pickup`
-                      : visit
-                        ? "Ask for this if you want to"
-                        : undefined
-                  }
-                  meetAt={visit ? undefined : (pickup.meetingPoint ?? pickupLine)}
-                  detail={
-                    pin.courier
-                      ? `${pin.courier.packageCount === 1 ? "1 package" : `${pin.courier.packageCount} packages`} · show this to your courier`
-                      : visit
-                        ? "Show this if you want to confirm it’s them."
-                        : undefined
-                  }
-                  provider={labels.provider}
-                />
-              ) : null}
-
-              {courierLive ? (
-                courierLive.proof === "hand" && courierLive.deliveryPin ? (
-                  <PickupPin
-                    pin={courierLive.deliveryPin}
-                    title={`${courierOrderLabel(trip?.id ?? "")} · Recipient PIN`}
-                    detail={`Give this to ${courierLive.recipientName}`}
-                    provider="recipient"
-                  />
-                ) : (
-                  <p className="bg-muted/60 rounded-2xl px-4 py-3 text-sm leading-relaxed">
-                    In transit to {courierLive.recipientName}
-                    {courierLive.proof === "door"
-                      ? " · leave at door"
-                      : courierLive.proof === "signature"
-                        ? " · signature required"
-                        : ""}
-                  </p>
-                )
-              ) : null}
-
-              {showDriver && trip ? (
-                <ProviderCard
-                  provider={{
-                    id: trip.driver.id,
-                    name: trip.driver.name,
-                    // The car, not the trim level: colour, make, model — what the
-                    // rider actually scans a street for.
-                    detail: `${trip.driver.vehicle.color} ${trip.driver.vehicle.make} ${trip.driver.vehicle.model}`,
-                    rating: trip.driver.rating,
-                  }}
-                  badge={<Plate value={trip.driver.vehicle.plate} />}
-                  actions={
-                    <div className="flex gap-2">
-                      <IconAction
-                        label={`Message ${trip.driver.name}`}
-                        onPress={() => onOpenDetail("contact")}
-                      >
-                        <Icon icon={Message01Icon} size={18} />
-                      </IconAction>
-                      <IconAction
-                        label={`Call ${trip.driver.name}`}
-                        onPress={() => onOpenDetail("contact")}
-                      >
-                        <Icon icon={CallIcon} size={18} />
-                      </IconAction>
-                    </div>
-                  }
-                  // The hero already answers "when"; the card answers "who".
-                  eta={status.state === "arriving" ? "Here now" : null}
-                />
-              ) : null}
-
-              {showDriver && trip ? (
-                <div className="grid grid-cols-2 gap-2">
-                  <DetailButton onPress={() => onOpenDetail("trip")}>
-                    Trip details
-                  </DetailButton>
-                  <DetailButton onPress={() => onOpenDetail("safety")}>
-                    Safety
-                  </DetailButton>
-                </div>
-              ) : null}
-
-              {onShareTrip && showDriver && trip ? (
-                <DetailButton onPress={onShareTrip}>{shareLabel}</DetailButton>
-              ) : null}
-            </div>
-          ) : undefined
         }
       />
       {hasFooter ? (
@@ -209,12 +277,40 @@ export function LimeCabStatusScene({
   );
 }
 
+function IdentityVisual({
+  name,
+  rating,
+}: {
+  name: string;
+  rating: number;
+}) {
+  const initial = name.trim().charAt(0).toUpperCase();
+  return (
+    <span className="relative shrink-0">
+      <span
+        aria-hidden="true"
+        className="bg-accent text-accent-foreground flex size-14 items-center justify-center overflow-hidden rounded-full text-[19px] font-semibold tracking-tight"
+      >
+        {initial}
+      </span>
+      <span className="bg-card ring-border absolute -bottom-1 left-1/2 flex -translate-x-1/2 items-center gap-0.5 rounded-full px-1.5 py-px text-[10px] font-medium tabular-nums ring-1">
+        <Icon icon={StarIcon} size={10} className="text-lime" />
+        {rating.toFixed(1)}
+      </span>
+    </span>
+  );
+}
+
 /** The plate, set apart so it reads from the kerb at a glance. */
-function Plate({ value }: { value: string }) {
+function Plate({ value, hero = false }: { value: string; hero?: boolean }) {
   return (
     <span
       aria-label={`Licence plate ${value}`}
-      className="bg-foreground text-background rounded-md px-2 py-1 text-[15px] leading-none font-semibold tracking-[0.08em] tabular-nums"
+      className={
+        hero
+          ? "block text-[28px] leading-none font-semibold tracking-[0.14em] tabular-nums"
+          : "bg-foreground text-background rounded-md px-2 py-1 text-[15px] leading-none font-semibold tracking-[0.08em] tabular-nums"
+      }
     >
       {value}
     </span>
@@ -291,7 +387,7 @@ function IconAction({
       type="button"
       onClick={onPress}
       aria-label={label}
-      className="ring-border focus-visible:ring-ring active:bg-accent inline-flex size-11 shrink-0 items-center justify-center rounded-full ring-1 focus-visible:ring-2 focus-visible:outline-none [&_svg]:size-[18px]"
+      className="bg-muted text-muted-foreground focus-visible:ring-ring active:bg-accent inline-flex size-12 shrink-0 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:outline-none [&_svg]:size-[18px]"
     >
       {children}
     </button>
@@ -299,10 +395,38 @@ function IconAction({
 }
 
 /**
+ * The code the rider reads out at the curb — a chip, not a billboard.
+ * The metric and the plate outrank it; it still has to be there.
+ */
+function PinChip({
+  pin,
+  label,
+  ariaLabel,
+}: {
+  pin: string;
+  label: string;
+  ariaLabel: string;
+}) {
+  return (
+    <span
+      aria-label={ariaLabel}
+      className="bg-accent text-accent-foreground inline-flex shrink-0 items-baseline gap-1.5 rounded-full px-2.5 py-1"
+    >
+      <span className="text-[10px] font-medium tracking-[0.12em] uppercase opacity-70">
+        {label}
+      </span>
+      <span className="text-[13px] leading-none font-semibold tracking-[0.08em] tabular-nums">
+        {pin}
+      </span>
+    </span>
+  );
+}
+
+/**
  * The code the rider reads out at the curb.
  *
- * It is the largest thing on the screen for the few seconds it matters,
- * because the rider is looking at a phone at arm's length beside a road.
+ * Used when the PIN *is* the job — a courier handing off to a recipient —
+ * not on the arriving face, where it is a chip in the header.
  */
 function PickupPin({
   pin,
@@ -310,24 +434,41 @@ function PickupPin({
   provider,
   title,
   detail,
+  compact = false,
+  className,
 }: {
   pin: string;
   meetAt?: string;
   provider: string;
   title?: string;
   detail?: string;
+  compact?: boolean;
+  className?: string;
 }) {
   return (
-    <div className="bg-accent text-accent-foreground rounded-2xl px-4 py-3">
+    <div
+      className={cn(
+        "bg-accent text-accent-foreground rounded-2xl px-4",
+        compact ? "py-2.5" : "py-3",
+        className,
+      )}
+    >
       <p className="text-[11px] tracking-[0.12em] uppercase opacity-70">
         {title ?? `Give your ${provider} this code`}
       </p>
-      <p className="mt-1.5 text-[40px] leading-none font-semibold tracking-[0.14em] tabular-nums">
+      <p
+        className={cn(
+          "leading-none font-semibold tracking-[0.14em] tabular-nums",
+          compact ? "mt-1 text-[28px]" : "mt-1.5 text-[40px]",
+        )}
+      >
         {pin}
       </p>
-      <p className="mt-2.5 text-sm opacity-80">
-        {detail ?? (meetAt ? `Meet at ${meetAt}` : null)}
-      </p>
+      {!compact || detail ? (
+        <p className={cn("opacity-80", compact ? "mt-1.5 text-xs" : "mt-2.5 text-sm")}>
+          {detail ?? (meetAt ? `Meet at ${meetAt}` : null)}
+        </p>
+      ) : null}
     </div>
   );
 }

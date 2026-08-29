@@ -19,6 +19,7 @@ import {
   distanceMiles,
   estimateFare,
   tripMinutes,
+  WAIT_SAVE_PRODUCT,
   type Driver,
   type PaymentMethod,
   type Pickup,
@@ -50,6 +51,7 @@ export const RIDE_PRODUCTS: RideProduct[] = [
     priceCents: 100,
     status: "available",
   },
+  WAIT_SAVE_PRODUCT,
   {
     id: "lime-xl",
     name: "Lime XL",
@@ -525,13 +527,23 @@ export const DRIVER_POOL: Driver[] = [
     id: "rio",
     name: "Rio",
     rating: 4.97,
-    vehicle: { make: "Toyota", model: "Camry", color: "Black", plate: "7LIME22" },
+    vehicle: {
+      make: "Toyota",
+      model: "Camry",
+      color: "Black",
+      plate: "7LIME22",
+    },
   },
   {
     id: "jules",
     name: "Jules",
     rating: 4.91,
-    vehicle: { make: "Chevy", model: "Bolt", color: "Silver", plate: "4CAB901" },
+    vehicle: {
+      make: "Chevy",
+      model: "Bolt",
+      color: "Silver",
+      plate: "4CAB901",
+    },
   },
 ];
 

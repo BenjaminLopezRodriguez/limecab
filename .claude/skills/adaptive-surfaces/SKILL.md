@@ -69,7 +69,7 @@ GOOD interrupt -> parent recedes (dim, lower z-order, still mounted)
 
 Capture on interrupt, restore on return. Every item:
 
-- [ ] `presentation` of the parent panel (`peek` | `sheet` | `expanded` | `fullscreen`)
+- [ ] `presentation` of the parent panel (`peek` | `sheet` | `expanded` | `overlay` | `fullscreen`)
 - [ ] scroll position of the parent's scroll container
 - [ ] the focused element, restored as the focus target on return
 - [ ] in-progress text input values and caret/selection
@@ -139,13 +139,14 @@ Interruptions are exempt from the reducer: back during an interruption is `{ int
 
 ## 7. Presentation ladder
 
-`SurfacePresentation = "peek" | "sheet" | "expanded" | "fullscreen" | "compact-interrupt"`.
+`SurfacePresentation = "peek" | "sheet" | "expanded" | "overlay" | "fullscreen" | "compact-interrupt"`.
 
 | Rung | Mobile | Desktop counterpart | Use when |
 |---|---|---|---|
 | `peek` | short bottom strip over a live canvas | floating side panel, canvas dominant | canvas is the subject; surface is a handle or status line |
 | `sheet` | half-height bottom sheet, canvas visible above | expanded side panel | a short list or a few controls, spatial context still matters |
 | `expanded` | tall sheet, canvas reduced to a band | task panel beside a reduced canvas | comparison, configuration, confirmation |
+| `overlay` | same drawer snapped to the viewport | full-height task panel | overflow: the user is scrolling a scene that does not fit |
 | `fullscreen` | full viewport, canvas hidden | full task panel / dedicated column | keyboard-first work: search, forms, long results |
 | `compact-interrupt` | small drawer at the bottom edge, parent receding behind | compact centered modal | one temporary question about the current task |
 
@@ -153,6 +154,8 @@ Rules:
 
 - **Do** move one rung at a time during progression. `peek -> fullscreen` in a single step is disallowed; go `peek -> sheet -> fullscreen` or pick the right starting rung.
 - **Do** raise the rung when the user needs the keyboard, and lower it when the canvas becomes the subject again.
+- **Do** keep rest rungs on the ladder. Overlay is the overflow destination of the same drawer: if the scene does not fit, the scroll/swipe grows it toward overlay. Inner scrolling stays locked until that snap. The sheet does not measure content and spring.
+- **Never** enable inner scroll below overlay — that gesture is the expansion.
 - **Never** use `fullscreen` for a yes/no question. **Never** use `peek` for confirmation or purchase.
 - **Never** stack two `compact-interrupt` surfaces. Resolve or return the first.
 

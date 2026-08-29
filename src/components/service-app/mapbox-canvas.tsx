@@ -163,6 +163,7 @@ export function MapboxCanvas({
   const muted = mode === "provider_arrival" || mode === "results";
   const wasInteractive = useRef(false);
   const lastRecenter = useRef(recenterAt);
+  const followCam = useRef(true);
   const tracking = tracksProvider(mode);
   const follow = tracking
     ? points.find((point) => point.kind === "provider")
@@ -178,6 +179,7 @@ export function MapboxCanvas({
     wasInteractive.current = interactive;
     const asked = recenterAt !== lastRecenter.current;
     lastRecenter.current = recenterAt;
+    if (asked) followCam.current = true;
     // A re-frame stays pending until the camera has actually arrived:
     // `resize()` and `setPadding()` cancel an ease in flight, and the sheet
     // leaving fires both right after the camera is told to move.
@@ -263,7 +265,7 @@ export function MapboxCanvas({
     if (
       !map ||
       !ready ||
-      interactive ||
+      !followCam.current ||
       followLat === undefined ||
       followLng === undefined
     ) {
@@ -275,7 +277,7 @@ export function MapboxCanvas({
     if (Math.abs(gl.getZoom() - resolvedZoom) > 0.08) {
       gl.setZoom(resolvedZoom);
     }
-  }, [followLat, followLng, interactive, ready, resolvedZoom]);
+  }, [followLat, followLng, ready, recenterAt, resolvedZoom]);
 
   return (
     <div className={cn("bg-muted relative size-full overflow-hidden", className)}>
@@ -302,6 +304,9 @@ export function MapboxCanvas({
         touchZoomRotate={interactive}
         keyboard={interactive}
         attributionControl
+        onDragStart={() => {
+          followCam.current = false;
+        }}
         onLoad={() => {
           mapRef.current?.getMap().setProjection("mercator");
           setReady(true);
