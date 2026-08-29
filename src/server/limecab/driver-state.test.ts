@@ -22,7 +22,7 @@ const CANCEL_FROM: readonly TripStatus[] = ["matched", "arriving"];
 
 function allowedOn(status: TripStatus, action: DriverAction): boolean {
   const step = DRIVER_PATH.find(([from]) => from === status);
-  if (step && action === step[1]) return true;
+  if (step?.[1] === action) return true;
   return action === "cancel" && CANCEL_FROM.includes(status);
 }
 
