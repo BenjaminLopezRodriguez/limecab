@@ -5,7 +5,7 @@
  * return ride / send / get-from-store together so the search scene can group.
  */
 
-export type SearchIntent = "ride" | "send" | "store";
+export type SearchIntent = "ride" | "send" | "store" | "help";
 
 export type ClassifiedQuery = {
   intents: SearchIntent[];
@@ -19,23 +19,31 @@ const SEND =
   /\b(send|package|parcel|courier|deliver(?:ing|y)?)\b/i;
 const STORE =
   /\b(store|butcher|plant|gift|shop|grocery)\b|\b(get from|pick up from|pickup from|buy (?:me|for me))\b/i;
+const HELP_PHRASE =
+  /\b(help at home|lime (?:help|care)|housework)\b/i;
 const ADDRESS =
   /\b(ave|avenue|st|street|blvd|boulevard|rd|road|dr|drive|way|ln|lane|ct|court)\b/i;
 
 const INTENT_WORDS =
   /\b(send|this|package|parcel|courier|deliver(?:ing|y)?|get from|pick up from|pickup from|buy me|buy for me|to)\b/gi;
 
+function isHelpQuery(raw: string): boolean {
+  return /^\s*help\s*$/i.test(raw) || HELP_PHRASE.test(raw);
+}
+
 export function classifySearchQuery(text: string): ClassifiedQuery {
   const raw = text.trim();
   const send = SEND.test(raw);
   const store = STORE.test(raw);
+  const help = isHelpQuery(raw);
   const addressLike = ADDRESS.test(raw);
 
   const intents: SearchIntent[] = [];
   if (send) intents.push("send");
   if (store) intents.push("store");
-  if (!send && !store) intents.push("ride");
-  else if (!addressLike) {
+  if (help) intents.push("help");
+  if (!send && !store && !help) intents.push("ride");
+  else if (!addressLike && !help) {
     // "send this to work" is courier-first but still a place someone could
     // ride to; keep ride as a sibling so the grouping is honest.
     intents.unshift("ride");
@@ -53,6 +61,8 @@ export function classifySearchQuery(text: string): ClassifiedQuery {
 
 function placeQueryFrom(text: string): string {
   return text
+    .replace(HELP_PHRASE, " ")
+    .replace(/^\s*help\s*$/i, " ")
     .replace(INTENT_WORDS, " ")
     .replace(/[^a-z0-9\s]/gi, " ")
     .replace(/\s+/g, " ")
@@ -61,5 +71,10 @@ function placeQueryFrom(text: string): string {
 
 /** Street-shaped queries keep a flat place list — no padded courier rows. */
 export function isAddressQuery(text: string): boolean {
-  return ADDRESS.test(text) && !SEND.test(text) && !STORE.test(text);
+  return (
+    ADDRESS.test(text) &&
+    !SEND.test(text) &&
+    !STORE.test(text) &&
+    !isHelpQuery(text)
+  );
 }

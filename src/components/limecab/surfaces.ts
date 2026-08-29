@@ -282,6 +282,18 @@ export const limeCabSurfaces = createSurfaceManager({
         search: { emphasis: "hidden" },
       },
     },
+    /**
+     * Leave a draft task. Home's recipe: bounded map, launcher sheet.
+     * A live service uses `minimizeRide` instead — the request keeps running.
+     */
+    leaveTask: {
+      intent: "progress",
+      surfaces: {
+        map: { emphasis: "background", presentation: "bounded" },
+        primary: { emphasis: "primary", presentation: "sheet" },
+        search: { emphasis: "hidden" },
+      },
+    },
     /** The pill, tapped. The scene's own recipe puts the map back. */
     restoreRide: {
       intent: "expand",

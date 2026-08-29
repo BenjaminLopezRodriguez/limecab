@@ -7,7 +7,9 @@ import {
   serializeShopList,
   shopListSchema,
   shopListSummary,
+  shopListUnitCount,
   SHOP_LIST_MAX,
+  SHOP_QTY_MAX,
 } from "./shop-list.ts";
 
 test("normalize drops blank labels and trims", () => {
@@ -59,4 +61,45 @@ test("summary shows three then counts the rest", () => {
   assert.equal(shopListSummary(items), "a, b, c and 2 more");
   assert.equal(shopListSummary(items.slice(0, 2)), "a, b");
   assert.equal(shopListSummary([]), "");
+});
+
+test("qty of one is omitted on the wire", () => {
+  assert.deepEqual(normalizeShopList([{ label: "Milk", qty: 1 }]), [
+    { label: "Milk" },
+  ]);
+});
+
+test("qty above one is kept and clamped", () => {
+  assert.deepEqual(normalizeShopList([{ label: "Milk", qty: 2 }]), [
+    { label: "Milk", qty: 2 },
+  ]);
+  const [item] = normalizeShopList([{ label: "Milk", qty: 99 }]);
+  assert.equal(item!.qty, SHOP_QTY_MAX);
+});
+
+test("a missing qty still parses; zero does not", () => {
+  assert.equal(shopListSchema.safeParse([{ label: "Milk" }]).success, true);
+  assert.equal(
+    shopListSchema.safeParse([{ label: "Milk", qty: 2 }]).success,
+    true,
+  );
+  assert.equal(
+    shopListSchema.safeParse([{ label: "Milk", qty: 0 }]).success,
+    false,
+  );
+});
+
+test("summary prefixes qty when it is more than one", () => {
+  assert.equal(
+    shopListSummary([{ label: "Milk", qty: 2 }, { label: "Bananas" }]),
+    "2× Milk, Bananas",
+  );
+});
+
+test("unit count sums qty and treats a missing qty as one", () => {
+  assert.equal(
+    shopListUnitCount([{ label: "Milk", qty: 2 }, { label: "Bananas" }]),
+    3,
+  );
+  assert.equal(shopListUnitCount([{ label: "Milk" }]), 1);
 });

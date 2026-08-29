@@ -2,6 +2,7 @@
 
 import {
   Car01Icon,
+  Home01Icon,
   Package01Icon,
   ShoppingBag01Icon,
 } from "@hugeicons/core-free-icons";
@@ -23,6 +24,7 @@ const SECTION: Record<SearchIntent, { title: string; icon: ReactNode }> = {
     title: "Get from a store",
     icon: <Icon icon={ShoppingBag01Icon} size={18} />,
   },
+  help: { title: "Help at home", icon: <Icon icon={Home01Icon} size={18} /> },
 };
 
 export function limeCabNormalizeQuery(query: string): string {

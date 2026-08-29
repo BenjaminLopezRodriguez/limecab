@@ -22,8 +22,10 @@ import { cn } from "@/lib/utils";
  *
  * Mobile: a drag-to-resize bottom drawer that is *chrome*, not a dialog.
  * `modal={false}` keeps the canvas behind it interactive and
- * `disablePointerDismissal` keeps it from ever closing; the state machine
- * decides what it shows, not a swipe.
+ * `disablePointerDismissal` keeps a tap on the canvas from closing it.
+ * Snap points resize it. A consumer that passes `onDismiss` adds a 0 snap:
+ * dragging all the way down leaves the task — Home for a draft, the live
+ * pill for a running service. Without `onDismiss`, swipe never closes it.
  *
  * Desktop: a floating card inside `AdaptiveSurface.Panel`, over the canvas.
  *
@@ -57,6 +59,7 @@ const SNAP_FOR: Record<SheetPresentation, number> = {
   overlay: OVERLAY,
 };
 
+const DISMISS = 0;
 const SNAP_POINTS = [PEEK, SHEET, EXPANDED];
 const LISTED_SNAP_POINTS = [PEEK, SHEET, EXPANDED, OVERLAY];
 const OVERLAY_POINTS = [OVERLAY];
@@ -111,6 +114,7 @@ export function ServiceSheet({
   presentation = "sheet",
   overlaySnap = false,
   onSnapChange,
+  onDismiss,
 }: {
   children: ReactNode;
   className?: string;
@@ -125,6 +129,11 @@ export function ServiceSheet({
   overlaySnap?: boolean;
   /** Fired when the mobile drawer snaps to a new rung. */
   onSnapChange?: (snap: number) => void;
+  /**
+   * Dragging past peek (snap 0) or otherwise closing the drawer. Omit it
+   * and the sheet cannot close — driver idle peeks, pin confirms.
+   */
+  onDismiss?: () => void;
 }) {
   const isMobile = useServiceAppMobile();
   const surface = useOptionalAdaptiveSurface();
@@ -151,6 +160,16 @@ export function ServiceSheet({
    * fraction is exact, and needs no geometry from the translating popup.
    */
   const fraction = typeof snap === "number" ? snap : rung;
+  const points = overlaySnap
+    ? LISTED_SNAP_POINTS
+    : presentation === "overlay"
+      ? OVERLAY_POINTS
+      : SNAP_POINTS;
+  // Peek is already a thin strip — a 0 snap would make a short flick leave
+  // the task. Dismiss lives on sheet/expanded/overlay, where "all the way
+  // down" is a real gesture.
+  const snapPoints =
+    onDismiss && presentation !== "peek" ? [DISMISS, ...points] : points;
 
   const body = (
     <div
@@ -195,22 +214,22 @@ export function ServiceSheet({
   return (
     <Drawer
       open={sheetOpen}
-      onOpenChange={keepOpen}
+      onOpenChange={(open) => {
+        if (!open) onDismiss?.();
+      }}
       modal={false}
       disablePointerDismissal
       showSwipeHandle
       swipeDirection="down"
-      snapPoints={
-        overlaySnap
-          ? LISTED_SNAP_POINTS
-          : presentation === "overlay"
-            ? OVERLAY_POINTS
-            : SNAP_POINTS
-      }
+      snapPoints={snapPoints}
       snapPoint={snap}
       onSnapPointChange={(value) => {
         setSnap(value);
         const next = typeof value === "number" ? value : rung;
+        if (onDismiss && next === DISMISS) {
+          onDismiss();
+          return;
+        }
         onSnapChange?.(next);
       }}
     >
@@ -225,14 +244,13 @@ export function ServiceSheet({
         )}
       >
         <DrawerTitle className="sr-only">{label}</DrawerTitle>
-        <DrawerDescription className="sr-only">{description}</DrawerDescription>
+        <DrawerDescription className="sr-only">
+          {onDismiss
+            ? "Drag to resize. Drag all the way down to leave."
+            : description}
+        </DrawerDescription>
         {body}
       </DrawerContent>
     </Drawer>
   );
-}
-
-/** The sheet is chrome, not a dialog — it cannot be dismissed by gesture. */
-function keepOpen(open: boolean) {
-  void open;
 }

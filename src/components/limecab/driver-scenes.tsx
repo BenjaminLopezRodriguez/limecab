@@ -33,6 +33,8 @@ import {
 import {
   parseShopList,
   shopItemCountLabel,
+  shopItemLine,
+  shopListUnitCount,
 } from "@/lib/limecab/shop-list";
 import { daypart } from "@/lib/limecab/daypart";
 import {
@@ -750,7 +752,7 @@ export function DriverOfferScene({
         <>
           <p className="mt-2 text-[17px] font-medium tracking-tight tabular-nums">
             {shopItems.length > 0
-              ? `Shop · ${shopItemCountLabel(shopItems.length)}`
+              ? `Shop · ${shopItemCountLabel(shopListUnitCount(shopItems))}`
               : productLabel(trip.productId)}{" "}
             · {trip.distanceMiles.toFixed(1)} mi · {trip.tripMinutes} min
           </p>
@@ -957,13 +959,13 @@ export function DriverJobScene({
       {shop ? (
         <div className="bg-muted/60 mt-3 rounded-2xl px-4 py-3">
           <p className="text-muted-foreground text-xs font-semibold tracking-[0.14em] uppercase">
-            Shopping list · {shopItemCountLabel(shopItems.length)}
+            Shopping list · {shopItemCountLabel(shopListUnitCount(shopItems))}
           </p>
           <ul className="mt-2 flex flex-col gap-2">
             {shopItems.map((item, index) => (
               <li key={index}>
                 <p className="text-[17px] leading-snug font-medium tracking-tight">
-                  {item.label}
+                  {shopItemLine(item)}
                 </p>
                 {item.note ? (
                   <p className="text-muted-foreground text-[15px] leading-snug">
@@ -986,7 +988,7 @@ export function DriverJobScene({
           </p>
           <p className="text-muted-foreground text-[15px] tabular-nums">
             {shop
-              ? shopItemCountLabel(shopItems.length)
+              ? shopItemCountLabel(shopListUnitCount(shopItems))
               : trip.packageCount === 1
                 ? "1 package"
                 : `${trip.packageCount} packages`}

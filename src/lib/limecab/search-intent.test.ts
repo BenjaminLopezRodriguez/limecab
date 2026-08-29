@@ -35,3 +35,15 @@ test("empty and short queries still classify as ride", () => {
   assert.deepEqual(classifySearchQuery("").intents, ["ride"]);
   assert.deepEqual(classifySearchQuery("ab").intents, ["ride"]);
 });
+
+test("help alone is a visit, not a destination", () => {
+  const classified = classifySearchQuery("help");
+  assert.deepEqual(classified.intents, ["help"]);
+  assert.equal(classified.placeQuery, "");
+  assert.equal(classified.ambiguous, false);
+});
+
+test("help at home is a visit and help me get to LAX stays a ride", () => {
+  assert.ok(classifySearchQuery("help at home").intents.includes("help"));
+  assert.deepEqual(classifySearchQuery("help me get to LAX").intents, ["ride"]);
+});

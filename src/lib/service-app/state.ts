@@ -193,6 +193,10 @@ export function backServiceAppState(
       return ctx.selectAfterConfigure ? "configure" : "home";
     case "configure":
       if (ctx.selectAfterConfigure) return "home";
+      // Options-then-place: the list is the current question. The shop is a
+      // summary on that list ("At X · change"), so Back leaves rather than
+      // looping through the shop search and back onto the list.
+      if (ctx.locationAfterConfigure) return "home";
       return ctx.needsServiceSelect === false
         ? "location_search"
         : "service_select";

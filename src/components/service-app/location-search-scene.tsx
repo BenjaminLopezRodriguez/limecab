@@ -48,6 +48,7 @@ export function LocationSearchScene({
   placeholder = "Search an address…",
   framed = true,
   route,
+  value = "",
   onSelect,
   onDismiss,
   onChooseOnMap,
@@ -55,10 +56,12 @@ export function LocationSearchScene({
   onError,
   trailing,
   banner,
+  lead,
   footer,
   normalizeQuery,
   renderResults,
   rowAction,
+  inputAriaLabel,
 }: {
   open: boolean;
   adapter: GeocodeAdapter;
@@ -79,13 +82,17 @@ export function LocationSearchScene({
    */
   route?: {
     origin: string;
+    originLabel?: string;
     destination: string;
+    destinationLabel?: string;
     stops?: string[];
     active: SearchField;
     onSwitch: (field: SearchField) => void;
     onAddStop?: () => void;
     onRemoveStop?: (index: number) => void;
   };
+  /** Prefill when this is a single free-standing search (no `route`). */
+  value?: string;
   onSelect: (result: Location) => void;
   onDismiss: () => void;
   /** Opens the map so the user can drop a pin instead of typing. */
@@ -99,12 +106,15 @@ export function LocationSearchScene({
   trailing?: ReactNode;
   /** Listening or fallback copy above the field. Parent stays this scene. */
   banner?: ReactNode;
+  /** Extra rows directly under the field, before pin and places. */
+  lead?: ReactNode;
   /** Extra rows under the search body (Anywhere, a filter). */
   footer?: ReactNode;
   normalizeQuery?: (query: string) => string;
   renderResults?: ComponentProps<typeof LocationSearch>["renderResults"];
   /** Trailing control on a suggestion row, e.g. filing the address. */
   rowAction?: ComponentProps<typeof LocationSearch>["rowAction"];
+  inputAriaLabel?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [locating, setLocating] = useState(false);
@@ -112,7 +122,11 @@ export function LocationSearchScene({
   const stops = route?.stops ?? [];
   const rows = route
     ? [
-        { id: "origin" as const, label: "Pickup", value: route.origin },
+        {
+          id: "origin" as const,
+          label: route.originLabel ?? "Pickup",
+          value: route.origin,
+        },
         ...stops.map((value, index) => ({
           id: `stop:${index}` as const,
           label: `Stop ${index + 1}`,
@@ -120,7 +134,7 @@ export function LocationSearchScene({
         })),
         {
           id: "destination" as const,
-          label: "Destination",
+          label: route.destinationLabel ?? "Destination",
           value: route.destination,
         },
       ]
@@ -186,15 +200,16 @@ export function LocationSearchScene({
             adapter={adapter}
             layout="scene"
             inputRef={inputRef}
-            value={activeRow?.value ?? ""}
+            value={activeRow?.value ?? value}
             onSelect={choose}
             normalizeQuery={normalizeQuery}
             renderResults={renderResults}
             rowAction={rowAction}
             autoFocus={!framed}
+            ariaLabel={inputAriaLabel}
             placeholder={
               route?.active === "origin"
-                ? "Pickup address…"
+                ? (route.originLabel ? `${route.originLabel}…` : "Pickup address…")
                 : activeStopIndex !== null
                   ? `Stop ${activeStopIndex + 1}…`
                   : placeholder
@@ -316,6 +331,8 @@ export function LocationSearchScene({
             </button>
           ) : null}
         </div>
+
+        {lead}
 
         {onChooseOnMap ? (
           <div className="-mx-2 mt-4">

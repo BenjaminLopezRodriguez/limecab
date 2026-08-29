@@ -143,21 +143,13 @@ export const COURIER_OPTIONS: ServiceOption[] = [
 /**
  * Lime Shop's options. Same courier rails minus the questions a list already
  * answers: there is no "already packed vs buy for me" to ask (the list *is*
- * buy-for-me), no one-line item field, and no package count — the list is the
- * count. Size still picks the `courier-*` product.
+ * buy-for-me), no one-line item field, no package count, and no size picker —
+ * quantity lives on each line. Size stays the courier default (`small`).
  */
 export const SHOP_OPTIONS: ServiceOption[] = COURIER_OPTIONS.filter((option) =>
-  ["size", "recipientName", "recipientPhone", "proof", "instructions"].includes(
+  ["recipientName", "recipientPhone", "proof", "instructions"].includes(
     option.id,
   ),
-).map((option) =>
-  option.id === "size"
-    ? {
-        ...option,
-        label: "How much is it?",
-        description: "A courier buys the list, then brings it to the drop-off.",
-      }
-    : option,
 );
 
 const SIZE_PRODUCT: Record<PackageSize, string> = {

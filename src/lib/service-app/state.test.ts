@@ -177,8 +177,10 @@ test("back out of that search revises the options even once the place is set", (
   );
 });
 
-test("back from configure revises the first place, back from quote the place", () => {
-  assert.equal(backServiceAppState("configure", optionsFirst()), "location_search");
+test("back from the options-first list leaves home; quote revises the place", () => {
+  // The shop itself is a summary on the list ("At X · change"), so Back
+  // must not loop through that search — that is how a rider gets stuck.
+  assert.equal(backServiceAppState("configure", optionsFirst()), "home");
   assert.equal(
     backServiceAppState("quote", optionsFirst({ hasLocation: true })),
     "location_search",

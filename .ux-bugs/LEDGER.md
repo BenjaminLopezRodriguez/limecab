@@ -272,4 +272,24 @@ Top categories: platform / forms.
 | M4 | ios-input-auto-zoom | input.tsx, location-search, raw textareas | Fields stay ≥16px on iOS (Safari zooms below that). No maximum-scale lock |
 
 ### Recurring patterns
-- `text-[15px]` / `md:text-sm` on an input is an iOS zoom. Keep `text-base` on fields.
+## 2026-08-29 — Fix Session (shop list dead-end)
+
+Ledger: 0 open from this session.
+Top categories: navigation.
+
+### Bugs found
+| ID | Slug | File | Severity | Status |
+|----|------|------|----------|--------|
+| N1 | missing-back-button | limecab-app.tsx MapRouteBar | P0 | fixed 2026-08-29 |
+| N2 | navigation-dead-end | state.ts configure/shop | P0 | fixed 2026-08-29 |
+
+### Bugs fixed
+| ID | Slug | File | Fix |
+|----|------|------|-----|
+| N1 | missing-back-button | limecab-app.tsx | Task screens always show MapRouteBar, even with no drop-off. The Traction Ave chip was occupying that slot with no tap target |
+| N2 | navigation-dead-end | state.ts, service-sheet.tsx | Shop list Back went to shop search, cancel returned to the list. Back now leaves home. Swipe past peek dismisses: draft → Home, live service → pill |
+
+### Recurring patterns
+- A destination-gated back control hides on every options-first flow. Gate on the task, not on the second address.
+- Back that revises into a scene whose cancel returns here is a loop, not an exit. Summaries revise; Back leaves.
+

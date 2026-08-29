@@ -35,6 +35,7 @@ export function LocationSearch({
   normalizeQuery,
   renderResults,
   rowAction,
+  ariaLabel = "Address",
 }: {
   adapter: GeocodeAdapter;
   value?: string;
@@ -77,6 +78,7 @@ export function LocationSearch({
     listId: string;
     setActive: (index: number) => void;
   }) => React.ReactNode | undefined;
+  ariaLabel?: string;
 }) {
   const listId = React.useId();
   const [text, setText] = React.useState(value);
@@ -183,7 +185,7 @@ export function LocationSearch({
             aria-expanded={listOpen}
             aria-controls={listId}
             aria-autocomplete="list"
-            aria-label="Address"
+            aria-label={ariaLabel}
             aria-activedescendant={
               listOpen && active >= 0 ? `${listId}-${active}` : undefined
             }

@@ -13,6 +13,7 @@ import {
   courierStartAllowed,
   findBookableProduct,
   isCourierProduct,
+  SHOP_OPTIONS,
 } from "./courier.ts";
 import { defaultOptionValues } from "../service-app/options.ts";
 import type { RideProduct } from "./domain.ts";
@@ -65,6 +66,17 @@ test("size option selects the matching courier product", () => {
   assert.equal(
     courierProductFromOptions({ ...values, size: "large" }).id,
     "courier-large",
+  );
+});
+
+test("Shop has no size or package counter — quantity lives on the list", () => {
+  assert.equal(
+    SHOP_OPTIONS.some((option) => option.id === "size"),
+    false,
+  );
+  assert.equal(
+    SHOP_OPTIONS.some((option) => option.id === "quantity"),
+    false,
   );
 });
 
