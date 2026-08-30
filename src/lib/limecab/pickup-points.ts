@@ -151,9 +151,9 @@ export function labelRoutablePoint(
     return "Curb";
   }
   if (key === "walking") return "Entrance";
-  if (key === "poi") return placeName?.trim() || "Pickup";
+  if (key === "poi") return placeName?.trim() ?? "Pickup";
   if (raw && raw.length <= 40) return raw;
-  return placeName?.trim() || "Pickup";
+  return placeName?.trim() ?? "Pickup";
 }
 
 export type SpotFace = "front" | "side" | "back";

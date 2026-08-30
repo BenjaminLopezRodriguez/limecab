@@ -51,5 +51,6 @@ export function chatMaySend(status: TripStatus): boolean {
 
 export function firstName(name: string | null | undefined): string | null {
   const first = name?.trim().split(/\s+/)[0];
-  return first || null;
+  if (!first) return null;
+  return first;
 }

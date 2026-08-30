@@ -137,9 +137,10 @@ function matchBrand(query: string): string | null {
 }
 
 function matchStreet(query: string): string | null {
-  const onStreet = query.match(
-    /\b(?:the one\s+)?on\s+([A-Za-z0-9][A-Za-z0-9 .'-]{1,40}?)(?:\s*,|\s+near\b|\s+nearby\b|\s+next\b|$)/i,
-  );
+  const onStreet =
+    /\b(?:the one\s+)?on\s+([A-Za-z0-9][A-Za-z0-9 .'-]{1,40}?)(?:\s*,|\s+near\b|\s+nearby\b|\s+next\b|$)/i.exec(
+      query,
+    );
   if (!onStreet?.[1]) return null;
   return tidyStreet(onStreet[1]);
 }
@@ -160,9 +161,10 @@ function tidyStreet(value: string): string {
 }
 
 function matchLandmark(query: string): string | null {
-  const relative = query.match(
-    /\b(?:next to|next|beside|across from|by that)\s+(?:that\s+)?(.+?)(?:\s+nearby|\s+near me)?$/i,
-  );
+  const relative =
+    /\b(?:next to|next|beside|across from|by that)\s+(?:that\s+)?(.+?)(?:\s+nearby|\s+near me)?$/i.exec(
+      query,
+    );
   const captured = relative?.[1]?.trim();
   if (!captured) return null;
   return captured.replace(/\s+/g, " ");

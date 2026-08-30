@@ -116,10 +116,11 @@ async function resolveIntent(
   const parsed = await parseWithDeepSeek(query, key);
   if (!parsed) return heuristic;
 
+  const poi = expandPoi(parsed.poi);
   return {
-    poi: expandPoi(parsed.poi) || heuristic.poi,
-    street: parsed.street?.trim() || heuristic.street,
-    area: parsed.area?.trim() || heuristic.area,
+    poi: poi.length > 0 ? poi : heuristic.poi,
+    street: parsed.street?.trim() ?? heuristic.street,
+    area: parsed.area?.trim() ?? heuristic.area,
     landmark: expandLandmark(parsed.landmark) ?? heuristic.landmark,
     closest: parsed.closest || heuristic.closest,
     nearby: parsed.nearby || heuristic.nearby,
@@ -165,9 +166,9 @@ async function parseWithDeepSeek(
     }
     return {
       poi: parsed.data.poi.trim(),
-      street: parsed.data.street?.trim() || null,
-      area: parsed.data.area?.trim() || null,
-      landmark: parsed.data.landmark?.trim() || null,
+      street: parsed.data.street?.trim() ?? null,
+      area: parsed.data.area?.trim() ?? null,
+      landmark: parsed.data.landmark?.trim() ?? null,
       closest: parsed.data.closest ?? false,
       nearby: parsed.data.nearby ?? false,
     };
@@ -235,8 +236,8 @@ async function mapboxGeocode(
   };
   return (body.features ?? []).flatMap((feature) => {
     const center = feature.center;
-    const name = feature.text?.trim() || feature.place_name?.trim();
-    const address = feature.place_name?.trim() || name;
+    const name = feature.text?.trim() ?? feature.place_name?.trim();
+    const address = feature.place_name?.trim() ?? name;
     if (!center || center.length < 2 || !name || !address) return [];
     const [lng, lat] = center;
     if (!Number.isFinite(lng) || !Number.isFinite(lat)) return [];
@@ -269,8 +270,8 @@ async function mapboxSearchBox(
       props?.coordinates?.latitude ?? feature.geometry?.coordinates?.[1];
     const name = props?.name?.trim();
     const address =
-      props?.full_address?.trim() ||
-      props?.place_formatted?.trim() ||
+      props?.full_address?.trim() ??
+      props?.place_formatted?.trim() ??
       name;
     if (
       typeof lng !== "number" ||
@@ -333,7 +334,7 @@ async function googleTextSearch(
     };
     return (body.places ?? []).flatMap((place) => {
       const name = place.displayName?.text?.trim();
-      const address = place.formattedAddress?.trim() || name;
+      const address = place.formattedAddress?.trim() ?? name;
       const lat = place.location?.latitude;
       const lng = place.location?.longitude;
       if (
