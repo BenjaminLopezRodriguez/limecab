@@ -250,8 +250,8 @@ export function shopItemsFromQuery(text: string): ShopItem[] {
     )
     .filter((label) => label.length > 1 && SHOP_ITEM.test(label));
   if (parts.length > 0) return parts.map((label) => ({ label }));
-  const match = raw.match(SHOP_ITEM);
-  return match ? [{ label: match[0]!.toLowerCase() }] : [];
+  const match = SHOP_ITEM.exec(raw);
+  return match ? [{ label: match[0].toLowerCase() }] : [];
 }
 
 export function placeFromFixtures(query: string): AssistPlace | null {
@@ -540,8 +540,7 @@ export function assistResponseFromPlans(
   const [only] = plans;
   const land =
     plans.length === 1 &&
-    only !== undefined &&
-    only.confidence === "high" &&
+    only?.confidence === "high" &&
     (only.kind === "help" ||
       Boolean(only.destination) ||
       Boolean(only.store) ||

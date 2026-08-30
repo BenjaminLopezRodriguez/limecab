@@ -20,15 +20,15 @@ test("parseAssistTiming distinguishes now vs scheduled shop", () => {
 test("scheduledTimeFromQuery picks an evening slot for tonight", () => {
   const from = new Date("2026-08-30T14:00:00");
   const when = scheduledTimeFromQuery("order flowers for tonight", from);
-  assert.ok(when);
-  assert.ok(when!.getHours() >= 18);
+  if (!when) assert.fail("expected scheduled time");
+  assert.ok(when.getHours() >= 18);
 });
 
 test("scheduledTimeFromQuery picks an evening slot for tonight even in the morning", () => {
   const from = new Date("2026-08-30T02:00:00");
   const when = scheduledTimeFromQuery("order flowers for tonight", from);
-  assert.ok(when);
-  assert.ok(when!.getHours() >= 18);
+  if (!when) assert.fail("expected scheduled time");
+  assert.ok(when.getHours() >= 18);
 });
 
 test("shouldResetAssistDraft on Assist home only", () => {

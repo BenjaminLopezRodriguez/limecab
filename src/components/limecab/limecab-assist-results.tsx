@@ -67,7 +67,7 @@ export function renderAssistSearchResults({
           className="grid grid-cols-2 gap-2 px-2"
         >
           {options.map((option, index) => (
-            <li key={option.id} id={`${listId}-${index}`} role="option">
+            <li key={option.id} id={`${listId}-${index}`} role="option" aria-selected={index === active}>
               <SuggestionTile
                 option={option}
                 active={index === active}
@@ -85,7 +85,7 @@ export function renderAssistSearchResults({
           className="flex flex-wrap gap-2 px-2"
         >
           {options.map((option, index) => (
-            <li key={option.id} id={`${listId}-${index}`} role="option">
+            <li key={option.id} id={`${listId}-${index}`} role="option" aria-selected={index === active}>
               <SuggestionChip
                 option={option}
                 active={index === active}

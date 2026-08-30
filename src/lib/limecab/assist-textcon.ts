@@ -49,7 +49,7 @@ export function resolveAssistTextcon(id: string): AssistTextconDef | undefined {
 }
 
 export function textconIdForPlan(plan: {
-  kind: AssistServiceId | string;
+  kind: string;
   items?: { label: string }[];
   store?: { label?: string };
   destination?: unknown;
