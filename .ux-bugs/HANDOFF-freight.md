@@ -294,3 +294,89 @@ open *Ontario → Phoenix* → Book → assign it to yourself → `/driver`.
   **reset to `AVAILABLE`** both times, so it is ready to run again.
   `pnpm db:seed:freight` also resets it.
 - One published shipment, "California → Arizona 85004", `AVAILABLE`.
+
+---
+
+## Session 2026-08-30 (b) — operational truth pass, SHIPPED TO PRODUCTION
+
+Deployed to `lime.cab` from `main` @ `bc97c85`. Three commits:
+`e8e051a` freight + authz · `9d65367` pre-existing vehicle/partner WIP ·
+`bc97c85` production build fix.
+
+### ⚠️ Do this first: migration 0014 is NOT applied to production
+
+`drizzle/0014_freight_fleet_invites.sql` was applied to the **dev** Neon
+branch only. Vercel marks the production `DATABASE_URL` sensitive, so it
+could not be read or migrated from here.
+
+Until it is applied, `/partner/fleets/invite` and `/partner/fleets/join`
+will fail in production when a code is minted or looked up. Blast radius is
+those two flows only — the road app, carrier desk, shipper desk and the
+authorization changes need no schema change and are live and working.
+
+### What shipped
+
+Answering the review: POD capture (native `<input capture>` → private
+Vercel Blob → `POD` document; verified end to end with a real upload),
+contextual exception reporting that modifies the job rather than ejecting
+the driver, three freight map framings with the corridor pull-out at
+`Depart pickup`, fleet invite/accept closing the SQL-only hole, appointment
++ ETA standing, minimize/restore for a 12-hour linehaul, a delivered
+acknowledgement, and the `Head to pickup?` copy fix.
+
+Deliberately **not** done, per the review: no `FreightDriverApp`, and no
+`ActiveDutyJob` abstraction — freight stays alongside ride until ride,
+freight and courier show the same seams.
+
+### Two authorization holes, found by testing as a driver
+
+Every prior walkthrough used OWNER, which passes every check, so no check
+had ever been proven to reject anyone.
+
+1. `capabilitiesForRole` gave `canBook` to DRIVER. Any driver-role member
+   could bind the carrier to a lane. Now `canBook: dispatch`.
+2. `carrierRateMinor` **and** `shipperPriceMinor` (the broker margin)
+   reached anyone who could read a load. Added `canSeeRate` and one
+   `redactLoadForRole` at seventeen sites — including `advance` and
+   `submitPod`, which returned the whole row to the assigned driver.
+
+Both verified against the live API with a real DRIVER-role session: fields
+absent (not zeroed), `bookLoad` → `FORBIDDEN`. Consequence: an employee
+driver's sheet now reads `FREIGHT · SIMULATED` with no money. Owner-
+operators still see the rate.
+
+### One bug the browser caught that no test would have
+
+The corridor pull-out silently did not work. `perform("freightLinehaul")`
+fired, but the camera stayed street-level. A two-commit race: the freight
+camera applies its recipe, then the *next* commit's scene reconcile
+re-applies the duty recipe over it, and the freight effect never re-runs
+because none of its deps changed. Invisible at every other stage, because
+`to_pickup` and `near_delivery` happen to match the duty framing — only the
+corridor differs. Fixed by adding `scene` to the effect's deps; the comment
+there explains why it depends on something it never reads.
+
+**Lesson for the next session: walk it. `tsc`, 378 tests and a clean lint
+all passed with the headline P0 feature dead on screen.**
+
+### Production build was broken the whole time
+
+`next build` runs lint, and 20 pre-existing lint errors failed every
+production deploy — this is what the surfaces handoff meant by "build
+fails". Local builds passed only because they used
+`--experimental-build-mode compile`, which skips lint. Now at **zero** lint
+errors, down from a 26-error baseline.
+
+### Still open
+
+- Apply 0014 to production (above).
+- Sheet legibility: with ETA + distance + facility notes, content runs
+  under the sticky action band at rest. Scrollable, not broken, but this is
+  a glanceable dash surface — it wants a taller rest rung for freight or
+  fewer lines above the fold.
+- Bootstrapping the *first* OWNER of a *new* carrier still needs SQL;
+  creating a carrier is org settings, out of scope.
+- No invite revoke UI (`revokedAt` exists and both guards honour it).
+- Remaining-miles on the minimized affordance is great-circle, not route.
+- Accessorials, document AI, ELD: untouched, and should stay that way
+  until exceptions and dwell have lived a while.
