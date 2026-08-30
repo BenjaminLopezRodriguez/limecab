@@ -645,6 +645,40 @@ write needs it. S3 (email uniqueness + `allowDangerousEmailAccountLinking`)
 remains scheduled before phase 6, and S4/S5 (coordinate trust, completion
 evidence) before payouts.
 
+## Phase 2 — implemented
+
+| Change | Files |
+|---|---|
+| `Money` — minor units, integer-only, currencies never mix, `allocate` loses no cents | `lib/limecab/money.ts` (+7 tests) |
+| `ledger_account` / `ledger_transaction` / `ledger_entry` | `server/db/schema.ts`, `drizzle/0011_slimy_jack_power.sql` |
+| Balance rule as a DEFERRABLE constraint trigger, per currency, ≥2 entries | migration |
+| Append-only triggers rejecting UPDATE and DELETE on both ledger tables | migration |
+| Entry currency must match its account's currency | migration |
+| CHECKs: amounts positive, direction and account type from fixed sets | migration |
+| `postTransaction` — the only way in, idempotent by DB unique, uses `db.transaction` | `server/limecab/ledger.ts` |
+| `balanceFor` — derived from entries, signed by the account's natural side | `server/limecab/ledger.ts` |
+| 10 system accounts seeded; owner-scoped payables minted on first use | migration, `ledger.ts` |
+
+Verified against a throwaway Postgres: 10 tests, including two that bypass the
+application balance check to prove the *database* rejects an unbalanced and a
+single-sided transaction, plus immutability, currency mismatch, replay, and
+concurrent posting of one key. Applied to the shared Neon database; triggers,
+checks and the 10 accounts confirmed present.
+
+Two decisions worth recording:
+
+- **`db.transaction` arrives here, with a consumer**, as planned in phase 0.
+  `postTransaction` accepts either a database or an open transaction, so a
+  caller mid-transaction posts within theirs — a trip completing and the
+  earning it creates must not be able to land separately.
+- **`ledger.ts` imports `db` as a type only.** A value import would open a
+  connection to whatever `DATABASE_URL` names at import time, which for a test
+  run is production (S7). The handle comes from the caller instead.
+- **The ledger suite refuses to run against `DATABASE_URL`.** It requires
+  `LEDGER_TEST_DATABASE_URL` and throws rather than skips if the two match.
+  Given S7, a suite that inserts and drops financial tables must not be
+  pointable at the app database by accident.
+
 ## Open questions for review
 
 1. **Connect topology** — do you accept separate charges and transfers, given it

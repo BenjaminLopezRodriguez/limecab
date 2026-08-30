@@ -430,6 +430,134 @@ export const supportTickets = createTable(
   ],
 );
 
+/**
+ * The ledger. Append-only, double-entry, and the only place that says why a
+ * cent exists.
+ *
+ * Stripe processes money and is asked what it did; this records what Lime
+ * believes happened, and the two are reconciled rather than conflated. A
+ * balance is never a column somebody increments -- it is SUM over entries, so
+ * there is no value that can drift away from its own history.
+ *
+ * Immutability and the balance rule are enforced by database triggers in
+ * `drizzle/0011_ledger.sql`, not by TypeScript. Financial invariants that live
+ * only in the application are invariants until the first script runs.
+ */
+export const ledgerAccounts = createTable(
+  "ledger_account",
+  (d) => ({
+    id: d
+      .varchar({ length: 255 })
+      .notNull()
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    /**
+     * `liability:provider_payable:<driverId>` and friends. Per-beneficiary
+     * accounts are rows keyed by owner, never columns on `drivers` -- which is
+     * what keeps "what is owed" derived rather than stored.
+     */
+    key: d.varchar({ length: 255 }).notNull(),
+    type: d
+      .varchar({ length: 16 })
+      .$type<"asset" | "liability" | "revenue" | "expense">()
+      .notNull(),
+    ownerType: d
+      .varchar({ length: 16 })
+      .$type<"provider" | "carrier" | "merchant" | "platform">(),
+    ownerId: d.varchar({ length: 255 }),
+    currency: d.char({ length: 3 }).notNull(),
+    createdAt: d
+      .timestamp({ withTimezone: true })
+      .$defaultFn(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  }),
+  (t) => [
+    unique("limecab_ledger_account_key_unique").on(t.key),
+    index("limecab_ledger_account_owner_idx").on(t.ownerType, t.ownerId),
+  ],
+);
+
+export const ledgerTransactions = createTable(
+  "ledger_transaction",
+  (d) => ({
+    id: d
+      .varchar({ length: 255 })
+      .notNull()
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    kind: d.varchar({ length: 32 }).notNull(),
+    /** The economic event. Nullable: a payout settles many services at once. */
+    serviceId: d.varchar({ length: 255 }).references(() => trips.id),
+    currency: d.char({ length: 3 }).notNull(),
+    /**
+     * The real guard against double-posting. Stripe prunes its own idempotency
+     * keys after 24 hours, so a retry a day later is a fresh request there --
+     * this constraint is what still holds.
+     */
+    idempotencyKey: d.varchar({ length: 255 }).notNull(),
+    memo: d.varchar({ length: 512 }),
+    createdAt: d
+      .timestamp({ withTimezone: true })
+      .$defaultFn(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  }),
+  (t) => [
+    unique("limecab_ledger_transaction_idem_unique").on(t.idempotencyKey),
+    index("limecab_ledger_transaction_service_idx").on(t.serviceId),
+    index("limecab_ledger_transaction_kind_idx").on(t.kind),
+  ],
+);
+
+export const ledgerEntries = createTable(
+  "ledger_entry",
+  (d) => ({
+    id: d
+      .varchar({ length: 255 })
+      .notNull()
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    transactionId: d
+      .varchar({ length: 255 })
+      .notNull()
+      .references(() => ledgerTransactions.id),
+    accountId: d
+      .varchar({ length: 255 })
+      .notNull()
+      .references(() => ledgerAccounts.id),
+    direction: d.varchar({ length: 6 }).$type<"debit" | "credit">().notNull(),
+    /**
+     * Always positive; `direction` carries the sign. Storing signed amounts
+     * would make "credit minus 500" and "debit 500" two spellings of one fact.
+     */
+    amountMinor: d.bigint({ mode: "number" }).notNull(),
+    currency: d.char({ length: 3 }).notNull(),
+    createdAt: d
+      .timestamp({ withTimezone: true })
+      .$defaultFn(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  }),
+  (t) => [
+    index("limecab_ledger_entry_transaction_idx").on(t.transactionId),
+    index("limecab_ledger_entry_account_idx").on(t.accountId),
+  ],
+);
+
+export const ledgerEntriesRelations = relations(ledgerEntries, ({ one }) => ({
+  transaction: one(ledgerTransactions, {
+    fields: [ledgerEntries.transactionId],
+    references: [ledgerTransactions.id],
+  }),
+  account: one(ledgerAccounts, {
+    fields: [ledgerEntries.accountId],
+    references: [ledgerAccounts.id],
+  }),
+}));
+
+export const ledgerTransactionsRelations = relations(
+  ledgerTransactions,
+  ({ many }) => ({ entries: many(ledgerEntries) }),
+);
+
 export const supportTicketsRelations = relations(supportTickets, ({ one }) => ({
   user: one(users, {
     fields: [supportTickets.userId],

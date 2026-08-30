@@ -78,6 +78,13 @@
       "when": 1788092212590,
       "tag": "0010_harsh_dexter_bennett",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788092435151,
+      "tag": "0011_slimy_jack_power",
+      "breakpoints": true
     }
   ]
 }
