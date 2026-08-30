@@ -246,8 +246,8 @@ export function shouldRefreshAssistQueryForPhoto(
   prev: AssistComposeDraft,
   next: AssistComposeDraft,
 ): boolean {
-  const photoNow = Boolean(next.photoName || next.photoUrl);
-  const photoWas = Boolean(prev.photoName || prev.photoUrl);
+  const photoNow = Boolean(next.photoName) || Boolean(next.photoUrl);
+  const photoWas = Boolean(prev.photoName) || Boolean(prev.photoUrl);
   if (photoNow && !photoWas) return true;
   if (next.photoClassification && next.photoClassification !== prev.photoClassification) {
     return true;

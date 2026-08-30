@@ -1692,7 +1692,7 @@ function LimeCabSurfaces({
       photoContext: () => {
         const draft = assistComposeRef.current;
         const classified = draft.photoClassification;
-        const hasPhoto = Boolean(draft.photoName || draft.photoUrl);
+        const hasPhoto = Boolean(draft.photoName) || Boolean(draft.photoUrl);
         if (!classified && !hasPhoto) return {};
         return {
           items: classified?.items,

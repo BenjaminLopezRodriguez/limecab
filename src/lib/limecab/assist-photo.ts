@@ -385,7 +385,7 @@ export function scoreStoreForPhoto(
   const placeCat = (store.category ?? "").toLowerCase();
   if (
     classification.category === "hardware" &&
-    /hardware/.test(placeCat)
+    placeCat.includes("hardware")
   ) {
     score += 10;
   }
