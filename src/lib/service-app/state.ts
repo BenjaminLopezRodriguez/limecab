@@ -142,7 +142,15 @@ export function reduceServiceAppState(
         : state;
 
     case "select_location":
-      return ctx.hasService ? afterIntent(ctx) : "service_select";
+      if (ctx.hasService) return afterIntent(ctx);
+      // Configure-before-select: the options are what price the comparison,
+      // so landing a place opens them rather than a list with nothing to
+      // price against. `selectAfterConfigure` already claims this ordering;
+      // it was only ever read on the far side of `configure`, which made a
+      // place-first flow jump the option question.
+      return ctx.selectAfterConfigure && ctx.needsConfigure
+        ? "configure"
+        : "service_select";
 
     case "cancel_search":
       // Leaving a search lands where backing out of it lands: the scene that
@@ -208,7 +216,13 @@ export function backServiceAppState(
     case "service_select":
       return ctx.selectAfterConfigure ? "configure" : "home";
     case "configure":
-      if (ctx.selectAfterConfigure) return "home";
+      // Back revises the last answer. For a place-first flow that is the
+      // place; for an options-first flow there is nothing behind it but home.
+      if (ctx.selectAfterConfigure) {
+        return ctx.hasLocation && !ctx.locationAfterConfigure
+          ? "location_search"
+          : "home";
+      }
       // Options-then-place: the list is the current question. The shop is a
       // summary on that list ("At X · change"), so Back leaves rather than
       // looping through the shop search and back onto the list.

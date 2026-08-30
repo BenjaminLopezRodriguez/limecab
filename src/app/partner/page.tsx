@@ -1,13 +1,13 @@
 import Link from "next/link";
 import {
   Airplane01Icon,
+  Car01Icon,
+  ContainerTruckIcon,
   DeliveryTruck01Icon,
-  Hotel01Icon,
+  MeetingRoomIcon,
   MenuRestaurantIcon,
   Store01Icon,
-  ContainerTruckIcon,
   UserGroupIcon,
-  Car01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 
@@ -75,12 +75,12 @@ const DESTINATIONS: PartnerDest[] = [
     badge: "Interest",
   },
   {
-    id: "stay",
-    title: "Stay",
-    description: "List hotels and stays for Lime Stay. Interest form to start.",
-    href: "/partner/stay",
-    icon: Hotel01Icon,
-    badge: "Interest",
+    id: "places",
+    title: "Places",
+    description:
+      "List meeting rooms, venues, and parking for Lime Spaces & Station.",
+    href: "/partner/places/app",
+    icon: MeetingRoomIcon,
   },
   {
     id: "travel",
@@ -140,7 +140,7 @@ export default function PartnerPage() {
               Choose how you work with Lime
             </h1>
             <p className="text-muted-foreground mt-3 max-w-sm text-[16px] leading-relaxed">
-              Separate products for drivers, fleets, freight, shops, stays,
+              Separate products for drivers, fleets, freight, shops, places,
               travel, and restaurants — pick your entry point.
             </p>
             <p className="text-muted-foreground mt-8 hidden text-[13px] leading-relaxed md:block">

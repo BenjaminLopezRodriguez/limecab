@@ -16,7 +16,9 @@ export type BookingMode =
   | "reserve"
   | "shop"
   | "help"
-  | "assist";
+  | "assist"
+  | "spaces"
+  | "station";
 
 export type SearchTarget = "pickup" | "destination" | `stop:${number}`;
 
@@ -104,6 +106,46 @@ export function searchInputContract({
       destinationLabel: "House",
       shortcuts: other ? ["use_here"] : ["use_here", "send_to"],
       destinationRequired: false,
+      hereCompletes: true,
+    };
+  }
+
+  /**
+   * Spaces and Station both ask for one place and then compare what is near
+   * it. Neither has a pickup, a route, or a stop — the rider is not being
+   * carried anywhere, so the connected origin/destination stack would be
+   * asking a question the flow does not have.
+   */
+  if (mode === "spaces") {
+    return {
+      role: "destination",
+      commit: "place",
+      title: "Where do you need space?",
+      placeholder: "Neighbourhood or address…",
+      ariaLabel: "Where do you need space",
+      showRoute: false,
+      allowStops: false,
+      originLabel: "Near",
+      destinationLabel: "Near",
+      shortcuts: ["use_here"],
+      destinationRequired: true,
+      hereCompletes: true,
+    };
+  }
+
+  if (mode === "station") {
+    return {
+      role: "destination",
+      commit: "place",
+      title: "Where are you headed?",
+      placeholder: "Where are you parking near?…",
+      ariaLabel: "Where are you headed",
+      showRoute: false,
+      allowStops: false,
+      originLabel: "Near",
+      destinationLabel: "Near",
+      shortcuts: ["use_here"],
+      destinationRequired: true,
       hereCompletes: true,
     };
   }

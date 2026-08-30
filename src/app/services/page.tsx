@@ -1,8 +1,10 @@
 import {
   Calendar03Icon,
   Car01Icon,
+  CarParking01Icon,
   DeliveryTruck01Icon,
   Home01Icon,
+  MeetingRoomIcon,
   Package01Icon,
   ShoppingBasket01Icon,
   SparklesIcon,
@@ -23,40 +25,31 @@ const ICONS: Record<string, IconSvgElement> = {
   help: Home01Icon,
   assist: SparklesIcon,
   freight: DeliveryTruck01Icon,
+  spaces: MeetingRoomIcon,
+  station: CarParking01Icon,
 };
 
 export default function ServicesPage() {
-  const live = LIMECAB_SERVICES.filter(
-    (service) => service.status === "available",
-  );
-  const soon = LIMECAB_SERVICES.filter(
-    (service) => service.status !== "available",
-  );
-
   return (
     <TabPage title="Services">
-      <h2 className="text-[20px] font-semibold tracking-[-0.02em]">
-        Go anywhere
-      </h2>
-
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        {live.map((service) => (
-          <Tile key={service.id} service={service} className="h-[7rem]" />
+      <div className="grid grid-cols-2 gap-3">
+        {LIMECAB_SERVICES.map((service) => (
+          <Tile
+            key={service.id}
+            service={service}
+            className={
+              service.status === "available" ? "h-[7rem]" : "h-[5.5rem]"
+            }
+          />
         ))}
       </div>
 
-      {soon.length > 0 ? (
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          {soon.map((service) => (
-            <Tile key={service.id} service={service} className="h-[5.5rem]" />
-          ))}
-        </div>
-      ) : null}
-
       <p className="text-muted-foreground mt-5 text-sm leading-relaxed">
-        Rides, Courier, Reserve, Shop, Help, and Assist are live. Assist is
-        the launcher — say what you want, and LimeCab stages the ride, shop,
-        send, or help quote. You always confirm before anything is requested.{" "}
+        Rides, Courier, Reserve, Shop, Help, and Assist are live. Spaces and
+        Station are next — rooms, venues, and parking in the same flow as a
+        ride. Assist is the launcher — say what you want, and LimeCab stages
+        the ride, shop, send, or help quote. You always confirm before anything
+        is requested.{" "}
         <Link
           href="/partner"
           className="text-foreground font-medium underline-offset-2 hover:underline"
@@ -128,7 +121,11 @@ function Tile({
               ? "/?service=assist"
               : service.id === "freight"
                 ? "/freight"
-                : "/";
+                : service.id === "spaces"
+                  ? "/?service=spaces"
+                  : service.id === "station"
+                    ? "/?service=station"
+                    : "/";
 
   return (
     <Link

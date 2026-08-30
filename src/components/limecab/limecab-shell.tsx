@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, type ReactNode, Suspense } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode, Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
@@ -101,7 +101,7 @@ export function LimeCabShell({
               <SignInLink className="flex shrink-0 md:hidden" />
             )}
           </div>
-          <div className="col-span-2 row-start-2 min-w-0 md:col-span-1 md:col-start-2 md:row-start-1">
+          <div className="col-span-2 row-start-2 -mx-5 min-w-0 md:col-span-1 md:col-start-2 md:row-start-1 md:mx-0">
             <Suspense fallback={<ServiceRibbonList activeId={null} />}>
               <ServiceRibbon />
             </Suspense>
@@ -178,64 +178,108 @@ function ServiceRibbon() {
 }
 
 function ServiceRibbonList({ activeId }: { activeId: string | null }) {
-  return (
-    <nav aria-label="Services" className="min-w-0 flex-1 md:flex-none">
-      <ul className="flex w-full items-stretch gap-5 md:w-auto md:gap-6">
-        {LIMECAB_SERVICES.map((service) => {
-          const available = service.status === "available";
-          const active = available && service.id === activeId;
-          // An underline, not a filled pill: the ribbon sits on the same
-          // paper as the greeting, so the indicator has to mark the tab
-          // without drawing a second container around the row.
-          const className = cn(
-            "flex min-h-11 min-w-0 items-center whitespace-nowrap",
-            "text-[13px] tracking-tight md:text-[14px]",
-            "focus-visible:ring-ring rounded-sm focus-visible:ring-2 focus-visible:outline-none",
-            active
-              ? "text-foreground font-semibold"
-              : available
-                ? "text-muted-foreground hover:text-foreground font-medium"
-                : "text-muted-foreground/50 font-medium",
-          );
-          // The rule hugs the label, not the tap target: the row keeps its
-          // 44px touch height, and the indicator still reads as an underline
-          // rather than a line floating below the word.
-          const body = (
-            <span
-              className={cn(
-                "truncate border-b-2 pb-1",
-                active ? "border-foreground" : "border-transparent",
-              )}
-            >
-              {service.title}
-            </span>
-          );
+  const scrollRef = useRef<HTMLElement>(null);
+  const [fade, setFade] = useState({ left: false, right: false });
 
-          return (
-            <li key={service.id} className="min-w-0 md:flex-none">
-              {available ? (
-                <Link
-                  href={serviceHref(service.id)}
-                  aria-current={active ? "page" : undefined}
-                  className={className}
-                >
-                  {body}
-                </Link>
-              ) : (
-                <span
-                  className={className}
-                  aria-disabled="true"
-                  aria-label={`${service.title}. Not in your city yet`}
-                  title="Not in your city yet"
-                >
-                  {body}
-                </span>
-              )}
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+  const updateFade = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    const canScroll = scrollWidth > clientWidth + 1;
+    setFade({
+      left: canScroll && scrollLeft > 1,
+      right: canScroll && scrollLeft + clientWidth < scrollWidth - 1,
+    });
+  }, []);
+
+  useEffect(() => {
+    updateFade();
+    const el = scrollRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(updateFade);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [updateFade]);
+
+  return (
+    <div className="relative min-w-0 flex-1 md:flex-none">
+      <nav
+        ref={scrollRef}
+        aria-label="Services"
+        onScroll={updateFade}
+        className="overflow-x-auto px-5 [scrollbar-width:none] md:px-0 [&::-webkit-scrollbar]:hidden"
+      >
+        <ul className="flex w-max min-w-full items-stretch gap-5 md:gap-6">
+          {LIMECAB_SERVICES.map((service) => {
+            const available = service.status === "available";
+            const active = available && service.id === activeId;
+            // An underline, not a filled pill: the ribbon sits on the same
+            // paper as the greeting, so the indicator has to mark the tab
+            // without drawing a second container around the row.
+            const className = cn(
+              "flex min-h-11 items-center whitespace-nowrap",
+              "text-[13px] tracking-tight md:text-[14px]",
+              "focus-visible:ring-ring rounded-sm focus-visible:ring-2 focus-visible:outline-none",
+              active
+                ? "text-foreground font-semibold"
+                : available
+                  ? "text-muted-foreground hover:text-foreground font-medium"
+                  : "text-muted-foreground/50 font-medium",
+            );
+            // The rule hugs the label, not the tap target: the row keeps its
+            // 44px touch height, and the indicator still reads as an underline
+            // rather than a line floating below the word.
+            const body = (
+              <span
+                className={cn(
+                  "border-b-2 pb-1",
+                  active ? "border-foreground" : "border-transparent",
+                )}
+              >
+                {service.title}
+              </span>
+            );
+
+            return (
+              <li key={service.id} className="shrink-0">
+                {available ? (
+                  <Link
+                    href={serviceHref(service.id)}
+                    aria-current={active ? "page" : undefined}
+                    className={className}
+                  >
+                    {body}
+                  </Link>
+                ) : (
+                  <span
+                    className={className}
+                    aria-disabled="true"
+                    aria-label={`${service.title}. Not in your city yet`}
+                    title="Not in your city yet"
+                  >
+                    {body}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+      <div
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-gradient-to-r from-background to-transparent transition-opacity duration-150",
+          fade.left ? "opacity-100" : "opacity-0",
+        )}
+      />
+      <div
+        aria-hidden
+        className={cn(
+          "pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-gradient-to-l from-background to-transparent transition-opacity duration-150",
+          fade.right ? "opacity-100" : "opacity-0",
+        )}
+      />
+    </div>
   );
 }
 

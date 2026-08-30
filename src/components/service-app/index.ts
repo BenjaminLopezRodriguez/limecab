@@ -32,6 +32,8 @@ export { ServiceGrid } from "@/components/service-app/service-grid";
 export {
   ChoiceList,
   ChoiceRow,
+  ChoiceStaticRow,
+  ChoiceLinkRow,
   ChoiceGlyph,
   ChoiceCopy,
 } from "@/components/service-app/choice-list";

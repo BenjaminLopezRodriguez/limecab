@@ -7,9 +7,13 @@ import {
   ProfileSection,
   ProfileValueRow,
 } from "@/components/limecab/profile";
+import {
+  ChoiceLinkRow,
+  ChoiceList,
+} from "@/components/service-app/choice-list";
 import { formatTripWhen, productLabel } from "@/lib/limecab/format";
 import { DRIVER_PAYOUT } from "@/lib/limecab/mock";
-import { formatMoney } from "@/lib/service-app/services";
+import { formatMoney, obscureAddress } from "@/lib/service-app/services";
 import { auth } from "@/server/auth";
 import { api } from "@/trpc/server";
 
@@ -37,38 +41,44 @@ export default async function DriverEarningsPage() {
         <span className="text-muted-foreground font-normal">today</span>
       </p>
 
-      <ProfileSection tone="driver" title="Trips">
+      <section className="mt-8">
+        <h2 className="text-muted-foreground text-xs font-semibold tracking-[0.14em] uppercase">
+          Trips
+        </h2>
         {earnings.trips.length === 0 ? (
-          <p className="text-muted-foreground px-4 py-5 text-sm">
+          <p className="bg-secondary/60 text-muted-foreground mt-3 rounded-3xl px-4 py-5 text-sm leading-relaxed">
             Completed trips show up here with the fare you collected.
           </p>
         ) : (
-          earnings.trips.map((trip) => (
-            <div key={trip.id} className="flex min-h-16 items-start gap-3 px-4 py-3">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[15px] font-medium tracking-tight">
-                  {trip.destinationAddress}
-                </p>
-                <p className="text-muted-foreground text-sm">
-                  {productLabel(trip.productId)}
-                  {trip.completedAt
-                    ? ` · ${formatTripWhen(trip.completedAt)}`
-                    : null}
-                </p>
-                <p className="text-muted-foreground mt-0.5 text-xs tabular-nums">
-                  Fare {formatMoney(trip.baseCents)} · Distance{" "}
-                  {formatMoney(trip.distanceCents)} · Time{" "}
-                  {formatMoney(trip.timeCents)} · Booking{" "}
-                  {formatMoney(trip.bookingCents)}
-                </p>
-              </div>
-              <p className="shrink-0 text-[15px] font-semibold tabular-nums">
-                {formatMoney(trip.totalCents)}
-              </p>
-            </div>
-          ))
+          <ChoiceList className="mt-3">
+            {earnings.trips.map((trip) => {
+              const area = obscureAddress(trip.destinationAddress);
+              const when = trip.completedAt ?? trip.requestedAt;
+              return (
+                <ChoiceLinkRow
+                  key={trip.id}
+                  href={`/driver/profile/earnings/${trip.id}`}
+                  aria-label={`${area}. ${productLabel(trip.productId)}. ${formatTripWhen(when)}. ${formatMoney(trip.totalCents)}.`}
+                >
+                  <div className="flex min-w-0 flex-1 items-baseline justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-[17px] font-semibold tracking-tight">
+                        {area}
+                      </p>
+                      <p className="text-muted-foreground mt-0.5 truncate text-sm tabular-nums">
+                        {productLabel(trip.productId)} · {formatTripWhen(when)}
+                      </p>
+                    </div>
+                    <p className="shrink-0 text-[17px] font-semibold tabular-nums">
+                      {formatMoney(trip.totalCents)}
+                    </p>
+                  </div>
+                </ChoiceLinkRow>
+              );
+            })}
+          </ChoiceList>
         )}
-      </ProfileSection>
+      </section>
 
       <ProfileSection tone="driver" title="Payout">
         <ProfileValueRow label="Schedule" value={DRIVER_PAYOUT.schedule} />

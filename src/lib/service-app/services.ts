@@ -91,6 +91,13 @@ export function splitAddress(address: string): {
   return { line: line ?? address, locality: rest.join(", ") };
 }
 
+/** Post-trip privacy — neighbourhood only, never the door number. */
+export function obscureAddress(address: string): string {
+  const { locality } = splitAddress(address);
+  const city = locality.split(",")[0]?.trim();
+  return city ? `${city} area` : "Nearby area";
+}
+
 /**
  * Money, always at the currency's own precision.
  *

@@ -63,6 +63,27 @@ import {
   useVoiceCapture,
 } from "@/components/limecab/limecab-voice-banner";
 import { LimeCabHelpKindScene } from "@/components/limecab/limecab-help-kind-scene";
+import { ConfirmActionSurface } from "@/components/service-app/confirm-action-surface";
+import { LimeCabSpacesKindScene } from "@/components/limecab/limecab-spaces-kind-scene";
+import { LimeCabSpacesSelectScene } from "@/components/limecab/limecab-spaces-select-scene";
+import { LimeCabStationDurationScene } from "@/components/limecab/limecab-station-duration-scene";
+import { LimeCabStationSelectScene } from "@/components/limecab/limecab-station-select-scene";
+import {
+  rankSpaceOptions,
+  SPACES_FIXTURES,
+  spacesPriceLabel,
+  type SpaceKind,
+  type SpaceOption,
+  type SpacesSpanId,
+} from "@/lib/limecab/spaces";
+import { haversineMeters } from "@/lib/limecab/freight-schedule";
+import type { LimePlace } from "@/lib/limecab/spatial";
+import {
+  STATION_FIXTURES,
+  stationPriceLabel,
+  type StationDurationId,
+  type StationOption,
+} from "@/lib/limecab/station";
 import { LimeCabShopScene } from "@/components/limecab/limecab-shop-scene";
 import { LimeCabWhenScene } from "@/components/limecab/limecab-when-scene";
 import {
@@ -357,6 +378,9 @@ const mapAdapter = env.NEXT_PUBLIC_MAPBOX_TOKEN
 /** The tail of the en-route phase, where the question becomes "which car?". */
 const ARRIVED_AT = 0.82;
 
+/** Past this, it is not a walk from where the rider is going. */
+const MAX_WALK_METERS = 2_000;
+
 export function LimeCabApp({
   onTaskChange,
   signedIn = false,
@@ -404,6 +428,8 @@ function LimeCabFlow({
   const wantShop = searchParams.get("service") === "shop";
   const wantHelp = searchParams.get("service") === "help";
   const wantAssist = searchParams.get("service") === "assist";
+  const wantSpaces = searchParams.get("service") === "spaces";
+  const wantStation = searchParams.get("service") === "station";
 
   const [state, setState] = useState<ServiceAppState>("home");
   const [bookingMode, setBookingMode] = useState<BookingMode>(
@@ -417,7 +443,11 @@ function LimeCabFlow({
             ? "reserve"
             : wantAssist
               ? "assist"
-              : "ride",
+              : wantSpaces
+                ? "spaces"
+                : wantStation
+                  ? "station"
+                  : "ride",
   );
   /**
    * Lime Shop's store, once chosen. Not a scene flag: it is the fact that
@@ -471,6 +501,15 @@ function LimeCabFlow({
    */
   const help = bookingMode === "help";
   const assist = bookingMode === "assist";
+  /**
+   * The two place-finding verticals. Same shape as Ride — where, then how
+   * long, then compare and confirm — so they are booking modes rather than a
+   * second reducer. Neither carries the rider anywhere, so neither confirms
+   * a pickup: the place they named is the only place in the flow.
+   */
+  const spaces = bookingMode === "spaces";
+  const station = bookingMode === "station";
+  const placeFinder = spaces || station;
 
   // ---- the server is the truth -------------------------------------------
   const [tripId, setTripId] = useState<string | null>(null);
@@ -642,10 +681,32 @@ function LimeCabFlow({
       setProductId("lime-reserve");
       return;
     }
+    // Place finders carry no ride product: the thing being bought is a row on
+    // the comparison scene, and it is not chosen until the rider gets there.
+    if (wantSpaces) {
+      setBookingMode("spaces");
+      setProductId(null);
+      return;
+    }
+    if (wantStation) {
+      setBookingMode("station");
+      setProductId(null);
+      return;
+    }
     if (wantAssist && (state === "home" || rideMinimized)) {
       setBookingMode("assist");
     }
-  }, [wantAssist, wantCourier, wantHelp, wantReserve, wantShop, rideMinimized, state]);
+  }, [
+    wantAssist,
+    wantCourier,
+    wantHelp,
+    wantReserve,
+    wantShop,
+    wantSpaces,
+    wantStation,
+    rideMinimized,
+    state,
+  ]);
 
   const clearAssistDraft = useCallback(() => {
     setDestination(null);
@@ -707,22 +768,39 @@ function LimeCabFlow({
       setState((current) =>
         reduceServiceAppState(current, event, {
           hasLocation: Boolean(destination),
+          // A place finder's "service" is the row the rider picks on the
+          // compare scene, so it is not had until then — forcing it true
+          // here skips straight past the comparison.
           hasService: courier || reserve || Boolean(available),
-          needsConfigure: courier || reserve || help,
-          needsServiceSelect: (!courier && !reserve) || help,
+          needsConfigure: courier || reserve || help || placeFinder,
+          needsServiceSelect: (!courier && !reserve) || help || placeFinder,
           // Shop asks for the shop, then the list, then the drop-off — until
           // the shop is chosen it is in its ordinary order. Help always asks
           // when, then what kind, then where.
           locationAfterConfigure: help || (shop && shopStore !== null),
-          selectAfterConfigure: help,
+          // Where, then the one option question, then compare. Same shape
+          // as Help's when-then-kind: the option re-prices the list, so it
+          // has to be answered before there is a list worth showing.
+          selectAfterConfigure: help || placeFinder,
           // Immediate rides confirm the curb after the product; courier,
           // Reserve, and Help still purchase on the quote.
-          needsPickupConfirm: !courier && !reserve && !help,
+          needsPickupConfirm:
+            !courier && !reserve && !help && !placeFinder,
           pinEntry,
           ...overrides,
         }),
       ),
-    [available, courier, destination, help, pinEntry, reserve, shop, shopStore],
+    [
+      available,
+      courier,
+      destination,
+      help,
+      pinEntry,
+      placeFinder,
+      reserve,
+      shop,
+      shopStore,
+    ],
   );
 
   const duration = PHASE_HINT_MS[state] ?? 0;
@@ -919,12 +997,105 @@ function LimeCabFlow({
         : confirmingPickup || state === "home" || !destinationPoint
           ? pickupPoint
           : destinationPoint;
+  const [spaceRows, setSpaceRows] = useState<SpaceOption[]>(SPACES_FIXTURES);
+  const [stationRows, setStationRows] =
+    useState<StationOption[]>(STATION_FIXTURES);
+
+  /**
+   * What is near the place the rider named.
+   *
+   * The spatial index answers first; fixtures fill in behind it, because a
+   * cold index in a demo city is not the same thing as "there is no parking
+   * in Los Angeles". Whichever answers, the rows are labelled simulated —
+   * the rates are invented either way until a partner is wired.
+   */
+  useEffect(() => {
+    if (!placeFinder || !destination) return;
+    // No coordinates, no honest distance — and no list rather than a wrong one.
+    if (destination.latitude == null || destination.longitude == null) return;
+    const near = {
+      latitude: destination.latitude,
+      longitude: destination.longitude,
+    };
+    /**
+     * Distance is measured from the place the rider named, never carried in
+     * from a fixture. A downtown lot listed as "3 min walk" from Dodger
+     * Stadium is a lie the rider only discovers on foot, so anything beyond a
+     * genuine walk is dropped and the scene says it found nothing.
+     */
+    const walkable = <T extends { latitude: number; longitude: number }>(
+      rows: T[],
+    ) =>
+      rows
+        .map((row) => ({ ...row, distanceMeters: haversineMeters(near, row) }))
+        .filter((row) => row.distanceMeters <= MAX_WALK_METERS);
+
+    const types = spaces ? "hotel,entertainment" : "parking";
+    const ac = new AbortController();
+    void fetch(
+      `/api/map/nearby?lat=${destination.latitude}&lng=${destination.longitude}&types=${types}&limit=8`,
+      { signal: ac.signal },
+    )
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body: { places?: LimePlace[] } | null) => {
+        const places = body?.places ?? [];
+        if (spaces) {
+          const indexed: SpaceOption[] = places.map((place, index) => ({
+            id: place.id,
+            name: place.shortName || place.canonicalName,
+            // The index knows a building, not what it rents. Hotels are
+            // stays; anything else in this set is a venue.
+            kind: place.entityType === "hotel" ? "stay" : "venue",
+            priceCents: place.entityType === "hotel" ? 19_000 : 20_000,
+            latitude: place.latitude,
+            longitude: place.longitude,
+            distanceMeters: place.distanceMeters,
+            capacity:
+              place.entityType === "hotel" ? undefined : 80 + index * 20,
+          }));
+          const rows = walkable([...indexed, ...SPACES_FIXTURES]);
+          setSpaceRows(rows);
+          return;
+        }
+        const indexed: StationOption[] = places.map((place) => ({
+          id: place.id,
+          name: place.shortName || place.canonicalName,
+          hourlyCents: 300,
+          latitude: place.latitude,
+          longitude: place.longitude,
+          distanceMeters: place.distanceMeters,
+        }));
+        setStationRows(walkable([...indexed, ...STATION_FIXTURES]));
+      })
+      .catch(() => undefined);
+    return () => ac.abort();
+  }, [destination, placeFinder, spaces]);
+
+  /**
+   * The options, as pins. Comparing parking is a spatial decision — six
+   * minutes of walk is the difference between two rows — so the lots have to
+   * be on the canvas, not only in the list.
+   */
+  const placePins = useMemo<MapPoint[]>(() => {
+    if (!placeFinder) return [];
+    const rows = spaces ? spaceRows : stationRows;
+    return rows.map((row) => ({
+      latitude: row.latitude,
+      longitude: row.longitude,
+      kind: "origin" as const,
+      label: row.name,
+    }));
+  }, [placeFinder, spaceRows, spaces, stationRows]);
+
   const fallbackTrip = useMemo(
     () => (destinationPoint ? [pickupPoint, destinationPoint] : undefined),
     [destinationPoint, pickupPoint],
   );
   const mapRoute =
-    locatingPickup || state === "home"
+    // A place finder has no journey. Drawing pickup → destination would
+    // assert a trip the rider never asked for; the canvas is here to show
+    // *where the options are*, not how they would be driven to.
+    locatingPickup || state === "home" || placeFinder
       ? undefined
       : state === "matching" ||
           state === "assigned" ||
@@ -1311,7 +1482,9 @@ function LimeCabFlow({
                     ? confirmPickupPoints
                     : locatingPickup
                       ? []
-                      : [...points, ...nearbyCars]
+                      : placeFinder
+                        ? [...points, ...placePins]
+                        : [...points, ...nearbyCars]
                 }
                 route={mapRoute}
                 pinLabel={locatingPickup ? pinShortName : undefined}
@@ -1422,6 +1595,10 @@ function LimeCabFlow({
         reserve={reserve}
         shop={shop}
         help={help}
+        spaces={spaces}
+        station={station}
+        spaceRows={spaceRows}
+        stationRows={stationRows}
         assist={assist}
         wantAssist={wantAssist}
         shopStore={shopStore}
@@ -1546,6 +1723,10 @@ function LimeCabSurfaces({
   serverStatus,
   startTrip,
   cancelTrip,
+  spaces,
+  station,
+  spaceRows,
+  stationRows,
   clearTrip,
   signedIn,
   standby,
@@ -1597,6 +1778,11 @@ function LimeCabSurfaces({
   reserve: boolean;
   shop: boolean;
   help: boolean;
+  /** The place-finding verticals. Flat like `help`, for the same reason. */
+  spaces: boolean;
+  station: boolean;
+  spaceRows: SpaceOption[];
+  stationRows: StationOption[];
   assist: boolean;
   wantAssist: boolean;
   shopStore: Location | null;
@@ -1656,6 +1842,58 @@ function LimeCabSurfaces({
    * Lime Shop's list. Draft rows, so an empty one is a row waiting to be
    * typed rather than an item; `normalizeShopList` decides what is real.
    */
+  const placeFinder = spaces || station;
+
+  /**
+   * Spaces and Station app data. None of it is a scene: the kind, the span
+   * and the duration are answers the rider gave, and the chosen row is the
+   * thing the confirm band prices. The reducer never hears about any of it.
+   */
+  const [spaceKind, setSpaceKind] = useState<SpaceKind | null>(null);
+  const [spacesSpan, setSpacesSpan] = useState<SpacesSpanId>("2");
+  const [stationDurationId, setStationDurationId] =
+    useState<StationDurationId | null>(null);
+  const [placeOptionId, setPlaceOptionId] = useState<string | null>(null);
+  /** What the honest-empty confirm names. Null while nothing is confirmed. */
+  const [placeBooking, setPlaceBooking] = useState<{
+    name: string;
+    price: string;
+  } | null>(null);
+
+  /** The row the confirm band is pricing, if the rider has picked one. */
+  const spaceChoice =
+    spaces && placeOptionId
+      ? (rankSpaceOptions(spaceRows, spaceKind).find(
+          (row) => row.id === placeOptionId,
+        ) ?? null)
+      : null;
+  const stationChoice =
+    station && placeOptionId
+      ? (stationRows.find((row) => row.id === placeOptionId) ?? null)
+      : null;
+
+  /**
+   * Confirm, honestly. There is no partner API and no charge, so this does
+   * not claim a booking — it names what was chosen and says booking is not
+   * open yet. Asserting "Booked" here would be the exact lie the perceived
+   * performance rules forbid.
+   */
+  const confirmPlace = useCallback(() => {
+    if (spaceChoice) {
+      setPlaceBooking({
+        name: spaceChoice.name,
+        price: spacesPriceLabel(spaceChoice, spacesSpan),
+      });
+      return;
+    }
+    if (stationChoice && stationDurationId) {
+      setPlaceBooking({
+        name: stationChoice.name,
+        price: stationPriceLabel(stationChoice, stationDurationId),
+      });
+    }
+  }, [spaceChoice, spacesSpan, stationChoice, stationDurationId]);
+
   const [shopItems, setShopItems] = useState<ShopItem[]>([{ label: "" }]);
   /** Shop from Assist with a later delivery window — uses the When scene. */
   const [shopScheduled, setShopScheduled] = useState(false);
@@ -1723,7 +1961,11 @@ function LimeCabSurfaces({
           ? "reserve"
           : assist
             ? "assist"
-            : "ride";
+            : spaces
+              ? "spaces"
+              : station
+                ? "station"
+                : "ride";
   const searchContract = searchInputContract({
     mode: bookingMode,
     target: searchTarget,
@@ -2105,8 +2347,12 @@ function LimeCabSurfaces({
       go("select_location", {
         hasLocation: true,
         hasService: courier || reserve || Boolean(product),
-        needsConfigure: courier || reserve,
+        // A place finder asks its one option question next — how long, or
+        // what kind — and only then compares. Without both flags the place
+        // lands straight on a comparison priced against nothing.
+        needsConfigure: courier || reserve || placeFinder,
         needsServiceSelect: !courier && !reserve,
+        selectAfterConfigure: placeFinder,
       });
       return;
     }
@@ -2948,7 +3194,33 @@ function LimeCabSurfaces({
               />
             ) : null}
 
-            {visible === "service_select" && !help ? (
+            {visible === "service_select" && spaces ? (
+              <LimeCabSpacesSelectScene
+                options={spaceRows}
+                kind={spaceKind}
+                span={spacesSpan}
+                selectedId={placeOptionId}
+                payment={payment}
+                onSpan={setSpacesSpan}
+                onSelect={(option) => setPlaceOptionId(option.id)}
+                onConfirm={confirmPlace}
+                onOpenPayment={() => openDetail("payment")}
+              />
+            ) : null}
+
+            {visible === "service_select" && station ? (
+              <LimeCabStationSelectScene
+                options={stationRows}
+                duration={stationDurationId ?? "1h"}
+                selectedId={placeOptionId}
+                payment={payment}
+                onSelect={(option) => setPlaceOptionId(option.id)}
+                onConfirm={confirmPlace}
+                onOpenPayment={() => openDetail("payment")}
+              />
+            ) : null}
+
+            {visible === "service_select" && !help && !placeFinder ? (
               <LimeCabRideSelectScene
                 pickup={pickup}
                 destination={destination}
@@ -2962,7 +3234,30 @@ function LimeCabSurfaces({
             ) : null}
 
             {visible === "configure" ? (
-              help ? (
+              spaces ? (
+                <LimeCabSpacesKindScene
+                  kind={spaceKind}
+                  onSelect={(next) => {
+                    setSpaceKind(next);
+                    // A different kind is a different list; the old pick
+                    // cannot survive it.
+                    setPlaceOptionId(null);
+                  }}
+                  onContinue={() => {
+                    surfaces.perform("chooseRide");
+                    go("configure_done");
+                  }}
+                />
+              ) : station ? (
+                <LimeCabStationDurationScene
+                  duration={stationDurationId}
+                  onSelect={setStationDurationId}
+                  onContinue={() => {
+                    surfaces.perform("chooseRide");
+                    go("configure_done");
+                  }}
+                />
+              ) : help ? (
                 <LimeCabWhenScene
                   value={scheduledAt}
                   onChange={setScheduledAt}
@@ -3521,6 +3816,28 @@ function LimeCabSurfaces({
       <LimeCabUnavailableSurface
         product={unavailable}
         onDismiss={() => closeInterrupt(() => setUnavailable(null))}
+      />
+
+      {/* Confirm, without claiming a booking. Lime is the concierge here and
+          there is no partner API behind it yet, so this names the choice and
+          the price and says plainly that booking is not open — asserting
+          "Booked" for a room nobody has held would be the lie the perceived
+          performance rules exist to prevent. */}
+      <ConfirmActionSurface
+        open={placeBooking !== null}
+        onOpenChange={(open) => {
+          if (!open) setPlaceBooking(null);
+        }}
+        id="place-not-bookable"
+        title={
+          placeBooking
+            ? `${placeBooking.name} · ${placeBooking.price}`
+            : "Not bookable yet"
+        }
+        description="Lime isn't taking bookings here yet — these are simulated rates while partners come online. Nothing was charged and nothing was reserved."
+        confirmLabel="Got it"
+        cancelLabel={null}
+        onConfirm={() => setPlaceBooking(null)}
       />
 
       {/* Minimized on Home: the ride is the pill, and tapping it is the only

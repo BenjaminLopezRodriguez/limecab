@@ -352,3 +352,76 @@ test("a flow that still quotes is untouched by the pickup flag", () => {
     "quote",
   );
 });
+
+/**
+ * Spaces and Station are Ride's chain with a different middle question, and
+ * they are booking modes rather than new scenes — so what these lock is that
+ * the *existing* reducer carries them, and that Back revises instead of
+ * clearing. If either chain ever needs a scene of its own, one of these
+ * fails first.
+ */
+const placeFinder = (over: Partial<ServiceAppContext> = {}): ServiceAppContext =>
+  ctx({
+    needsConfigure: true,
+    needsServiceSelect: true,
+    // The option question comes before the comparison: it re-prices the
+    // list, so a list shown first would be priced against nothing.
+    selectAfterConfigure: true,
+    // Neither carries the rider anywhere, so neither confirms a curb.
+    needsPickupConfirm: false,
+    ...over,
+  });
+
+test("a place finder goes where, then its one option, then the compare", () => {
+  assert.equal(
+    reduceServiceAppState("home", "open_search", placeFinder()),
+    "location_search",
+  );
+  // Naming the place is what unlocks the option question.
+  assert.equal(
+    reduceServiceAppState(
+      "location_search",
+      "select_location",
+      placeFinder({ hasLocation: true }),
+    ),
+    "configure",
+  );
+  assert.equal(
+    reduceServiceAppState(
+      "configure",
+      "configure_done",
+      placeFinder({ hasLocation: true }),
+    ),
+    "service_select",
+  );
+});
+
+test("compare is the last scene — no curb to confirm afterwards", () => {
+  assert.notEqual(
+    reduceServiceAppState(
+      "configure",
+      "configure_done",
+      placeFinder({ hasLocation: true }),
+    ),
+    "confirm_pickup",
+  );
+});
+
+test("back through a place finder revises, it never clears to home", () => {
+  assert.equal(
+    reduceServiceAppState(
+      "service_select",
+      "back",
+      placeFinder({ hasLocation: true, hasService: true }),
+    ),
+    "configure",
+  );
+  assert.equal(
+    reduceServiceAppState(
+      "configure",
+      "back",
+      placeFinder({ hasLocation: true, hasService: true }),
+    ),
+    "location_search",
+  );
+});

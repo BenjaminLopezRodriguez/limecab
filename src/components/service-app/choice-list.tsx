@@ -1,6 +1,7 @@
 "use client";
 
 import type { ComponentProps, ReactNode } from "react";
+import Link from "next/link";
 
 import { cn } from "@/lib/utils";
 
@@ -46,6 +47,53 @@ export function ChoiceRow({
       >
         {children}
       </button>
+    </li>
+  );
+}
+
+/** Read-only row — same shell as ChoiceRow, for lists that are not pickers yet. */
+export function ChoiceStaticRow({
+  className,
+  children,
+  ...props
+}: ComponentProps<"div">) {
+  return (
+    <li>
+      <div
+        className={cn(
+          "flex w-full items-center gap-3 px-5 py-3 md:px-6",
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </div>
+    </li>
+  );
+}
+
+/** Navigable row — same hover shell as ChoiceRow, for drill-in lists. */
+export function ChoiceLinkRow({
+  className,
+  selected,
+  children,
+  ...props
+}: ComponentProps<typeof Link> & { selected?: boolean }) {
+  return (
+    <li>
+      <Link
+        {...props}
+        className={cn(
+          "relative flex w-full items-center gap-3 overflow-hidden px-5 py-3 text-left md:px-6",
+          "focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset",
+          selected
+            ? "bg-accent before:bg-foreground before:absolute before:inset-y-0 before:left-0 before:w-1 before:content-['']"
+            : "hover:bg-accent/60 active:bg-accent",
+          className,
+        )}
+      >
+        {children}
+      </Link>
     </li>
   );
 }
