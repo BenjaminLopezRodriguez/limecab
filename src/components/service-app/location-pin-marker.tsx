@@ -1,10 +1,10 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { FixedMarker } from "@/components/service-app/map-marker";
 
 /**
- * Centered map pin: a lime pill of the nearest short name, with a stem
- * that sits on the point being chosen.
+ * Centered map pin while the rider is choosing a point. Needle tip sits on
+ * the canvas center — the map moves under it.
  */
 export function LocationPinMarker({
   name,
@@ -18,17 +18,13 @@ export function LocationPinMarker({
       aria-hidden="true"
       className="pointer-events-none absolute inset-0 flex items-center justify-center"
     >
-      <span className="-translate-y-[calc(50%+6px)] flex flex-col items-center">
-        <span
-          className={cn(
-            "bg-lime text-lime-foreground max-w-[min(70vw,16rem)] truncate rounded-full px-3 py-1.5 text-[13px] font-semibold shadow-md",
-            locating && "opacity-80",
-          )}
-        >
-          {name?.trim() ? name.trim() : "…"}
-        </span>
-        <span className="bg-lime mt-[-3px] size-2.5 rotate-45" />
-      </span>
+      <FixedMarker
+        label={name?.trim() ? name.trim() : "…"}
+        kind="accent"
+        size="medium"
+        needle="medium"
+        dragging={locating}
+      />
     </span>
   );
 }

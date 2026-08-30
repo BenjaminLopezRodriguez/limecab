@@ -2,20 +2,12 @@
 
 import type { ReactNode } from "react";
 
+import { FloatingRouteMarker } from "@/components/service-app/map-marker";
 import { cn } from "@/lib/utils";
 
 /**
  * SpatialEtaMarker — a time-to-service badge attached to a point in space.
- *
- * Purely presentational: a compact pill with a pointer and an anchor dot
- * beneath it, so it reads as belonging to whatever it sits over.
- *
- *     [ 4 MIN ]
- *         ●
- *
- * It knows nothing about any map vendor and nothing about what the entity is.
- * Whoever owns the canvas positions it — usually absolutely, over a projected
- * point. Rendered standalone it simply lays out in normal flow.
+ * FloatingRouteMarker (selected vs unselected) sits on the route or provider.
  */
 
 export type SpatialEtaStatus = "en_route" | "arriving" | "arrived" | "waiting";
@@ -68,36 +60,11 @@ export function SpatialEtaMarker({
         className,
       )}
     >
-      <div
-        className={cn(
-          "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] leading-none font-medium tracking-wide tabular-nums shadow-md",
-          selected
-            ? "bg-foreground text-background"
-            : "bg-popover text-foreground ring-border ring-1",
-        )}
-      >
-        {icon ? (
-          <span className="flex size-3 items-center justify-center [&_svg]:size-3">
-            {icon}
-          </span>
-        ) : null}
-        <span className="whitespace-nowrap uppercase">{text}</span>
-      </div>
-      <span
-        aria-hidden="true"
-        className={cn(
-          "-mt-[3px] size-2 rotate-45 rounded-[1px]",
-          selected ? "bg-foreground" : "bg-popover ring-border ring-1",
-        )}
-      />
-      <span
-        aria-hidden="true"
-        className={cn(
-          "mt-1 size-2.5 rounded-full ring-2",
-          selected
-            ? "bg-foreground ring-background"
-            : "bg-foreground/70 ring-background",
-        )}
+      <FloatingRouteMarker
+        label={text}
+        selected={selected}
+        startEnhancer={icon}
+        anchor="bottom-center"
       />
     </div>
   );

@@ -12,6 +12,7 @@ import {
   Loading03Icon,
   Location01Icon,
   Menu01Icon,
+  Message01Icon,
   Navigation03Icon,
   PromotionIcon,
   Shield01Icon,
@@ -841,6 +842,7 @@ export function DriverJobScene({
   busy,
   error,
   onAdvance,
+  onMessage,
   onCancel,
 }: {
   scene: Extract<DriverAppState, "to_pickup" | "at_pickup" | "on_trip">;
@@ -854,6 +856,7 @@ export function DriverJobScene({
   busy: boolean;
   error: string | null;
   onAdvance: () => void;
+  onMessage?: () => void;
   onCancel?: () => void;
 }) {
   const question = driverAppQuestion(scene, kind);
@@ -915,11 +918,11 @@ export function DriverJobScene({
       </div>
 
       {/* Rider identity: who to look for, and how to reach them. */}
-      {!courier && trip.riderName ? (
+      {!courier && (trip.riderName || onMessage) ? (
         <ProviderCard
           className="mt-3"
           compact
-          provider={{ id: trip.id, name: trip.riderName }}
+          provider={{ id: trip.id, name: trip.riderName ?? "Rider" }}
           eta={
             scene !== "at_pickup"
               ? null
@@ -928,21 +931,42 @@ export function DriverJobScene({
                 : "Waiting at the curb"
           }
           actions={
-            // No masked numbers in this build, so the affordance only exists
-            // when there is a real number behind it.
-            trip.riderPhone ? (
-              <Button
-                variant="outline"
-                size="icon-lg"
-                nativeButton={false}
-                aria-label={`Call ${trip.riderName}`}
-                render={<a href={`tel:${trip.riderPhone}`} />}
-              >
-                <Icon icon={Call02Icon} size={18} aria-hidden="true" />
-              </Button>
-            ) : undefined
+            <>
+              {onMessage ? (
+                <Button
+                  variant="outline"
+                  size="icon-lg"
+                  aria-label={`Message ${trip.riderName ?? "the rider"}`}
+                  onClick={onMessage}
+                >
+                  <Icon icon={Message01Icon} size={18} aria-hidden="true" />
+                </Button>
+              ) : null}
+              {trip.riderPhone ? (
+                <Button
+                  variant="outline"
+                  size="icon-lg"
+                  nativeButton={false}
+                  aria-label={`Call ${trip.riderName}`}
+                  render={<a href={`tel:${trip.riderPhone}`} />}
+                >
+                  <Icon icon={Call02Icon} size={18} aria-hidden="true" />
+                </Button>
+              ) : null}
+            </>
           }
         />
+      ) : null}
+
+      {courier && onMessage ? (
+        <Button
+          variant="outline"
+          className="mt-3 h-12 w-full rounded-xl"
+          onClick={onMessage}
+        >
+          <Icon icon={Message01Icon} size={18} aria-hidden="true" />
+          Message the sender
+        </Button>
       ) : null}
 
       {help ? (

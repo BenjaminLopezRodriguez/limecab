@@ -46,7 +46,7 @@ const DETAIL_TITLE: Record<DetailKind, string> = {
   receipt: "Receipt",
   payment: "Payment method",
   promo: "Promo code",
-  contact: "Contact your driver",
+  contact: "Message your driver",
   safety: "Safety",
   tip: "Add a tip",
   more: "Ride options",
@@ -220,14 +220,6 @@ export function LimeCabDetailSurface({
               : `Apply ${formatMoney(AVAILABLE_PROMO.amountCents)} credit`}
           </PrimaryAction>
         </div>
-      ) : null}
-
-      {detail === "contact" && trip ? (
-        <p className="text-muted-foreground text-sm leading-relaxed">
-          {trip.driver.name} can&apos;t be reached from this build. Calling and
-          messaging need a dispatch connection, which isn&apos;t here. Nothing
-          was sent.
-        </p>
       ) : null}
 
       {detail === "safety" ? (

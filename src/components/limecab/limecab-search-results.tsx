@@ -29,6 +29,11 @@ const SECTION: Record<SearchIntent, { title: string; icon: ReactNode }> = {
 
 export function limeCabNormalizeQuery(query: string): string {
   const classified = classifySearchQuery(query);
+  // Ride-only queries keep their wording so "next to" / "the one on"
+  // reach the place pipeline. Courier/store still strip intent verbs.
+  if (classified.intents.length === 1 && classified.intents[0] === "ride") {
+    return query;
+  }
   return classified.placeQuery || query;
 }
 

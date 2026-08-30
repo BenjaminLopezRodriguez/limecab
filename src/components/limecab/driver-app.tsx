@@ -66,6 +66,7 @@ import {
   DRIVER_TAB_HEIGHT,
   DriverTabBar,
 } from "@/components/limecab/driver-tabs";
+import { TripChatThread } from "@/components/limecab/trip-chat-thread";
 import {
   DriverSafetyToolkit,
   useDashcam,
@@ -126,7 +127,7 @@ type ActiveTrip = Inbox["active"][number];
 
 /** Questions *about* the duty session, not scenes. Pin is a phase of the
  *  heading question, so it lives here rather than as an extra boolean. */
-type DriverAside = "heading" | "heading_pin" | "safety" | null;
+type DriverAside = "heading" | "heading_pin" | "safety" | "chat" | null;
 
 const placesAdapter = createPlacesAdapter();
 
@@ -555,12 +556,18 @@ function DriverFlow({
   const jobChip = job ?? offer;
 
   const openAside = useCallback(
-    (kind: "heading" | "safety") => {
+    (kind: "heading" | "safety" | "chat") => {
       // The offer already owns the interrupt rung; 911 on the map still works.
       if (kind === "safety" && offeredId) return;
       if (kind === "heading") setSearchProximity(device);
       if (asideRef.current === null) {
-        perform(kind === "safety" ? "openSafety" : "openHeading");
+        perform(
+          kind === "safety"
+            ? "openSafety"
+            : kind === "chat"
+              ? "openTripChat"
+              : "openHeading",
+        );
       }
       setAside(kind);
     },
@@ -1073,6 +1080,7 @@ function DriverFlow({
           onSeeCharts={seeCharts}
           onFocusCell={focusCell}
           dashcam={dashcam}
+          onOpenChat={() => openAside("chat")}
           onOpenHeading={() => openAside("heading")}
           onChooseHeadingOnMap={chooseHeadingOnMap}
           onBackFromHeadingPin={backFromHeadingPin}
@@ -1152,6 +1160,7 @@ function DriverSurfaces({
   onSeeCharts,
   onFocusCell,
   dashcam,
+  onOpenChat,
   onOpenHeading,
   onChooseHeadingOnMap,
   onBackFromHeadingPin,
@@ -1194,6 +1203,7 @@ function DriverSurfaces({
   onSeeCharts: () => void;
   onFocusCell: (cell: TrendCell) => void;
   dashcam: Dashcam;
+  onOpenChat: () => void;
   onOpenHeading: () => void;
   onChooseHeadingOnMap: () => void;
   onBackFromHeadingPin: () => void;
@@ -1712,6 +1722,7 @@ function DriverSurfaces({
                     busy={surface.progress.locked}
                     error={failure}
                     onAdvance={runAdvance}
+                    onMessage={onOpenChat}
                     onCancel={
                       visible === "to_pickup" || visible === "at_pickup"
                         ? askCancelJob
@@ -1790,13 +1801,22 @@ function DriverSurfaces({
 
       <AdaptiveSurface.Interrupt
         id="interrupt"
-        open={aside === "heading" || aside === "safety"}
+        open={aside === "heading" || aside === "safety" || aside === "chat"}
         onOpenChange={(next) => {
-          if (!next && (aside === "heading" || aside === "safety")) {
+          if (
+            !next &&
+            (aside === "heading" || aside === "safety" || aside === "chat")
+          ) {
             onCloseAside();
           }
         }}
-        label={aside === "safety" ? "Safety" : "Where are you heading?"}
+        label={
+          aside === "safety"
+            ? "Safety"
+            : aside === "chat"
+              ? `Message ${job?.riderName ?? "the rider"}`
+              : "Where are you heading?"
+        }
         description={
           aside === "heading"
             ? "You’ll only be offered rides that end up that way."
@@ -1849,6 +1869,12 @@ function DriverSurfaces({
           />
         ) : null}
         {aside === "safety" ? <DriverSafetyToolkit dashcam={dashcam} /> : null}
+        {aside === "chat" && job ? (
+          <TripChatThread
+            tripId={job.id}
+            fallbackName={job.riderName ?? "the rider"}
+          />
+        ) : null}
       </AdaptiveSurface.Interrupt>
     </>
   );

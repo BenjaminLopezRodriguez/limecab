@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 
 import {
   bearingDegrees,
+  boundsForPoints,
+  boundsToFitCorners,
+  expandBoundsToSpan,
   panCenter,
   pointAlongPath,
   pointsFromLineString,
@@ -63,6 +66,20 @@ test("pointAlongPath at 0.5 sits between the ends", () => {
 test("bearingDegrees points east along a same-latitude pair", () => {
   const heading = bearingDegrees(downtown, east);
   assert.ok(heading > 80 && heading < 100);
+});
+
+test("boundsForPoints frames a cluster, then expand fills a single pin", () => {
+  const box = boundsForPoints([downtown, east]);
+  assert.ok(box);
+  assert.equal(box.west, downtown.longitude);
+  assert.equal(box.east, east.longitude);
+  const pin = boundsForPoints([downtown]);
+  assert.ok(pin);
+  const filled = expandBoundsToSpan(pin, 80);
+  assert.ok(filled.east - filled.west > pin.east - pin.west);
+  const corners = boundsToFitCorners(filled);
+  assert.equal(corners[0][0], filled.west);
+  assert.equal(corners[1][1], filled.north);
 });
 
 test("tracksProvider is the live vehicle modes, not the preview", () => {

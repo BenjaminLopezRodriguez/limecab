@@ -1,10 +1,11 @@
 "use client";
 
+import { FloatingMarker } from "@/components/service-app/map-marker";
 import { cn } from "@/lib/utils";
 
 /**
- * Highway rest / coffee stamp. Sits on the point — square, no stem —
- * so it is never the pin being placed.
+ * Highway rest / coffee stamp. FloatingMarker with a square anchor —
+ * not the pin being placed.
  */
 export function RestStopMarker({
   label,
@@ -17,30 +18,16 @@ export function RestStopMarker({
   category?: string;
   onSelect?: () => void;
 }) {
-  const stamp = (
-    <span
-      className={cn(
-        "grid place-items-center rounded-[5px] ring-1",
-        selected
-          ? "bg-lime text-lime-foreground size-6 ring-lime-foreground/25"
-          : "bg-card text-foreground size-5 ring-border",
-        "transition-transform duration-150 motion-reduce:transition-none",
-        selected && "scale-110",
-      )}
-    >
-      {category === "coffee" ? <CoffeeGlyph /> : <ShelterGlyph />}
-    </span>
-  );
-
+  const glyph = category === "coffee" ? <CoffeeGlyph /> : <ShelterGlyph />;
   const inner = (
-    <>
-      {stamp}
-      {selected ? (
-        <span className="bg-card/95 ring-border pointer-events-none absolute left-[calc(50%+14px)] max-w-[7rem] truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold tracking-tight ring-1">
-          {label}
-        </span>
-      ) : null}
-    </>
+    <FloatingMarker
+      label={selected ? label : undefined}
+      size="small"
+      kind={selected ? "accent" : "default"}
+      anchor={selected ? "bottom-left" : "none"}
+      anchorType="square"
+      startEnhancer={glyph}
+    />
   );
 
   const className = cn(

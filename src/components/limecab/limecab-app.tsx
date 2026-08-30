@@ -42,6 +42,7 @@ import {
   renderLimeCabSearchResults,
 } from "@/components/limecab/limecab-search-results";
 import { LimeCabStatusScene } from "@/components/limecab/limecab-status-scene";
+import { LimeCabTripChatSurface } from "@/components/limecab/trip-chat-thread";
 import {
   LimeCabVoiceBanner,
   VoiceMicButton,
@@ -116,9 +117,16 @@ import {
 import {
   createPlacesAdapter,
   fetchNearbyShops,
+  fetchPickupPoints,
   setSearchProximity,
 } from "@/lib/limecab/places";
 import { SIM_PHASE_MS, simulatedApproachStart } from "@/lib/limecab/simulate";
+import {
+  closestPickupCandidate,
+  pickupPointsAsMapPoints,
+  upsertCustomPickup,
+  type PickupCandidate,
+} from "@/lib/limecab/pickup-points";
 import {
   fetchDrivingRoute,
   fetchReverseGeocode,
@@ -387,6 +395,10 @@ function LimeCabFlow({
   const [pinAddress, setPinAddress] = useState<string | null>(null);
   const [pinShortName, setPinShortName] = useState<string | null>(null);
   const [pinLocating, setPinLocating] = useState(false);
+  const [pickupCandidates, setPickupCandidates] = useState<PickupCandidate[]>(
+    [],
+  );
+  const [selectedPickupId, setSelectedPickupId] = useState<string | null>(null);
   const [drivenRoute, setDrivenRoute] = useState<MapPoint[] | null>(null);
   const [approachRoute, setApproachRoute] = useState<MapPoint[] | null>(null);
   const [productId, setProductId] = useState<string | null>(null);
@@ -841,6 +853,48 @@ function LimeCabFlow({
         : (drivenRoute ?? fallbackTrip);
   const pickupLine = splitAddress(pickup.address).line;
   const destinationLine = splitAddress(destination?.address ?? "").line;
+  const confirmPickupPoints = useMemo(
+    () => pickupPointsAsMapPoints(pickupCandidates, selectedPickupId),
+    [pickupCandidates, selectedPickupId],
+  );
+  const selectedPickup = useMemo(
+    () =>
+      pickupCandidates.find((point) => point.id === selectedPickupId) ?? null,
+    [pickupCandidates, selectedPickupId],
+  );
+
+  const applyPickupCandidate = useCallback((candidate: PickupCandidate) => {
+    setSelectedPickupId(candidate.id);
+    setPin({
+      latitude: candidate.latitude,
+      longitude: candidate.longitude,
+    });
+    setPinShortName(candidate.label);
+    if (candidate.address) setPinAddress(candidate.address);
+  }, []);
+
+  const handleConfirmCamera = useCallback(
+    (next: MapPoint) => {
+      setPin(next);
+      const near = closestPickupCandidate(next, pickupCandidates);
+      if (near && near.source !== "custom") {
+        applyPickupCandidate(near);
+        return;
+      }
+      setSelectedPickupId("custom");
+      setPickupCandidates((current) => upsertCustomPickup(current, next));
+      setPinShortName("Pickup");
+    },
+    [applyPickupCandidate, pickupCandidates],
+  );
+
+  const handleSelectPickup = useCallback(
+    (point: MapPoint) => {
+      const match = closestPickupCandidate(point, pickupCandidates, 8);
+      if (match) applyPickupCandidate(match);
+    },
+    [applyPickupCandidate, pickupCandidates],
+  );
   const canReviseRoute =
     state === "service_select" ||
     state === "configure" ||
@@ -908,6 +962,17 @@ function LimeCabFlow({
     // the rider actually moves the map — a failed geocode would replace
     // the real street with "Pinned location".
     if (seeded && state === "confirm_pickup") return;
+    // A named curb already has its access label. Reverse would overwrite
+    // "Main entrance" with the parcel address.
+    if (state === "confirm_pickup") {
+      const named = closestPickupCandidate(pin, pickupCandidates);
+      if (named && named.source !== "custom") {
+        setPinShortName(named.label);
+        if (named.address) setPinAddress(named.address);
+        setPinLocating(false);
+        return;
+      }
+    }
     let cancelled = false;
     setPinLocating(true);
     const timer = window.setTimeout(() => {
@@ -949,22 +1014,62 @@ function LimeCabFlow({
     pickup.address,
     pickup.latitude,
     pickup.longitude,
+    pickupCandidates,
     state,
   ]);
 
-  /** Seed the pin from the current pickup when the curb becomes the question. */
+  /** Seed the pin and resolve curb candidates when pickup is the question. */
   useEffect(() => {
-    if (state !== "confirm_pickup") return;
-    setPin({
-      latitude: pickup.latitude ?? CAMERA_FALLBACK.latitude,
-      longitude: pickup.longitude ?? CAMERA_FALLBACK.longitude,
-    });
+    if (state !== "confirm_pickup") {
+      setPickupCandidates([]);
+      setSelectedPickupId(null);
+      return;
+    }
+    const latitude = pickup.latitude ?? CAMERA_FALLBACK.latitude;
+    const longitude = pickup.longitude ?? CAMERA_FALLBACK.longitude;
+    setPin({ latitude, longitude });
     setPinAddress(pickup.address || null);
     setPinShortName(splitAddress(pickup.address).line || null);
-    setPinLocating(false);
-    // Pickup is read on entry; panning must not re-seed from a stale address.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
+    setPinLocating(true);
+    const ac = new AbortController();
+    void fetchPickupPoints(latitude, longitude, pickup.address, ac.signal)
+      .then((result) => {
+        if (ac.signal.aborted) return;
+        const selected =
+          result.points.find((point) => point.id === result.selectedId) ??
+          result.points[0];
+        setPickupCandidates(result.points);
+        if (!selected) {
+          setPinLocating(false);
+          return;
+        }
+        setSelectedPickupId(selected.id);
+        setPin({
+          latitude: selected.latitude,
+          longitude: selected.longitude,
+        });
+        setPinShortName(selected.label);
+        if (selected.address) setPinAddress(selected.address);
+        setPinLocating(false);
+        setMapRecenterAt(Date.now());
+      })
+      .catch(() => {
+        if (ac.signal.aborted) return;
+        const fallback: PickupCandidate = {
+          id: "curb:seed",
+          latitude,
+          longitude,
+          label: splitAddress(pickup.address).line || "Curb",
+          source: "curb",
+          score: 10,
+          ...(pickup.address ? { address: pickup.address } : {}),
+        };
+        setPickupCandidates([fallback]);
+        setSelectedPickupId(fallback.id);
+        setPinLocating(false);
+      });
+    return () => ac.abort();
+  }, [pickup.address, pickup.latitude, pickup.longitude, state]);
 
   /**
    * Back on a live ride. Not `go("back")` and not a cancellation: one named
@@ -1101,11 +1206,26 @@ function LimeCabFlow({
                 center={center}
                 interactive={surfaces.layout.map?.interaction === "active"}
                 recenterAt={mapRecenterAt}
-                onCameraChange={locatingPickup ? setPin : undefined}
+                onCameraChange={
+                  confirmingPickup
+                    ? handleConfirmCamera
+                    : locatingPickup
+                      ? setPin
+                      : undefined
+                }
+                onSelectPoint={confirmingPickup ? handleSelectPickup : undefined}
+                zoom={confirmingPickup ? 17 : undefined}
                 // Idle cars on the home canvas: the rider's first question is
                 // whether LimeCab is even live here, and real pings answer it
-                // before any tap. None nearby draws none.
-                points={locatingPickup ? [] : [...points, ...nearbyCars]}
+                // before any tap. None nearby draws none. Confirm-pickup
+                // keeps the curb candidates on the canvas instead.
+                points={
+                  confirmingPickup
+                    ? confirmPickupPoints
+                    : locatingPickup
+                      ? []
+                      : [...points, ...nearbyCars]
+                }
                 route={mapRoute}
                 pinLabel={locatingPickup ? pinShortName : undefined}
                 pinLocating={locatingPickup && pinLocating}
@@ -1196,6 +1316,15 @@ function LimeCabFlow({
         pin={pin}
         pinAddress={pinAddress}
         pinLocating={pinLocating}
+        selectedPickup={selectedPickup}
+        pickupSpots={pickupCandidates}
+        selectedPickupId={selectedPickupId}
+        onSelectPickupSpot={(id) => {
+          const match = pickupCandidates.find((spot) => spot.id === id);
+          if (!match) return;
+          applyPickupCandidate(match);
+          setMapRecenterAt(Date.now());
+        }}
         product={product}
         setProductId={setProductId}
         courier={courier}
@@ -1300,6 +1429,10 @@ function LimeCabSurfaces({
   pin,
   pinAddress,
   pinLocating,
+  selectedPickup,
+  pickupSpots,
+  selectedPickupId,
+  onSelectPickupSpot,
   product,
   setProductId,
   courier,
@@ -1355,6 +1488,10 @@ function LimeCabSurfaces({
   pin: MapPoint | null;
   pinAddress: string | null;
   pinLocating: boolean;
+  selectedPickup: PickupCandidate | null;
+  pickupSpots: PickupCandidate[];
+  selectedPickupId: string | null;
+  onSelectPickupSpot: (id: string) => void;
   product: RideProduct | null;
   setProductId: (next: string | null) => void;
   courier: boolean;
@@ -2062,6 +2199,10 @@ function LimeCabSurfaces({
   };
 
   const confirmPickupAndRequest = () => {
+    const meeting =
+      selectedPickup && selectedPickup.source !== "custom"
+        ? selectedPickup.label
+        : pickup.meetingPoint;
     const committed =
       pin && pinAddress
         ? {
@@ -2070,6 +2211,7 @@ function LimeCabSurfaces({
             latitude: pin.latitude,
             longitude: pin.longitude,
             followsDevice: false,
+            ...(meeting ? { meetingPoint: meeting } : {}),
           }
         : pickup;
     setPickup(committed);
@@ -2152,9 +2294,15 @@ function LimeCabSurfaces({
   }, [serverStatus]);
 
   const openDetail = (kind: DetailKind) => {
-    // Payment is the same kind of interruption, at a different rung: a list
-    // with an "add one" affordance is a prepared environment, not a drawer.
-    surfaces.perform(kind === "payment" ? "openPayment" : "openDetails");
+    // Payment is a prepared list. Chat is a keyboard thread. Everything
+    // else is a compact look-away from the live ride.
+    surfaces.perform(
+      kind === "payment"
+        ? "openPayment"
+        : kind === "contact"
+          ? "openTripChat"
+          : "openDetails",
+    );
     setDetail(kind);
   };
 
@@ -2342,8 +2490,15 @@ function LimeCabSurfaces({
             {visible === "confirm_pickup" ? (
               <LimeCabConfirmPickupScene
                 address={
-                  pinAddress ? splitAddress(pinAddress).line || pinAddress : null
+                  pickup.address
+                    ? splitAddress(pickup.address).line || pickup.address
+                    : pinAddress
+                      ? splitAddress(pinAddress).line || pinAddress
+                      : null
                 }
+                spots={pickupSpots}
+                selectedId={selectedPickupId}
+                onSelectSpot={onSelectPickupSpot}
                 locating={pinLocating}
                 busy={surface.progress.locked}
                 onSearch={() => openSearch("pickup")}
@@ -2830,8 +2985,15 @@ function LimeCabSurfaces({
         onClose={() => closeInterrupt(() => setDetail(null))}
       />
 
+      <LimeCabTripChatSurface
+        open={detail === "contact"}
+        tripId={trip?.id ?? null}
+        counterpartName={trip?.driver.name ?? "your driver"}
+        onClose={() => closeInterrupt(() => setDetail(null))}
+      />
+
       <LimeCabDetailSurface
-        detail={detail === "payment" ? null : detail}
+        detail={detail === "payment" || detail === "contact" ? null : detail}
         onClose={() => closeInterrupt(() => setDetail(null))}
         quote={quote}
         product={product}

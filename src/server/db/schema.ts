@@ -66,6 +66,7 @@ export const users = createTable(
 export const usersRelations = relations(users, ({ many }) => ({
   accounts: many(accounts),
   supportTickets: many(supportTickets),
+  tripMessages: many(tripMessages),
 }));
 
 export const accounts = createTable(
@@ -336,6 +337,51 @@ export const tripsRelations = relations(trips, ({ one, many }) => ({
   user: one(users, { fields: [trips.userId], references: [users.id] }),
   driver: one(drivers, { fields: [trips.driverId], references: [drivers.id] }),
   supportTickets: many(supportTickets),
+  messages: many(tripMessages),
+}));
+
+/**
+ * In-trip chat. One thread per trip; rider and assigned driver only.
+ * Support tickets stay a separate table — those go to LimeCab, not the car.
+ */
+export const tripMessages = createTable(
+  "trip_message",
+  (d) => ({
+    id: d
+      .varchar({ length: 255 })
+      .notNull()
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tripId: d
+      .varchar({ length: 255 })
+      .notNull()
+      .references(() => trips.id),
+    senderUserId: d
+      .varchar({ length: 255 })
+      .notNull()
+      .references(() => users.id),
+    senderRole: d.varchar({ length: 8 }).$type<"rider" | "driver">().notNull(),
+    body: d.varchar({ length: 500 }).notNull(),
+    createdAt: d
+      .timestamp({ withTimezone: true })
+      .$defaultFn(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  }),
+  (t) => [
+    index("limecab_trip_message_trip_id_idx").on(t.tripId),
+    index("limecab_trip_message_trip_created_idx").on(t.tripId, t.createdAt),
+  ],
+);
+
+export const tripMessagesRelations = relations(tripMessages, ({ one }) => ({
+  trip: one(trips, {
+    fields: [tripMessages.tripId],
+    references: [trips.id],
+  }),
+  sender: one(users, {
+    fields: [tripMessages.senderUserId],
+    references: [users.id],
+  }),
 }));
 
 export const supportTickets = createTable(

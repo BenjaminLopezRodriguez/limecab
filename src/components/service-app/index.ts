@@ -78,6 +78,14 @@ export { ProviderCard } from "@/components/service-app/provider-card";
 export { CompletionPanel } from "@/components/service-app/completion-panel";
 export { SpatialEtaMarker } from "@/components/service-app/spatial-eta-marker";
 export {
+  FixedMarker,
+  FloatingMarker,
+  FloatingRouteMarker,
+  LocationPuck,
+  Needle,
+} from "@/components/service-app/map-marker";
+export { MapPointMarker } from "@/components/service-app/map-point-marker";
+export {
   SurfaceSkeleton,
   SurfaceSkeletonList,
 } from "@/components/service-app/surface-skeleton";

@@ -19,6 +19,10 @@ export const env = createEnv({
     AUTH_APPLE_SECRET: z.string().optional(),
     DATABASE_URL: z.string().url(),
     MAPBOX_TOKEN: z.string().optional(),
+    /** Places API (New) text search. Server-only. Search degrades to Mapbox without it. */
+    GOOGLE_PLACES_API_KEY: z.string().optional(),
+    /** Intent parse for colloquial place queries. Heuristic parse without it. */
+    DEEPSEEK_API_KEY: z.string().optional(),
     /** Mint fake drivers and auto-advance trips. Defaults on outside production. */
     SIMULATE_DRIVERS: z.enum(["true", "false"]).optional(),
     NODE_ENV: z
@@ -49,6 +53,8 @@ export const env = createEnv({
     AUTH_APPLE_SECRET: process.env.AUTH_APPLE_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
     MAPBOX_TOKEN: process.env.MAPBOX_TOKEN,
+    GOOGLE_PLACES_API_KEY: process.env.GOOGLE_PLACES_API_KEY,
+    DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
     NEXT_PUBLIC_MAPBOX_TOKEN: process.env.NEXT_PUBLIC_MAPBOX_TOKEN,
     SIMULATE_DRIVERS: process.env.SIMULATE_DRIVERS,
     NODE_ENV: process.env.NODE_ENV,

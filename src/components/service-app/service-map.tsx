@@ -12,7 +12,7 @@ import {
   type WheelEvent,
 } from "react";
 import { LocationPinMarker } from "@/components/service-app/location-pin-marker";
-import { RestStopMarker } from "@/components/service-app/rest-stop-marker";
+import { MapPointMarker } from "@/components/service-app/map-point-marker";
 import { SpatialEtaMarker } from "@/components/service-app/spatial-eta-marker";
 import {
   fitMetersPerUnit,
@@ -71,18 +71,6 @@ export function ServiceMap({
   );
 }
 
-const POINT_STYLE: Record<
-  NonNullable<MapPoint["kind"]>,
-  { fill: string; halo: boolean }
-> = {
-  origin: { fill: "currentColor", halo: true },
-  destination: { fill: "currentColor", halo: true },
-  provider: { fill: "currentColor", halo: true },
-  selection: { fill: "currentColor", halo: true },
-  marker: { fill: "currentColor", halo: false },
-  poi: { fill: "currentColor", halo: true },
-};
-
 /**
  * How each mode treats its geometry. The placeholder is not decoration — the
  * mode is the whole point of the seam, so each one has to *look* like the
@@ -114,7 +102,7 @@ const MODE_TREATMENT: Record<MapMode, ModeTreatment> = {
   },
   select_location: {
     route: "none",
-    emphasis: ["selection", "poi"],
+    emphasis: ["selection", "poi", "pickup"],
     dimOthers: true,
     coverage: false,
     crosshair: true,
@@ -439,70 +427,6 @@ function PlaceholderCanvas({
             </g>
           ) : null}
 
-          {projected.map(({ point, at }, index) => {
-            const kind = point.kind ?? "marker";
-            if (kind === "poi") return null;
-            const style = POINT_STYLE[kind] ?? POINT_STYLE.marker;
-            const emphasised = treatment.emphasis.includes(kind);
-            const dimmed = treatment.dimOthers && !emphasised;
-            const car = kind === "provider" || kind === "marker";
-            const heading = point.heading ?? 0;
-            const carW = kind === "provider" ? 7 : 5;
-            const carH = kind === "provider" ? 12 : 8;
-            return (
-              <g
-                key={`${point.latitude},${point.longitude},${index}`}
-                opacity={dimmed ? 0.45 : 1}
-              >
-                {car ? (
-                  <g transform={`rotate(${heading} ${at.x} ${at.y})`}>
-                    <rect
-                      x={at.x - carW / 2}
-                      y={at.y - carH / 2}
-                      width={carW}
-                      height={carH}
-                      rx={carW / 2.4}
-                      fill={style.fill}
-                    />
-                    <rect
-                      x={at.x - carW / 3.2}
-                      y={at.y - carH / 3.4}
-                      width={carW / 1.6}
-                      height={carH / 3.4}
-                      rx={1}
-                      className="fill-background"
-                      fillOpacity="0.45"
-                    />
-                  </g>
-                ) : (
-                  <>
-                    {style.halo && !dimmed ? (
-                      <circle
-                        cx={at.x}
-                        cy={at.y}
-                        r={emphasised ? 14 : 11}
-                        fill={style.fill}
-                        fillOpacity={emphasised ? 0.16 : 0.12}
-                      />
-                    ) : null}
-                    <circle
-                      cx={at.x}
-                      cy={at.y}
-                      r={emphasised ? 6.4 : dimmed ? 3.8 : 5}
-                      fill={style.fill}
-                    />
-                    <circle
-                      cx={at.x}
-                      cy={at.y}
-                      r={emphasised ? 2.4 : 1.9}
-                      className="fill-background"
-                    />
-                  </>
-                )}
-              </g>
-            );
-          })}
-
           {frame && projected.length === 0 && !treatment.coverage && !treatment.crosshair ? (
             <g>
               <circle cx="100" cy="100" r="20" fill="currentColor" fillOpacity="0.1" />
@@ -512,32 +436,39 @@ function PlaceholderCanvas({
           ) : null}
         </svg>
 
-        {projected.map(({ point, at }, index) =>
-          point.kind === "poi" ? (
+        {projected.map(({ point, at }, index) => {
+          const kind = point.kind ?? "marker";
+          const emphasised = treatment.emphasis.includes(kind);
+          const dimmed = treatment.dimOthers && !emphasised;
+          return (
             <span
-              key={`poi-${point.latitude},${point.longitude},${index}`}
+              key={`${kind}-${point.latitude},${point.longitude},${index}`}
               className={cn(
                 "absolute z-[1] -translate-x-1/2 -translate-y-1/2",
                 point.selected && "z-[2]",
+                dimmed && "opacity-45",
               )}
               style={{
                 left: `${(at.x / 200) * 100}%`,
                 top: `${(at.y / 200) * 100}%`,
               }}
             >
-              <RestStopMarker
-                label={point.label ?? "Stop"}
-                selected={point.selected}
-                category={point.category}
+              <MapPointMarker
+                point={point}
+                mode={mode}
                 onSelect={
-                  onSelectPoint ? () => onSelectPoint(point) : undefined
+                  (kind === "pickup" || kind === "poi") && onSelectPoint
+                    ? () => onSelectPoint(point)
+                    : undefined
                 }
               />
             </span>
-          ) : null,
-        )}
+          );
+        })}
 
-        {treatment.crosshair && interactive ? (
+        {treatment.crosshair &&
+        interactive &&
+        !points.some((point) => point.kind === "pickup") ? (
           <LocationPinMarker name={pinLabel ?? null} locating={pinLocating} />
         ) : null}
 

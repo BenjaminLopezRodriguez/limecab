@@ -350,6 +350,8 @@ export const driverSurfaces = createSurfaceManager({
 
     openHeading: { intent: "interrupt", surfaces: HEADING },
     openSafety: { intent: "interrupt", surfaces: ASIDE },
+    /** Same thread the rider sees. Overlay — keyboard plus the messages. */
+    openTripChat: { intent: "interrupt", surfaces: HEADING },
 
     /** Search recedes; the driver drops a pin for the heading filter. */
     chooseHeadingOnMap: { intent: "expand", surfaces: HEADING_PIN },

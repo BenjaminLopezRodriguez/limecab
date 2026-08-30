@@ -24,7 +24,8 @@ export type MapPointKind =
   | "provider"
   | "selection"
   | "marker"
-  | "poi";
+  | "poi"
+  | "pickup";
 
 export type MapPoint = {
   latitude: number;
@@ -123,6 +124,68 @@ export function tracksProvider(mode: MapMode): boolean {
  * absurdity. Without it a long route projects both ends onto the clamp and the
  * "preview" shows a line leaving the frame.
  */
+export type GeoBounds = {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+};
+
+/** Axis-aligned box around highlighted geometry — a route, a curb set, a POI. */
+export function boundsForPoints(
+  points: readonly { latitude: number; longitude: number }[],
+): GeoBounds | null {
+  if (points.length === 0) return null;
+  let west = Infinity;
+  let south = Infinity;
+  let east = -Infinity;
+  let north = -Infinity;
+  for (const point of points) {
+    west = Math.min(west, point.longitude);
+    south = Math.min(south, point.latitude);
+    east = Math.max(east, point.longitude);
+    north = Math.max(north, point.latitude);
+  }
+  return { west, south, east, north };
+}
+
+/**
+ * Grow a pin-sized box so fitBounds can fill the padded canvas instead of
+ * sitting at an arbitrary default zoom.
+ */
+export function expandBoundsToSpan(
+  bounds: GeoBounds,
+  minSpanMeters: number,
+): GeoBounds {
+  const midLat = (bounds.north + bounds.south) / 2;
+  const midLng = (bounds.east + bounds.west) / 2;
+  const heightM = (bounds.north - bounds.south) * 111_320;
+  const widthM =
+    (bounds.east - bounds.west) *
+    111_320 *
+    Math.cos((midLat * Math.PI) / 180);
+  const spanLat = Math.max(heightM, minSpanMeters) / 111_320;
+  const spanLng =
+    Math.max(widthM, minSpanMeters) /
+    (111_320 * Math.max(0.01, Math.cos((midLat * Math.PI) / 180)));
+  return {
+    west: midLng - spanLng / 2,
+    east: midLng + spanLng / 2,
+    south: midLat - spanLat / 2,
+    north: midLat + spanLat / 2,
+  };
+}
+
+/** Mapbox fitBounds order: southwest, northeast as [lng, lat]. */
+export function boundsToFitCorners(
+  bounds: GeoBounds,
+): [[number, number], [number, number]] {
+  return [
+    [bounds.west, bounds.south],
+    [bounds.east, bounds.north],
+  ];
+}
+
 export function fitMetersPerUnit(
   center: MapPoint,
   points: readonly MapPoint[],

@@ -298,6 +298,22 @@ export const limeCabSurfaces = createSurfaceManager({
       },
     },
     /**
+     * In-trip chat. Keyboard plus a thread, so the interrupt takes the
+     * screen the way heading search does — not a compact yes/no drawer.
+     */
+    openTripChat: {
+      intent: "interrupt",
+      surfaces: {
+        primary: { emphasis: "suspended" },
+        map: { emphasis: "background", interaction: "passive" },
+        interrupt: {
+          emphasis: "interrupt",
+          presentation: "overlay",
+          interaction: "active",
+        },
+      },
+    },
+    /**
      * Back on a committed ride. Not a step backwards and not a cancellation:
      * the ride keeps running, the sheet stands down to a pill, and Home comes
      * back. A surface emphasis change, nothing else.

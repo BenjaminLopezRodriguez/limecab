@@ -10,21 +10,61 @@ import Map, {
 import "mapbox-gl/dist/mapbox-gl.css";
 
 import { LocationPinMarker } from "@/components/service-app/location-pin-marker";
-import { CarMarker } from "@/components/service-app/car-marker";
-import { RestStopMarker } from "@/components/service-app/rest-stop-marker";
+import { MapPointMarker } from "@/components/service-app/map-point-marker";
 import {
   onOverlayChange,
   readMapPadding,
 } from "@/components/service-app/map-overlay";
 import { SpatialEtaMarker } from "@/components/service-app/spatial-eta-marker";
 import {
+  boundsForPoints,
+  boundsToFitCorners,
+  expandBoundsToSpan,
   tracksProvider,
   zoomForMode,
+  type MapPoint,
   type MapViewProps,
 } from "@/lib/service-app/map-adapter";
 import { cn } from "@/lib/utils";
 
 const ROUTE_LIME = "#c8f031";
+
+function fitHighlightedGeometry(
+  map: MapRef,
+  points: readonly MapPoint[],
+  options: {
+    padding: { top: number; bottom: number; left: number; right: number };
+    duration: number;
+    maxZoom: number;
+    minSpanMeters: number;
+  },
+) {
+  const raw = boundsForPoints(points);
+  if (!raw) return false;
+  map.fitBounds(boundsToFitCorners(expandBoundsToSpan(raw, options.minSpanMeters)), {
+    padding: options.padding,
+    duration: options.duration,
+    maxZoom: options.maxZoom,
+  });
+  return true;
+}
+
+function pointInPaddedView(
+  map: MapRef,
+  point: MapPoint,
+  padding: { top: number; bottom: number; left: number; right: number },
+) {
+  const gl = map.getMap();
+  const projected = gl.project([point.longitude, point.latitude]);
+  const { clientWidth, clientHeight } = gl.getContainer();
+  const margin = 28;
+  return (
+    projected.x >= padding.left + margin &&
+    projected.x <= clientWidth - padding.right - margin &&
+    projected.y >= padding.top + margin &&
+    projected.y <= clientHeight - padding.bottom - margin
+  );
+}
 
 /**
  * One layer id, two paint states.
@@ -165,6 +205,23 @@ export function MapboxCanvas({
   const lastRecenter = useRef(recenterAt);
   const followCam = useRef(true);
   const tracking = tracksProvider(mode);
+  const pickupCluster = useMemo(
+    () => points.filter((point) => point.kind === "pickup"),
+    [points],
+  );
+  const framingPickups = pickupCluster.length > 0;
+  const pickupGeometryKey = pickupCluster
+    .map((point) => `${point.latitude.toFixed(5)},${point.longitude.toFixed(5)}`)
+    .slice()
+    .sort()
+    .join("|");
+  const selectedPickup = pickupCluster.find((point) => point.selected);
+  const pickupSelectedKey = selectedPickup
+    ? `${selectedPickup.latitude.toFixed(5)},${selectedPickup.longitude.toFixed(5)}`
+    : "";
+  const userPanned = useRef(false);
+  const lastPickupGeom = useRef("");
+  const lastPickupSelected = useRef("");
   const follow = tracking
     ? points.find((point) => point.kind === "provider")
     : undefined;
@@ -179,11 +236,18 @@ export function MapboxCanvas({
     wasInteractive.current = interactive;
     const asked = recenterAt !== lastRecenter.current;
     lastRecenter.current = recenterAt;
-    if (asked) followCam.current = true;
+    if (asked) {
+      followCam.current = true;
+      userPanned.current = false;
+    }
     // A re-frame stays pending until the camera has actually arrived:
     // `resize()` and `setPadding()` cancel an ease in flight, and the sheet
     // leaving fires both right after the camera is told to move.
     let reframe = enteredPin || asked;
+    const geometryChanged = pickupGeometryKey !== lastPickupGeom.current;
+    const selectionChanged = pickupSelectedKey !== lastPickupSelected.current;
+    lastPickupGeom.current = pickupGeometryKey;
+    lastPickupSelected.current = pickupSelectedKey;
     const reduce =
       typeof window !== "undefined" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -193,6 +257,28 @@ export function MapboxCanvas({
       const padding = readMapPadding();
       map.getMap().setPadding(padding);
       const duration = reduce ? 0 : reframe ? 300 : 500;
+      const fitPickups = () =>
+        fitHighlightedGeometry(map, pickupCluster, {
+          padding,
+          duration,
+          maxZoom: 18,
+          minSpanMeters: 70,
+        });
+
+      if (pickupCluster.length > 0) {
+        if (reframe || geometryChanged) {
+          fitPickups();
+          return;
+        }
+        if (selectionChanged) {
+          if (selectedPickup && !pointInPaddedView(map, selectedPickup, padding)) {
+            fitPickups();
+          }
+          return;
+        }
+        if (!userPanned.current) fitPickups();
+        return;
+      }
 
       if (interactive) {
         // Entering the posture frames the subject; `recenterAt` puts them back
@@ -221,15 +307,12 @@ export function MapboxCanvas({
       if (tracking) return;
 
       if (route.length > 1) {
-        const lats = route.map((point) => point.latitude);
-        const lngs = route.map((point) => point.longitude);
-        map.fitBounds(
-          [
-            [Math.min(...lngs), Math.min(...lats)],
-            [Math.max(...lngs), Math.max(...lats)],
-          ],
-          { padding, duration, maxZoom: 15 },
-        );
+        fitHighlightedGeometry(map, route, {
+          padding,
+          duration,
+          maxZoom: 15,
+          minSpanMeters: 120,
+        });
         return;
       }
 
@@ -251,10 +334,14 @@ export function MapboxCanvas({
     };
   }, [
     interactive,
+    pickupCluster,
+    pickupGeometryKey,
+    pickupSelectedKey,
     ready,
     recenterAt,
     resolvedZoom,
     route,
+    selectedPickup,
     start.latitude,
     start.longitude,
     tracking,
@@ -306,6 +393,7 @@ export function MapboxCanvas({
         attributionControl
         onDragStart={() => {
           followCam.current = false;
+          userPanned.current = true;
         }}
         onLoad={() => {
           mapRef.current?.getMap().setProjection("mercator");
@@ -353,39 +441,28 @@ export function MapboxCanvas({
             latitude={point.latitude}
             anchor="center"
             rotationAlignment={point.kind === "poi" ? "viewport" : "map"}
-            style={point.selected ? { zIndex: 1 } : undefined}
+            style={{
+              overflow: "visible",
+              zIndex: point.selected ? 2 : 1,
+            }}
           >
-            {point.kind === "poi" ? (
-              <RestStopMarker
-                label={point.label ?? "Stop"}
-                selected={point.selected}
-                category={point.category}
-                onSelect={
-                  onSelectPoint ? () => onSelectPoint(point) : undefined
-                }
-              />
-            ) : point.kind === "provider" || point.kind === "marker" ? (
-              <CarMarker
-                heading={point.heading ?? 0}
-                size={point.kind === "provider" ? "md" : "sm"}
-              />
-            ) : (
-              <span
-                className={cn(
-                  "block size-3 rounded-full ring-2 ring-black/40",
-                  point.kind === "destination"
-                    ? "bg-foreground rounded-[3px]"
-                    : "bg-lime",
-                )}
-              />
-            )}
+            <MapPointMarker
+              point={point}
+              mode={mode}
+              onSelect={
+                (point.kind === "pickup" || point.kind === "poi") &&
+                onSelectPoint
+                  ? () => onSelectPoint(point)
+                  : undefined
+              }
+            />
           </Marker>
         ))}
       </Map>
 
       {/* The crosshair belongs to *picking a point*, not to gestures: a driver
           panning an idle map is not choosing a pickup. */}
-      {interactive && mode === "select_location" ? (
+      {interactive && mode === "select_location" && !framingPickups ? (
         <LocationPinMarker name={pinLabel ?? null} locating={pinLocating} />
       ) : null}
 

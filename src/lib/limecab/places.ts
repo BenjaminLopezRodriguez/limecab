@@ -1,3 +1,4 @@
+import type { PickupCandidate } from "@/lib/limecab/pickup-points";
 import {
   createHttpGeocodeAdapter,
   type GeocodeAdapter,
@@ -37,8 +38,8 @@ export function setSearchProximity(
 }
 
 /**
- * Address search: Mapbox Places when the token is configured, static LA
- * fixtures otherwise.
+ * Address search: the NL place pipeline when a vendor token is configured,
+ * static LA fixtures otherwise.
  *
  * The fixtures used to be *prepended* to every live result, which is why "gr"
  * always led with Griffith no matter what the geocoder said. They are the
@@ -127,6 +128,32 @@ async function fetchNearbyCategory(
     /* Mapbox down or unconfigured — fixtures still answer. */
   }
   return nearbyRestStops(origin, fallback);
+}
+
+/** Curb-side pickup candidates for confirm-pickup. Token stays on the server. */
+export async function fetchPickupPoints(
+  latitude: number,
+  longitude: number,
+  address?: string,
+  signal?: AbortSignal,
+): Promise<{ points: PickupCandidate[]; selectedId: string | null }> {
+  const query = new URLSearchParams({
+    lat: String(latitude),
+    lng: String(longitude),
+  });
+  if (address) query.set("q", address);
+  const res = await fetch(`/api/map/pickup-points?${query}`, { signal });
+  if (!res.ok) throw new Error("Pickup points failed");
+  const body = (await res.json()) as {
+    points?: PickupCandidate[];
+    selectedId?: string | null;
+  };
+  const points = body.points ?? [];
+  if (points.length === 0) throw new Error("No pickup points");
+  return {
+    points,
+    selectedId: body.selectedId ?? points[0]?.id ?? null,
+  };
 }
 
 /** Coffee and highway rest areas around a heading pin. */

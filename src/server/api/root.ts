@@ -3,6 +3,7 @@ import { loginRouter } from "@/server/api/routers/login";
 import { placesRouter } from "@/server/api/routers/places";
 import { postRouter } from "@/server/api/routers/post";
 import { riderRouter } from "@/server/api/routers/rider";
+import { tripChatRouter } from "@/server/api/routers/trip-chat";
 import { tripRouter } from "@/server/api/routers/trip";
 import { createCallerFactory, createTRPCRouter } from "@/server/api/trpc";
 
@@ -18,6 +19,7 @@ export const appRouter = createTRPCRouter({
   places: placesRouter,
   rider: riderRouter,
   trip: tripRouter,
+  tripChat: tripChatRouter,
 });
 
 // export type definition of API
