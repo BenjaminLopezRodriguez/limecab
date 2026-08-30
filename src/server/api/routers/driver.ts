@@ -65,6 +65,13 @@ const registerInput = z.object({
   vehiclePlate: z.string().min(1).max(16),
 });
 
+const vehicleFields = z.object({
+  make: z.string().min(1).max(64),
+  model: z.string().min(1).max(64),
+  color: z.string().min(1).max(32),
+  plate: z.string().min(1).max(16),
+});
+
 const tripIdInput = z.object({ tripId: z.string().min(1).max(255) });
 
 const advanceInput = tripIdInput.extend({
@@ -221,6 +228,28 @@ export const driverRouter = createTRPCRouter({
         .returning();
 
       if (!driver) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      return driver;
+    }),
+
+  /**
+   * Set the vehicle riders match at the curb. Same columns registration
+   * writes — the profile garage picks one, then this stamps it active.
+   */
+  updateVehicle: protectedProcedure
+    .input(vehicleFields)
+    .mutation(async ({ ctx, input }) => {
+      const [driver] = await ctx.db
+        .update(drivers)
+        .set({
+          vehicleMake: input.make,
+          vehicleModel: input.model,
+          vehicleColor: input.color,
+          vehiclePlate: input.plate,
+        })
+        .where(eq(drivers.userId, ctx.session.user.id))
+        .returning();
+
+      if (!driver) throw new TRPCError({ code: "NOT_FOUND" });
       return driver;
     }),
 
