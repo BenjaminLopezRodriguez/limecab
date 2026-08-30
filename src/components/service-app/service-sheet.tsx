@@ -123,11 +123,16 @@ export function ServiceSheet({
   description?: string;
   presentation?: SheetPresentation;
   /**
-   * Listed sheets: the top snap is overlay (1). The 6rem default cap would
-   * make that snap unreachable, so this also lifts max-height to 100dvh.
+   * Opt in to a top snap of overlay (1). Used for listed sheets that grow
+   * into the same drawer, and for peeks whose top snap hands off to another
+   * scene (pin → search). The 6rem default cap would make that snap
+   * unreachable, so this also lifts max-height to 100dvh.
    */
   overlaySnap?: boolean;
-  /** Fired when the mobile drawer snaps to a new rung. */
+  /**
+   * Fired when the mobile drawer snaps to a new rung. Callers that treat the
+   * overlay snap as a scene change (not taller chrome) should act here.
+   */
   onSnapChange?: (snap: number) => void;
   /**
    * Dragging past peek (snap 0) or otherwise closing the drawer. Omit it

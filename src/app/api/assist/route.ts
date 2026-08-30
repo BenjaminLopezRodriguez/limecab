@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 
 import { planAssist } from "@/server/limecab/assist";
+import {
+  ASSIST_PHOTO_CATEGORIES,
+  type AssistPhotoCategory,
+} from "@/lib/limecab/assist-photo";
 import type { ShopItem } from "@/lib/limecab/shop-list";
 
 /**
  * Assist omnisearch. The model stays on the server.
  *
- * POST /api/assist  { query, lat?, lng?, items?, storeHints? } → { mode, message, suggestions, cards, plan? }
+ * POST /api/assist  { query, lat?, lng?, items?, storeHints?, category?, hasPhoto? } → { mode, message, suggestions, cards, plan? }
  */
 export async function POST(request: Request) {
   let body: {
@@ -15,6 +19,8 @@ export async function POST(request: Request) {
     lng?: unknown;
     items?: unknown;
     storeHints?: unknown;
+    category?: unknown;
+    hasPhoto?: unknown;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -45,6 +51,8 @@ export async function POST(request: Request) {
     request,
     items: readItems(body.items),
     storeHints: readHints(body.storeHints),
+    category: readCategory(body.category),
+    hasPhoto: body.hasPhoto === true,
   });
   return NextResponse.json(result);
 }
@@ -72,4 +80,12 @@ function readHints(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const hints = value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
   return hints.length > 0 ? hints : undefined;
+}
+
+function readCategory(value: unknown): AssistPhotoCategory | undefined {
+  if (typeof value !== "string") return undefined;
+  const key = value.trim().toLowerCase();
+  return (ASSIST_PHOTO_CATEGORIES as readonly string[]).includes(key)
+    ? (key as AssistPhotoCategory)
+    : undefined;
 }

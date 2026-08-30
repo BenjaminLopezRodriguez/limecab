@@ -8,6 +8,10 @@ export default function ActivityLoading() {
   return (
     <TabPage title="Activity">
       <div aria-hidden="true">
+        <div className="mb-7 flex gap-2">
+          <div className="bg-muted h-11 w-16 animate-pulse rounded-full" />
+          <div className="bg-muted h-11 w-16 animate-pulse rounded-full" />
+        </div>
         <div className="bg-muted h-6 w-28 animate-pulse rounded" />
         <div className="ring-border mt-3 rounded-2xl px-5 py-6 ring-1">
           <div className="bg-muted h-4 w-2/3 animate-pulse rounded" />

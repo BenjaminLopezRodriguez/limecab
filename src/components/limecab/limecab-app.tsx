@@ -15,7 +15,10 @@ import { createMapboxAdapter } from "@/components/service-app/mapbox-adapter";
 import { ServiceAppShell } from "@/components/service-app/service-app-shell";
 import { MapRouteBar } from "@/components/service-app/map-route-bar";
 import { ServiceMap } from "@/components/service-app/service-map";
-import { ServiceSheet } from "@/components/service-app/service-sheet";
+import {
+  ServiceSheet,
+  SHEET_OVERLAY_SNAP,
+} from "@/components/service-app/service-sheet";
 import {
   ManagedSurface,
   SurfaceManagerProvider,
@@ -97,7 +100,6 @@ import {
 } from "@/lib/limecab/help";
 import {
   AVAILABLE_PROMO,
-  CURRENT_LOCATION,
   GEOCODE_FIXTURES,
   PAYMENT_METHODS,
   RIDE_PRODUCTS,
@@ -126,6 +128,8 @@ import {
   EMPTY_ASSIST_COMPOSE,
   filterMentions,
   insertMentionTrigger,
+  riderNoteFromAssistQuery,
+  shouldRefreshAssistQueryForPhoto,
   type AssistComposeDraft,
   type AssistMention,
 } from "@/lib/limecab/assist-compose";
@@ -336,11 +340,11 @@ function errorMessage(error: unknown): string {
 /**
  * Where the canvas points before the device has answered. A camera position,
  * *not* a pickup: it is never submitted, never labelled, and never Home. The
- * rider's real pickup arrives from geolocation, recenter, or a pin.
+ * rider's real pickup arrives from geolocation, their saved Home, or a pin.
  */
 const CAMERA_FALLBACK = {
-  latitude: CURRENT_LOCATION.latitude!,
-  longitude: CURRENT_LOCATION.longitude!,
+  latitude: 34.05,
+  longitude: -118.25,
 };
 
 /** No address until the device, a pin, or a Places result gives us one. */
@@ -1206,15 +1210,14 @@ function LimeCabFlow({
   }, [recentering]);
 
   /**
-   * The pickup starts unset and is *found*, never assumed. The device first,
-   * because that is where the rider is standing; their last pickup second,
-   * because that is where they have actually been. Nothing invents an address.
+   * The pickup starts unset and is *found*, never assumed. Device first;
+   * the rider's saved Home second. Nothing invents downtown LA.
    */
   const pickupSeeded = useRef(false);
   const resetPickupSeed = useCallback(() => {
     pickupSeeded.current = false;
   }, []);
-  const recent = api.trip.list.useQuery(undefined, {
+  const savedForPickup = api.places.list.useQuery(undefined, {
     enabled: signedIn && !pickup.address,
     refetchOnWindowFocus: false,
   });
@@ -1226,17 +1229,21 @@ function LimeCabFlow({
 
   useEffect(() => {
     if (pickup.address || recentering) return;
-    const last = recent.data?.find(
-      (row) => row.pickupLatitude != null && row.pickupLongitude != null,
-    );
-    if (!last) return;
+    const home = savedForPickup.data?.home;
+    if (
+      !home?.address ||
+      home.latitude == null ||
+      home.longitude == null
+    ) {
+      return;
+    }
     setPickup({
-      address: last.pickupAddress,
-      latitude: last.pickupLatitude ?? undefined,
-      longitude: last.pickupLongitude ?? undefined,
+      address: home.address,
+      latitude: home.latitude,
+      longitude: home.longitude,
       followsDevice: false,
     });
-  }, [pickup.address, recent.data, recentering]);
+  }, [pickup.address, recentering, savedForPickup.data?.home]);
 
   // Address search is biased to where the rider actually is, not to a constant.
   useEffect(() => {
@@ -1683,11 +1690,15 @@ function LimeCabSurfaces({
       origin: () => pickupRef.current,
       onLand: (plan) => landAssistRef.current(plan),
       photoContext: () => {
-        const classified = assistComposeRef.current.photoClassification;
-        if (!classified) return {};
+        const draft = assistComposeRef.current;
+        const classified = draft.photoClassification;
+        const hasPhoto = Boolean(draft.photoName || draft.photoUrl);
+        if (!classified && !hasPhoto) return {};
         return {
-          items: classified.items,
-          storeHints: classified.storeHints,
+          items: classified?.items,
+          storeHints: classified?.storeHints,
+          category: classified?.category,
+          hasPhoto,
         };
       },
     });
@@ -2218,18 +2229,29 @@ function LimeCabSurfaces({
     })();
   };
 
-  const hereLocation = (): Location =>
-    pickup.address && pickup.latitude !== undefined
-      ? {
-          address: pickup.address,
-          latitude: pickup.latitude,
-          longitude: pickup.longitude,
-        }
-      : {
-          address: CURRENT_LOCATION.address,
-          latitude: CURRENT_LOCATION.latitude,
-          longitude: CURRENT_LOCATION.longitude,
-        };
+  /** Device pickup, else saved Home. Never invents a downtown address. */
+  const hereLocation = (): Location | null => {
+    if (pickup.address && pickup.latitude !== undefined) {
+      return {
+        address: pickup.address,
+        latitude: pickup.latitude,
+        longitude: pickup.longitude,
+      };
+    }
+    const home = savedQuery.data?.home;
+    if (
+      home?.address &&
+      home.latitude != null &&
+      home.longitude != null
+    ) {
+      return {
+        address: home.address,
+        latitude: home.latitude,
+        longitude: home.longitude,
+      };
+    }
+    return null;
+  };
 
   const resolveAssistPlace = (place?: AssistPlace): Location | null => {
     if (!place) return null;
@@ -2289,8 +2311,10 @@ function LimeCabSurfaces({
     if (plan.kind === "help") {
       const house = dest ?? here;
       setBookingMode("help");
-      setPickup({ ...pickup, ...house, followsDevice: false });
-      setDestination(house);
+      if (house) {
+        setPickup({ ...pickup, ...house, followsDevice: false });
+        setDestination(house);
+      }
       surfaces.perform("chooseRide");
       go("select_service", {
         hasService: false,
@@ -2316,7 +2340,7 @@ function LimeCabSurfaces({
       setProductId("courier-small");
       setBookingMode("shop");
       setShopItems(itemsOpen ? [{ label: "" }] : [...items, { label: "" }]);
-      setDestination(here);
+      if (here) setDestination(here);
       setCourierValues({
         ...defaultOptionValues(COURIER_OPTIONS),
         recipientName: rider?.name ?? "",
@@ -2824,6 +2848,19 @@ function LimeCabSurfaces({
             presentation={sheetPresentation(
               surfaces.layout.primary?.presentation ?? "sheet",
             )}
+            // Pin confirm stays a short strip; the top snap is search, not a
+            // taller copy of "Where on the map?" — same gesture → scene swap
+            // as Trends → charts on the driver sheet.
+            overlaySnap={visible === "location_pin"}
+            onSnapChange={
+              visible === "location_pin"
+                ? (snap) => {
+                    if (snap >= SHEET_OVERLAY_SNAP) {
+                      openSearch(searchTarget);
+                    }
+                  }
+                : undefined
+            }
             onDismiss={visible === "location_pin" ? undefined : leaveTask}
           >
             {visible === "location_pin" && !surface.progress.locked ? (
@@ -3580,6 +3617,17 @@ function LimeCabSurfaces({
         onOpenChange={setAssistComposeOpen}
         draft={assistCompose}
         onDraftChange={(next) => {
+          // Photo attach / classification must refresh the omni query so
+          // LocationSearch re-runs suggest with shop context — otherwise a
+          // prior "need more of these" geocode sticks as ride POIs.
+          if (shouldRefreshAssistQueryForPhoto(assistCompose, next)) {
+            setAssistQuery((current) =>
+              composeAssistQuery(
+                riderNoteFromAssistQuery(current, assistCompose),
+                next,
+              ),
+            );
+          }
           setAssistCompose(next);
           if (next.recipientName) setSearchAudience("other");
         }}

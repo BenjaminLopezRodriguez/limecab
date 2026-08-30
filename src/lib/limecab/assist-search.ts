@@ -30,6 +30,8 @@ export function createAssistSearchAdapter({
   photoContext?: () => {
     items?: ShopItem[];
     storeHints?: string[];
+    category?: string;
+    hasPhoto?: boolean;
   };
 }): GeocodeAdapter & {
   planFor: (id: string) => AssistPlan | undefined;
@@ -58,6 +60,7 @@ export function createAssistSearchAdapter({
       response = undefined;
       plans.clear();
       const point = origin();
+      const photo = photoContext?.() ?? {};
       const res = await fetch("/api/assist", {
         method: "POST",
         signal,
@@ -66,7 +69,7 @@ export function createAssistSearchAdapter({
           query,
           lat: point.latitude ?? CURRENT_LOCATION.latitude,
           lng: point.longitude ?? CURRENT_LOCATION.longitude,
-          ...photoContext?.(),
+          ...photo,
         }),
       });
       if (signal?.aborted) return [];

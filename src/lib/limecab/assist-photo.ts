@@ -1,9 +1,9 @@
 /**
  * Assist photo → shop context.
  *
- * A vision model (or filename hint) classifies the image. Pure helpers turn
- * that into a pass-in Assist query and shop list. Bytes are also stored in
- * private Vercel Blob when configured so the server keeps a durable URL.
+ * Vision classifies the image; filename is a soft item-label fallback only.
+ * Store choice is resolved against real nearby/fixture candidates — closest
+ * place that might sell the item — not a canned chain from a switch.
  */
 
 import type { ShopItem } from "./shop-list.ts";
@@ -21,43 +21,87 @@ export type AssistPhotoCategory = (typeof ASSIST_PHOTO_CATEGORIES)[number];
 
 export type AssistPhotoClassification = {
   category: AssistPhotoCategory;
-  /** Sentence Assist should plan from, e.g. "deliver hex nuts from Home Depot now". */
+  /** Sentence Assist should plan from, e.g. "deliver hex nuts now". */
   query: string;
   items: ShopItem[];
-  /** Chains or store names that sell this, e.g. Home Depot. */
+  /**
+   * Soft store *types* or optional chain suggestions (hardware store,
+   * office supply, Target). Planning matches these against real places.
+   */
   storeHints: string[];
   source: "model" | "filename";
 };
 
-export const STORE_HINTS_BY_CATEGORY: Record<
+/** Soft type labels — not locked chain destinations. */
+export const STORE_TYPES_BY_CATEGORY: Record<
   AssistPhotoCategory,
   readonly string[]
 > = {
-  hardware: ["Home Depot", "Lowe's"],
-  grocery: [],
-  pharmacy: ["CVS", "Walgreens"],
+  hardware: ["hardware store", "home improvement"],
+  grocery: ["grocery", "supermarket"],
+  pharmacy: ["pharmacy"],
   flowers: ["florist"],
-  home: ["Home Depot", "Target"],
+  home: ["office supply", "general merchandise", "home goods"],
   other: [],
 };
 
+/** @deprecated alias — prefer STORE_TYPES_BY_CATEGORY */
+export const STORE_HINTS_BY_CATEGORY = STORE_TYPES_BY_CATEGORY;
+
 const CATEGORY_SET = new Set<string>(ASSIST_PHOTO_CATEGORIES);
 
+/** Keywords that mark a real place as viable for a photo category. */
+const PLACE_KEYWORDS_BY_CATEGORY: Record<
+  AssistPhotoCategory,
+  readonly string[]
+> = {
+  hardware: ["home depot", "lowe", "ace hardware", "hardware"],
+  grocery: [
+    "vons",
+    "ralphs",
+    "trader joe",
+    "whole foods",
+    "grocery",
+    "market",
+    "supermarket",
+    "superior",
+  ],
+  pharmacy: ["cvs", "walgreens", "pharmacy", "drug"],
+  flowers: ["florist", "flower", "plant shop", "nursery"],
+  home: [
+    "target",
+    "walmart",
+    "office depot",
+    "staples",
+    "office supply",
+    "home depot",
+    "lowe",
+  ],
+  other: [],
+};
+
 /**
- * Hardware fasteners in a filename — "nut.jpg", "hex-nut.png". Avoids
- * "doughnut". Food nuts are a vision-model job, not a camera roll name.
+ * Soft filename tokens → item label only. No chain lock.
+ * Avoids doughnut for "nut". Generic IMG_1234 → null.
  */
 const FILENAME_HARDWARE =
   /(^|[-_\s])((hex[-_\s]?)?nuts?|bolts?|screws?|washers?|fasteners?|hardware)([-_\s.]|$)/i;
-
 const FILENAME_FLOWERS = /(^|[-_\s])(flowers?|bouquet)([-_\s.]|$)/i;
 const FILENAME_GROCERY =
   /(^|[-_\s])(milk|eggs|bread|grocer(?:y|ies)|bananas?)([-_\s.]|$)/i;
-/** Stationery — stock PNGs often embed "pencil" / "pen" in the name. */
 const FILENAME_STATIONERY =
   /(^|[-_\s])(pencils?|pens?|markers?|highlighters?|erasers?|stationery|notebooks?|staplers?)([-_\s.]|$)/i;
 
-const STATIONERY_STORES = ["Target", "Home Depot"] as const;
+const EARTH_M = 111_320;
+
+export type PhotoStoreCandidate = {
+  address: string;
+  latitude?: number;
+  longitude?: number;
+  label?: string;
+  /** Optional place category from Mapbox/fixtures (hardware_store, grocery…). */
+  category?: string;
+};
 
 function basename(filename: string): string {
   const slash = Math.max(filename.lastIndexOf("/"), filename.lastIndexOf("\\"));
@@ -94,7 +138,7 @@ function cleanHints(hints: readonly string[] | undefined): string[] {
   return out;
 }
 
-/** "deliver hex nuts from Home Depot now" — enough for Assist to land shop. */
+/** "deliver hex nuts now" — store resolved later against real places. */
 export function composeShopQuery(
   items?: readonly ShopItem[] | null,
   storeHints?: readonly string[] | null,
@@ -102,11 +146,27 @@ export function composeShopQuery(
   const itemLine = cleanItems(items ?? undefined)
     .map((item) => item.label)
     .join(" and ");
-  const store = cleanHints(storeHints ?? undefined)[0];
+  // Only name a store in the sentence when the hint looks like a proper place
+  // (Target, Home Depot) — not a soft type ("hardware store").
+  const store = cleanHints(storeHints ?? undefined).find((hint) =>
+    looksLikePlaceName(hint),
+  );
   if (itemLine && store) return `deliver ${itemLine} from ${store} now`;
   if (itemLine) return `deliver ${itemLine} now`;
   if (store) return `buy from ${store} now`;
   return "";
+}
+
+function looksLikePlaceName(hint: string): boolean {
+  const lower = hint.toLowerCase();
+  if (
+    /\b(store|shop|supply|merchandise|goods|supermarket|improvement|pharmacy|florist|grocery)\b/i.test(
+      lower,
+    )
+  ) {
+    return false;
+  }
+  return /[A-Z]/.test(hint) || /\b(target|home depot|lowe'?s|cvs|walgreens|vons|ralphs)\b/i.test(lower);
 }
 
 function withTiming(query: string): string {
@@ -126,9 +186,23 @@ export function assistQueryFromPhoto(
   return composeShopQuery(classification.items, classification.storeHints);
 }
 
+function softClassification(
+  category: AssistPhotoCategory,
+  items: ShopItem[],
+): AssistPhotoClassification {
+  const storeHints = [...STORE_TYPES_BY_CATEGORY[category]];
+  return {
+    category,
+    query: composeShopQuery(items, storeHints),
+    items,
+    storeHints,
+    source: "filename",
+  };
+}
+
 /**
- * When the vision model is missing or fails, a hardware-ish filename still
- * drives Shop (Home Depot). Generic IMG_1234 names return null.
+ * Soft fallback when vision is unavailable. Extracts an item label from the
+ * filename — never locks a destination chain.
  */
 export function classifyPhotoFilename(
   filename: string,
@@ -138,38 +212,24 @@ export function classifyPhotoFilename(
   if (FILENAME_HARDWARE.test(name)) {
     const hex = /\bhex\b/i.test(name);
     const items: ShopItem[] = [
-      { label: hex ? "hex nuts" : /\bnuts?\b/i.test(name) ? "hardware nuts" : "hardware" },
+      {
+        label: hex
+          ? "hex nuts"
+          : /\bnuts?\b/i.test(name)
+            ? "hardware nuts"
+            : "hardware",
+      },
     ];
     if (/\bbolts?\b/i.test(name) && !/\bnuts?\b/i.test(name)) {
       items[0] = { label: "bolts" };
     }
-    return {
-      category: "hardware",
-      query: composeShopQuery(items, STORE_HINTS_BY_CATEGORY.hardware),
-      items,
-      storeHints: [...STORE_HINTS_BY_CATEGORY.hardware],
-      source: "filename",
-    };
+    return softClassification("hardware", items);
   }
   if (FILENAME_FLOWERS.test(name)) {
-    const items = [{ label: "flowers" }];
-    return {
-      category: "flowers",
-      query: composeShopQuery(items, STORE_HINTS_BY_CATEGORY.flowers),
-      items,
-      storeHints: [...STORE_HINTS_BY_CATEGORY.flowers],
-      source: "filename",
-    };
+    return softClassification("flowers", [{ label: "flowers" }]);
   }
   if (FILENAME_GROCERY.test(name)) {
-    const items = [{ label: "groceries" }];
-    return {
-      category: "grocery",
-      query: composeShopQuery(items, undefined),
-      items,
-      storeHints: [],
-      source: "filename",
-    };
+    return softClassification("grocery", [{ label: "groceries" }]);
   }
   if (FILENAME_STATIONERY.test(name)) {
     const pencil = /\bpencils?\b/i.test(name);
@@ -185,13 +245,7 @@ export function classifyPhotoFilename(
               : "stationery",
       },
     ];
-    return {
-      category: "home",
-      query: composeShopQuery(items, STATIONERY_STORES),
-      items,
-      storeHints: [...STATIONERY_STORES],
-      source: "filename",
-    };
+    return softClassification("home", items);
   }
   return null;
 }
@@ -204,7 +258,9 @@ function asCategory(value: unknown): AssistPhotoCategory | null {
   if (/\bflower|florist|bouquet\b/.test(key)) return "flowers";
   if (/\bpharm|drug\b/.test(key)) return "pharmacy";
   if (/\bgrocer|food|supermarket\b/.test(key)) return "grocery";
-  if (/\bhome|household|furniture|stationer|office supply\b/.test(key)) return "home";
+  if (/\bhome|household|furniture|stationer|office supply\b/.test(key)) {
+    return "home";
+  }
   return "other";
 }
 
@@ -248,18 +304,18 @@ export function normalizePhotoClassification(
   const record = raw as Record<string, unknown>;
   const category = asCategory(record.category) ?? "other";
   const items = itemsFromUnknown(record.items ?? record.labels);
-  const storeHints = hintsFromUnknown(
+  const fromModel = hintsFromUnknown(
     record.storeHints ?? record.stores ?? record.store,
   );
-  const hinted =
-    storeHints.length > 0
-      ? storeHints
-      : [...STORE_HINTS_BY_CATEGORY[category]];
+  const storeHints =
+    fromModel.length > 0
+      ? fromModel
+      : [...STORE_TYPES_BY_CATEGORY[category]];
   const query =
     typeof record.query === "string" && record.query.trim()
       ? record.query.trim()
-      : composeShopQuery(items, hinted);
-  if (!query && items.length === 0 && hinted.length === 0) {
+      : composeShopQuery(items, storeHints);
+  if (!query && items.length === 0 && storeHints.length === 0) {
     return fallbackFilename ? classifyPhotoFilename(fallbackFilename) : null;
   }
   const source = record.source === "filename" ? "filename" : "model";
@@ -267,7 +323,7 @@ export function normalizePhotoClassification(
     category,
     query: withTiming(query),
     items,
-    storeHints: hinted,
+    storeHints,
     source,
   };
 }
@@ -276,4 +332,150 @@ export function shopItemsFromPhoto(
   classification: AssistPhotoClassification | null | undefined,
 ): ShopItem[] {
   return cleanItems(classification?.items);
+}
+
+export function metersBetweenPlaces(
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number },
+): number {
+  const dLat = (b.latitude - a.latitude) * EARTH_M;
+  const dLng =
+    (b.longitude - a.longitude) *
+    EARTH_M *
+    Math.cos((a.latitude * Math.PI) / 180);
+  return Math.hypot(dLat, dLng);
+}
+
+function placeHaystack(store: PhotoStoreCandidate): string {
+  return `${store.label ?? ""} ${store.address} ${store.category ?? ""}`.toLowerCase();
+}
+
+/**
+ * How well a real place matches photo classification (higher = more likely
+ * to sell the item). Soft type hints and category keywords both count.
+ */
+export function scoreStoreForPhoto(
+  store: PhotoStoreCandidate,
+  classification: Pick<
+    AssistPhotoClassification,
+    "category" | "storeHints" | "items"
+  >,
+): number {
+  const hay = placeHaystack(store);
+  if (!hay.trim()) return 0;
+  let score = 0;
+
+  for (const hint of classification.storeHints) {
+    const token = hint.trim().toLowerCase();
+    if (!token) continue;
+    if (hay.includes(token)) score += 12;
+    else {
+      const parts = token.split(/\s+/).filter((part) => part.length > 2);
+      if (parts.length > 0 && parts.every((part) => hay.includes(part))) {
+        score += 8;
+      }
+    }
+  }
+
+  for (const keyword of PLACE_KEYWORDS_BY_CATEGORY[classification.category]) {
+    if (hay.includes(keyword)) score += 6;
+  }
+
+  // Fixture / Mapbox category tags
+  const placeCat = (store.category ?? "").toLowerCase();
+  if (
+    classification.category === "hardware" &&
+    /hardware/.test(placeCat)
+  ) {
+    score += 10;
+  }
+  if (
+    classification.category === "grocery" &&
+    /grocery|supermarket|food/.test(placeCat)
+  ) {
+    score += 10;
+  }
+  if (
+    classification.category === "pharmacy" &&
+    /pharm|drug/.test(placeCat)
+  ) {
+    score += 10;
+  }
+  if (
+    classification.category === "flowers" &&
+    /florist|flower|plant/.test(placeCat)
+  ) {
+    score += 10;
+  }
+  if (
+    classification.category === "home" &&
+    /department|general|office|home/.test(placeCat)
+  ) {
+    score += 4;
+  }
+
+  return score;
+}
+
+export type RankedPhotoStore = PhotoStoreCandidate & {
+  matchScore: number;
+  meters: number | null;
+};
+
+/**
+ * Rank real store candidates for a photo classification. Viable matches
+ * (matchScore > 0) sort closest-first when origin coords exist.
+ */
+export function rankStoresForPhoto(
+  classification: Pick<
+    AssistPhotoClassification,
+    "category" | "storeHints" | "items"
+  >,
+  candidates: readonly PhotoStoreCandidate[],
+  origin?: { latitude: number; longitude: number } | null,
+): RankedPhotoStore[] {
+  const ranked = candidates.map((store) => {
+    const hasCoords =
+      typeof store.latitude === "number" &&
+      typeof store.longitude === "number" &&
+      origin &&
+      Number.isFinite(origin.latitude) &&
+      Number.isFinite(origin.longitude);
+    return {
+      ...store,
+      matchScore: scoreStoreForPhoto(store, classification),
+      meters: hasCoords
+        ? metersBetweenPlaces(origin, {
+            latitude: store.latitude!,
+            longitude: store.longitude!,
+          })
+        : null,
+    };
+  });
+
+  const viable = ranked.filter((entry) => entry.matchScore > 0);
+  const pool = viable.length > 0 ? viable : [];
+
+  pool.sort((a, b) => {
+    if (a.meters != null && b.meters != null && Math.abs(a.meters - b.meters) > 40) {
+      return a.meters - b.meters;
+    }
+    if (a.meters != null && b.meters == null) return -1;
+    if (a.meters == null && b.meters != null) return 1;
+    return b.matchScore - a.matchScore;
+  });
+
+  return pool;
+}
+
+/** Closest viable store for the classified item, or null if none match. */
+export function pickClosestStoreForPhoto(
+  classification: Pick<
+    AssistPhotoClassification,
+    "category" | "storeHints" | "items"
+  >,
+  candidates: readonly PhotoStoreCandidate[],
+  origin?: { latitude: number; longitude: number } | null,
+): PhotoStoreCandidate | null {
+  return rankStoresForPhoto(classification, candidates, origin)[0] ?? null;
 }

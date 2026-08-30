@@ -208,6 +208,53 @@ export function isPhotoReferentialNote(text: string): boolean {
   ) || /^(more of )?(these|those|them)$/i.test(t);
 }
 
+/** True when compose already stamped a photo shop sentence onto the query. */
+export function isPhotoShopQuery(query: string): boolean {
+  return /\bbuy what is in the photo\b/i.test(query);
+}
+
+/**
+ * Peel a prior compose stamp so photo refresh can re-merge cleanly
+ * (avoids "deliver pencils now: buy what is in the photo now: …").
+ */
+export function riderNoteFromAssistQuery(
+  text: string,
+  draft: AssistComposeDraft,
+): string {
+  let note = text.trim();
+  if (!note) return "";
+  note = note.replace(/^buy what is in the photo now:\s*/i, "").trim();
+  const classified = draft.photoClassification
+    ? assistQueryFromPhoto(draft.photoClassification)
+    : "";
+  if (classified) {
+    const lower = note.toLowerCase();
+    const seed = classified.toLowerCase();
+    if (lower === seed) return "";
+    if (lower.startsWith(`${seed}:`)) {
+      note = note.slice(classified.length).replace(/^:\s*/, "").trim();
+    }
+  }
+  return note;
+}
+
+/**
+ * Whether attaching / classifying a photo should refresh the omni-bar query
+ * so LocationSearch re-runs suggest with photo shop context.
+ */
+export function shouldRefreshAssistQueryForPhoto(
+  prev: AssistComposeDraft,
+  next: AssistComposeDraft,
+): boolean {
+  const photoNow = Boolean(next.photoName || next.photoUrl);
+  const photoWas = Boolean(prev.photoName || prev.photoUrl);
+  if (photoNow && !photoWas) return true;
+  if (next.photoClassification && next.photoClassification !== prev.photoClassification) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Prefix chips that travel with the typed query into Assist.
  *

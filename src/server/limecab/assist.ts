@@ -5,6 +5,7 @@ import {
   applyAssistPhotoContext,
   assistResponseFromPlans,
   hardwareStore,
+  isAssistPhotoShopAsk,
   nearestShop,
   placeFromFixtures,
   planAssistHeuristic,
@@ -17,6 +18,7 @@ import {
   type AssistResponse,
 } from "@/lib/limecab/assist";
 import { resolveAssistTextcon } from "@/lib/limecab/assist-textcon";
+import type { AssistPhotoCategory } from "@/lib/limecab/assist-photo";
 import { SHOP_PLACES, HARDWARE_PLACES } from "@/lib/limecab/mock";
 import { nearbyRestStops } from "@/lib/limecab/rest-stops";
 import { searchNaturalPlaces } from "@/server/limecab/place-search";
@@ -212,6 +214,9 @@ type ToolContext = {
 /**
  * Plan an Assist query. DeepSeek + tools when the key is present; heuristic
  * otherwise. Tools never request, match, or charge.
+ *
+ * Photo-driven shop asks skip DeepSeek — resolve_place will geocode notes like
+ * "need more of these" into ride POIs and fight the photo shop path.
  */
 export async function planAssist(input: {
   query: string;
@@ -220,14 +225,34 @@ export async function planAssist(input: {
   request: Request;
   items?: ShopItem[];
   storeHints?: string[];
+  category?: AssistPhotoCategory;
+  hasPhoto?: boolean;
 }): Promise<AssistResponse> {
   const query = input.query.trim();
-  const photo = { items: input.items, storeHints: input.storeHints };
+  const photo = {
+    items: input.items,
+    storeHints: input.storeHints,
+    category: input.category,
+    hasPhoto: input.hasPhoto,
+    origin: { latitude: input.latitude, longitude: input.longitude },
+  };
   const fallback = applyAssistPhotoContext(
     query,
     planAssistHeuristic(query),
     photo,
   );
+  if (
+    isAssistPhotoShopAsk(query, {
+      items: input.items,
+      storeHints: input.storeHints,
+      hasPhoto: input.hasPhoto,
+    })
+  ) {
+    return fallback.cards.length > 0
+      ? fallback
+      : enrichHeuristic(fallback, input);
+  }
+
   const key = env.DEEPSEEK_API_KEY;
   if (!key) {
     logOnce("deepseek", "[assist] DEEPSEEK_API_KEY missing — heuristic plan");
@@ -263,14 +288,19 @@ async function enrichHeuristic(
     request: Request;
     items?: ShopItem[];
     storeHints?: string[];
+    category?: AssistPhotoCategory;
+    hasPhoto?: boolean;
   },
 ): Promise<AssistResponse> {
   if (fallback.cards.length > 0) return fallback;
   // Photo-driven shop ask — do not geocode the typed note as a ride POI.
-  if ((input.items?.length ?? 0) > 0 || (input.storeHints?.length ?? 0) > 0) {
-    return fallback;
-  }
-  if (/\bbuy what is in the photo\b/i.test(input.query)) {
+  if (
+    isAssistPhotoShopAsk(input.query, {
+      items: input.items,
+      storeHints: input.storeHints,
+      hasPhoto: input.hasPhoto,
+    })
+  ) {
     return fallback;
   }
   const places = await resolvePlaces(input.query, input);

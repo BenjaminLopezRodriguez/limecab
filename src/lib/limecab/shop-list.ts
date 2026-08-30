@@ -61,6 +61,11 @@ export function parseShopList(raw: string | null | undefined): ShopItem[] {
   }
 }
 
+/** A courier trip carrying a list is a Shop cart — the only discriminator. */
+export function isShopTrip(itemList: string | null | undefined): boolean {
+  return parseShopList(itemList).length > 0;
+}
+
 export function serializeShopList(items: readonly ShopItem[]): string {
   return JSON.stringify(normalizeShopList(items));
 }

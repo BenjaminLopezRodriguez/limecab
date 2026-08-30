@@ -11,6 +11,11 @@ import {
 import { findBookableProduct, isCourierProduct } from "@/lib/limecab/courier";
 import { formatTripWhen, tripStatusLabel } from "@/lib/limecab/format";
 import { RIDE_PRODUCTS } from "@/lib/limecab/mock";
+import {
+  isShopTrip,
+  parseShopList,
+  shopItemLine,
+} from "@/lib/limecab/shop-list";
 import { formatMoney } from "@/lib/service-app/services";
 import { auth } from "@/server/auth";
 import { api } from "@/trpc/server";
@@ -32,25 +37,48 @@ export default async function TripDetailPage({
   }
 
   const courier = isCourierProduct(trip.productId);
+  const shop = isShopTrip(trip.itemList);
+  const shopItems = shop ? parseShopList(trip.itemList) : [];
   const product =
     findBookableProduct(trip.productId, RIDE_PRODUCTS)?.name ?? "Lime";
   const tickets = await api.trip.tickets({ tripId });
+  const backHref = shop ? "/activity?tab=shop" : "/activity";
+  const title = shop
+    ? shopItems.map(shopItemLine).slice(0, 2).join(", ") || trip.pickupAddress
+    : courier && trip.recipientName
+      ? trip.recipientName
+      : trip.destinationAddress;
 
   return (
     <TabSubpage
-      backHref="/activity"
+      backHref={backHref}
       backLabel="Back to activity"
-      title={courier && trip.recipientName ? trip.recipientName : trip.destinationAddress}
+      title={title}
     >
       <p className="text-muted-foreground -mt-4 text-sm tabular-nums">
-        {formatTripWhen(trip.requestedAt)} · {product} ·{" "}
+        {formatTripWhen(trip.requestedAt)} · {shop ? "Shop" : product} ·{" "}
         {tripStatusLabel(trip.status, courier)}
       </p>
 
+      {shopItems.length > 0 ? (
+        <ProfileSection title="Cart">
+          {shopItems.map((item, index) => (
+            <ProfileValueRow
+              key={`${item.label}-${index}`}
+              label={shopItemLine(item)}
+              value={item.note ?? "—"}
+            />
+          ))}
+        </ProfileSection>
+      ) : null}
+
       <ProfileSection title="Route">
-        <ProfileValueRow label={courier ? "Pick up" : "Pickup"} value={trip.pickupAddress} />
         <ProfileValueRow
-          label={courier ? "Drop-off" : "Destination"}
+          label={shop ? "Store" : courier ? "Pick up" : "Pickup"}
+          value={trip.pickupAddress}
+        />
+        <ProfileValueRow
+          label={courier || shop ? "Drop-off" : "Destination"}
           value={trip.destinationAddress}
         />
       </ProfileSection>
@@ -97,10 +125,10 @@ export default async function TripDetailPage({
       ) : null}
 
       <Link
-        href={courier ? "/?service=courier" : "/"}
+        href={shop ? "/?service=shop" : courier ? "/?service=courier" : "/"}
         className="ring-border focus-visible:ring-ring active:bg-accent mt-7 flex min-h-14 items-center justify-center rounded-full text-[15px] font-semibold tracking-tight ring-1 focus-visible:ring-2 focus-visible:outline-none"
       >
-        Rebook
+        {shop ? "Reorder" : "Rebook"}
       </Link>
       <ProfileNote>
         Support is always from the trip it belongs to. Open Get support to send

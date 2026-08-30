@@ -7,6 +7,10 @@
 
 import { splitAssistMessage } from "./assist-message.ts";
 import {
+  pickClosestStoreForPhoto,
+  type AssistPhotoCategory,
+} from "./assist-photo.ts";
+import {
   resolveAssistTextcon,
   textconIdForPlan,
   type AssistServiceId,
@@ -683,10 +687,28 @@ export function reconcileAssistResponse(
   };
 }
 
+/** Photo shop ask — compose stamp, referential note, or explicit photo payload. */
+export function isAssistPhotoShopAsk(
+  query: string,
+  extras: {
+    items?: ShopItem[];
+    storeHints?: string[];
+    hasPhoto?: boolean;
+  } = {},
+): boolean {
+  if (extras.hasPhoto) return true;
+  if ((extras.items?.length ?? 0) > 0 || (extras.storeHints?.length ?? 0) > 0) {
+    return true;
+  }
+  if (/\bbuy what is in the photo\b/i.test(query)) return true;
+  return false;
+}
+
 /**
- * Overlay photo-classifier items and store hints onto an Assist response so
- * Shop lands with a list and Home Depot even when the sentence parse is thin.
- * Photo-driven asks suppress ride geocode of the typed note alone.
+ * Overlay photo-classifier items and soft store hints onto an Assist response.
+ * Picks the closest real candidate that might sell the item — not a canned
+ * chain from a product→store matrix. Photo asks suppress ride geocode of the
+ * typed note alone.
  */
 export function applyAssistPhotoContext(
   query: string,
@@ -694,21 +716,73 @@ export function applyAssistPhotoContext(
   extras: {
     items?: ShopItem[];
     storeHints?: string[];
+    category?: AssistPhotoCategory;
+    origin?: { latitude: number; longitude: number };
+    candidates?: AssistPlace[];
+    /** Attached photo even when vision/filename classification is empty. */
+    hasPhoto?: boolean;
   } = {},
 ): AssistResponse {
   const items = (extras.items ?? []).filter((item) => item.label.trim());
   const hints = (extras.storeHints ?? [])
     .map((hint) => hint.trim())
     .filter(Boolean);
-  if (items.length === 0 && hints.length === 0) return response;
+  const photoAsk = isAssistPhotoShopAsk(query, {
+    items,
+    storeHints: hints,
+    hasPhoto: extras.hasPhoto,
+  });
+  if (!photoAsk) return response;
 
-  const hintedStore =
-    (hints.length ? storeFromFixtures(hints.join(" ")) : null) ??
-    (hints[0] ? storeFromFixtures(hints[0]) : null);
+  const category =
+    extras.category ??
+    (items.some((item) => HARDWARE_ITEM.test(item.label))
+      ? "hardware"
+      : items.some((item) => FLOWERS.test(item.label))
+        ? "flowers"
+        : items.some((item) =>
+              /\b(pencils?|pens?|markers?|stationery|notebooks?)\b/i.test(
+                item.label,
+              ),
+            )
+          ? "home"
+          : hints.some((hint) => /hardware|home improvement/i.test(hint))
+            ? "hardware"
+            : hints.some((hint) => /florist|flower/i.test(hint))
+              ? "flowers"
+              : hints.some((hint) =>
+                    /office|merchandise|home goods|target/i.test(hint),
+                  )
+                ? "home"
+                : "other");
+
+  const candidates = extras.candidates ?? KNOWN_STORES;
+  const picked =
+    items.length > 0 || hints.length > 0
+      ? pickClosestStoreForPhoto(
+          { category, storeHints: hints, items },
+          candidates,
+          extras.origin,
+        )
+      : null;
+  // Exact chain name in a soft hint still resolves via fixtures.
+  const namedHint =
+    hints
+      .map((hint) => storeFromFixtures(hint))
+      .find((place) => place != null) ?? null;
+  const rawStore = picked ?? namedHint ?? null;
+  const resolvedStore: AssistPlace | null = rawStore
+    ? {
+        address: rawStore.address,
+        latitude: rawStore.latitude,
+        longitude: rawStore.longitude,
+        label: rawStore.label,
+      }
+    : null;
 
   let plans = response.suggestions.map((entry) => entry.plan);
   if (!plans.some((plan) => plan.kind === "shop")) {
-    const seed = [query, ...hints, ...items.map((item) => item.label)]
+    const seed = [query, ...items.map((item) => item.label)]
       .filter(Boolean)
       .join(" ");
     const seeded = planAssistHeuristic(
@@ -723,38 +797,23 @@ export function applyAssistPhotoContext(
   plans = plans.map((plan) => {
     if (plan.kind !== "shop") return plan;
     const nextItems = items.length ? items : (plan.items ?? []);
-    const hardware =
-      nextItems.some((item) => HARDWARE_ITEM.test(item.label)) ||
-      hints.some((hint) => HARDWARE_CUE.test(hint));
-    const homeOffice =
-      nextItems.some((item) =>
-        /\b(pencils?|pens?|markers?|stationery|notebooks?)\b/i.test(item.label),
-      ) || hints.some((hint) => /\btarget\b/i.test(hint));
-    const store =
-      plan.store ??
-      hintedStore ??
-      (hardware ? hardwareStore() : undefined) ??
-      (homeOffice
-        ? (KNOWN_STORES.find((place) => place.label === "Target") ??
-          nearestShop())
-        : undefined);
+    // Photo match wins over heuristic "nearest grocery" / hardware defaults.
+    const store = resolvedStore ?? plan.store ?? undefined;
+    const subtitle =
+      store && resolvedStore
+        ? (store.label ?? store.address ?? plan.subtitle)
+        : plan.subtitle;
     return {
       ...plan,
       items: nextItems.length ? nextItems : plan.items,
       store: store ?? plan.store,
+      subtitle,
       confidence: nextItems.length || store ? "high" : plan.confidence,
     };
   });
 
   if (!plans.some((plan) => plan.kind === "shop")) {
-    const store =
-      hintedStore ??
-      (items.some((item) => HARDWARE_ITEM.test(item.label))
-        ? hardwareStore()
-        : hints.some((hint) => /\btarget\b/i.test(hint))
-          ? (KNOWN_STORES.find((place) => place.label === "Target") ??
-            nearestShop())
-          : (hardwareStore() ?? nearestShop()));
+    const store = resolvedStore ?? nearestShop();
     const itemLine = items.map((item) => item.label).join(", ");
     plans = [
       {
@@ -770,13 +829,14 @@ export function applyAssistPhotoContext(
     ];
   }
 
-  // Photo + "need more of these" is a shop ask — drop ride POIs from geocode.
-  if (
-    items.length > 0 &&
-    (/\b(these|those|them)\b/i.test(query) ||
-      /\bdeliver\b.+\bnow\b/i.test(query) ||
-      /\bbuy what is in the photo\b/i.test(query))
-  ) {
+  // Photo shop asks drop ride POIs from geocode / DeepSeek resolve_place.
+  const stripRides =
+    /\b(these|those|them)\b/i.test(query) ||
+    /\bdeliver\b.+\bnow\b/i.test(query) ||
+    /\bbuy what is in the photo\b/i.test(query) ||
+    extras.hasPhoto === true ||
+    items.length > 0;
+  if (stripRides) {
     const shopOnly = plans.filter((plan) => plan.kind === "shop");
     if (shopOnly.length > 0) plans = shopOnly;
   }

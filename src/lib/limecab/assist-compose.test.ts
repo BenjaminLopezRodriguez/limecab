@@ -8,6 +8,8 @@ import {
   composeAssistQuery,
   filterMentions,
   insertMentionTrigger,
+  riderNoteFromAssistQuery,
+  shouldRefreshAssistQueryForPhoto,
   ASSIST_PLUGIN_MENTIONS,
 } from "./assist-compose.ts";
 
@@ -82,9 +84,9 @@ test("composeAssistQuery prefixes recipient stops and photo", () => {
 test("composeAssistQuery uses photo classification as the shop sentence", () => {
   const classified = {
     category: "hardware" as const,
-    query: "deliver hex nuts from Home Depot now",
+    query: "deliver hex nuts now",
     items: [{ label: "hex nuts" }],
-    storeHints: ["Home Depot"],
+    storeHints: ["hardware store", "home improvement"],
     source: "model" as const,
   };
   assert.equal(
@@ -96,10 +98,10 @@ test("composeAssistQuery uses photo classification as the shop sentence", () => 
       recipientName: null,
       photoClassification: classified,
     }),
-    "deliver hex nuts from Home Depot now",
+    "deliver hex nuts now",
   );
   assert.equal(
-    composeAssistQuery("deliver hex nuts from Home Depot now", {
+    composeAssistQuery("deliver hex nuts now", {
       photoName: "nut.jpg",
       photoUrl: "https://blob.example/assist-photos/nut.jpg",
       photoPreviewUrl: null,
@@ -107,7 +109,7 @@ test("composeAssistQuery uses photo classification as the shop sentence", () => 
       recipientName: null,
       photoClassification: classified,
     }),
-    "deliver hex nuts from Home Depot now",
+    "deliver hex nuts now",
   );
   assert.equal(
     composeAssistQuery("for tonight please", {
@@ -118,17 +120,17 @@ test("composeAssistQuery uses photo classification as the shop sentence", () => 
       recipientName: null,
       photoClassification: classified,
     }),
-    "deliver hex nuts from Home Depot now: for tonight please",
+    "deliver hex nuts now: for tonight please",
   );
 });
 
 test("composeAssistQuery merges pencil photo with need more of these", () => {
   const classified = {
     category: "home" as const,
-    query: "deliver pencils from Target now",
+    query: "deliver pencils now",
     items: [{ label: "pencils" }],
-    storeHints: ["Target", "Home Depot"],
-    source: "filename" as const,
+    storeHints: ["office supply", "general merchandise"],
+    source: "model" as const,
   };
   assert.equal(
     composeAssistQuery("need more of these", {
@@ -139,7 +141,7 @@ test("composeAssistQuery merges pencil photo with need more of these", () => {
       recipientName: null,
       photoClassification: classified,
     }),
-    "deliver pencils from Target now: need more of these",
+    "deliver pencils now: need more of these",
   );
 });
 
@@ -154,5 +156,72 @@ test("composeAssistQuery keeps unclassified photo + referential note as shop", (
       photoClassification: null,
     }),
     "buy what is in the photo now: need more of these",
+  );
+});
+
+test("shouldRefreshAssistQueryForPhoto when photo attaches or classifies", () => {
+  const empty = {
+    photoName: null,
+    photoUrl: null,
+    photoPreviewUrl: null,
+    wantsStops: false,
+    recipientName: null,
+    photoClassification: null,
+  };
+  const attached = {
+    ...empty,
+    photoName: "IMG_1.jpg",
+    photoPreviewUrl: "blob:x",
+  };
+  const classified = {
+    ...attached,
+    photoClassification: {
+      category: "home" as const,
+      query: "deliver pencils now",
+      items: [{ label: "pencils" }],
+      storeHints: ["office supply"],
+      source: "model" as const,
+    },
+  };
+  assert.equal(shouldRefreshAssistQueryForPhoto(empty, attached), true);
+  assert.equal(shouldRefreshAssistQueryForPhoto(attached, classified), true);
+  assert.equal(shouldRefreshAssistQueryForPhoto(classified, classified), false);
+});
+
+test("riderNoteFromAssistQuery peels compose stamps before refresh", () => {
+  const draft = {
+    photoName: "IMG_1.jpg",
+    photoUrl: null,
+    photoPreviewUrl: "blob:x",
+    wantsStops: false,
+    recipientName: null,
+    photoClassification: {
+      category: "home" as const,
+      query: "deliver pencils now",
+      items: [{ label: "pencils" }],
+      storeHints: ["office supply"],
+      source: "model" as const,
+    },
+  };
+  assert.equal(
+    riderNoteFromAssistQuery(
+      "buy what is in the photo now: need more of these",
+      { ...draft, photoClassification: null },
+    ),
+    "need more of these",
+  );
+  assert.equal(
+    riderNoteFromAssistQuery("deliver pencils now: need more of these", draft),
+    "need more of these",
+  );
+  assert.equal(
+    composeAssistQuery(
+      riderNoteFromAssistQuery(
+        "buy what is in the photo now: need more of these",
+        { ...draft, photoClassification: null },
+      ),
+      draft,
+    ),
+    "deliver pencils now: need more of these",
   );
 });

@@ -29,18 +29,20 @@ const modelSchema = z.object({
 });
 
 const SYSTEM = `You classify a photo for a buy-and-deliver shopping assistant.
-Identify the object. Prefer a specific product name (hex nut, 2x4, gallon of milk, pencil).
-Guess the retail category and which common US chains sell it.
-Hardware fasteners (nuts, bolts, screws, washers) → category "hardware", stores Home Depot and Lowe's.
+Identify the object from the image pixels — be specific (orange pencil, hex nut, gallon of milk).
+Set category to one of: hardware, grocery, pharmacy, flowers, home, other.
 Food nuts (almonds, walnuts) → grocery, not hardware.
-Stationery (pencils, pens, markers, notebooks) → category "home", stores Target and Home Depot / office supply.
+Hardware fasteners (nuts, bolts, screws, washers) → hardware.
+Stationery (pencils, pens, markers, notebooks) → home.
+storeHints must be soft store TYPES that might sell it (hardware store, office supply, grocery, florist, pharmacy, general merchandise). Optional well-known chains are soft suggestions only — never treat a chain as the only answer; planning picks a real nearby place.
+query should name the item and timing, e.g. "deliver orange pencils now" — do not lock a destination chain unless the photo shows that storefront.
 Reply with JSON only:
-{"category":"hardware","items":[{"label":"hex nuts"}],"storeHints":["Home Depot","Lowe's"],"query":"deliver hex nuts from Home Depot now"}`;
+{"category":"home","items":[{"label":"orange pencils"}],"storeHints":["office supply","general merchandise"],"query":"deliver orange pencils now"}`;
 
 /**
  * Classify an Assist photo. Vision via AI Gateway when authenticated
- * (`AI_GATEWAY_API_KEY` or `VERCEL_OIDC_TOKEN`); otherwise a filename hint
- * (nut.jpg → hardware / Home Depot). Never invent a CDN.
+ * (`AI_GATEWAY_API_KEY` or `VERCEL_OIDC_TOKEN`); otherwise a soft filename
+ * item-label fallback (no locked chain). Never invent a CDN.
  */
 export async function classifyAssistPhoto(input: {
   bytes: Uint8Array;

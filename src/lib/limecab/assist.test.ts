@@ -5,6 +5,7 @@ import {
   applyAssistPhotoContext,
   assistResponseFromPlans,
   classifyAssistQuery,
+  isAssistPhotoShopAsk,
   parseAssistTiming,
   placeFromFixtures,
   planAssistHeuristic,
@@ -128,26 +129,70 @@ test("hex nuts at Home Depot lands shop with the list and store", () => {
   assert.ok(storeFromFixtures("buy from Home Depot")?.label?.includes("Home Depot"));
 });
 
-test("photo classification fills shop items and Home Depot", () => {
-  const planned = applyAssistPhotoContext("photo:nut.jpg", planAssistHeuristic("photo:nut.jpg"), {
-    items: [{ label: "hex nuts" }],
-    storeHints: ["Home Depot", "Lowe's"],
-  });
+test("photo classification fills shop items from closest matching store", () => {
+  const planned = applyAssistPhotoContext(
+    "deliver hex nuts now",
+    planAssistHeuristic("deliver hex nuts now"),
+    {
+      items: [{ label: "hex nuts" }],
+      storeHints: ["hardware store", "home improvement"],
+      category: "hardware",
+      origin: { latitude: 34.0505, longitude: -118.2551 },
+    },
+  );
   const shop = planned.suggestions.find((card) => card.plan.kind === "shop")?.plan;
   assert.ok(shop?.items?.some((item) => item.label === "hex nuts"));
   assert.ok(shop?.store?.label?.includes("Home Depot"));
 });
 
 test("photo + need more of these stays shop not ride", () => {
-  const query = "deliver pencils from Target now: need more of these";
+  const query = "deliver pencils now: need more of these";
   const planned = applyAssistPhotoContext(query, planAssistHeuristic(query), {
     items: [{ label: "pencils" }],
-    storeHints: ["Target"],
+    storeHints: ["office supply", "general merchandise"],
+    category: "home",
+    origin: { latitude: 34.0505, longitude: -118.2551 },
   });
   assert.ok(planned.suggestions.every((card) => card.plan.kind === "shop"));
   const shop = planned.suggestions[0]?.plan;
   assert.ok(shop?.items?.some((item) => item.label === "pencils"));
   assert.ok(shop?.store?.label?.includes("Target"));
+  assert.match(shop?.subtitle ?? "", /Target/i);
+});
+
+test("unclassified photo stamp strips DeepSeek-style ride POIs", () => {
+  const query = "buy what is in the photo now: need more of these";
+  const rides = assistResponseFromPlans(query, [
+    {
+      kind: "ride",
+      confidence: "low",
+      title: "Ride to Need More Yoga",
+      subtitle: "Los Angeles",
+      destination: {
+        address: "Need More Yoga, Los Angeles",
+        label: "Need More Yoga",
+      },
+    },
+  ]);
+  const planned = applyAssistPhotoContext(query, rides, { hasPhoto: true });
+  assert.ok(planned.suggestions.length > 0);
+  assert.ok(planned.suggestions.every((card) => card.plan.kind === "shop"));
+});
+
+test("isAssistPhotoShopAsk covers photo payload and compose stamp", () => {
+  assert.equal(isAssistPhotoShopAsk("need more of these"), false);
+  assert.equal(
+    isAssistPhotoShopAsk("need more of these", { hasPhoto: true }),
+    true,
+  );
+  assert.equal(
+    isAssistPhotoShopAsk("buy what is in the photo now: need more of these"),
+    true,
+  );
+  assert.equal(
+    isAssistPhotoShopAsk("hello", { items: [{ label: "pencils" }] }),
+    true,
+  );
 });
 
 test("help me move a couch spans help and courier", () => {

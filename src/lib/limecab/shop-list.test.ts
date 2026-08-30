@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  isShopTrip,
   normalizeShopList,
   parseShopList,
   serializeShopList,
@@ -43,6 +44,12 @@ test("a missing or malformed column is no list, not a throw", () => {
   assert.deepEqual(parseShopList("not json"), []);
   assert.deepEqual(parseShopList("[]"), []);
   assert.deepEqual(parseShopList('[{"label":""}]'), []);
+});
+
+test("isShopTrip is true only when the column holds a real list", () => {
+  assert.equal(isShopTrip(null), false);
+  assert.equal(isShopTrip("[]"), false);
+  assert.equal(isShopTrip('[{"label":"Milk"}]'), true);
 });
 
 test("the wire schema refuses an empty list and an over-long one", () => {

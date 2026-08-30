@@ -17,7 +17,7 @@
 
 import { isCourierProduct } from "./courier.ts";
 import { isHelpProduct } from "./help.ts";
-import { parseShopList } from "./shop-list.ts";
+import { isShopTrip } from "./shop-list.ts";
 
 /**
  * What kind of job the driver is doing. Not a scene and not a state: the six
@@ -34,7 +34,7 @@ export function driverJobKind(
   if (!trip) return "ride";
   if (isHelpProduct(trip.productId)) return "help";
   if (!isCourierProduct(trip.productId)) return "ride";
-  return parseShopList(trip.itemList).length > 0 ? "shop" : "courier";
+  return isShopTrip(trip.itemList) ? "shop" : "courier";
 }
 
 export const DRIVER_APP_STATES = [

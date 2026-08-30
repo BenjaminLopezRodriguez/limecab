@@ -72,6 +72,8 @@ export function AssistComposeSurface({
   const [photoNote, setPhotoNote] = useState<"idle" | "looking" | "failed">("idle");
   const fileRef = useRef<HTMLInputElement>(null);
   const classifyAbort = useRef<AbortController | null>(null);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
 
   const close = () => {
     classifyAbort.current?.abort();
@@ -88,10 +90,10 @@ export function AssistComposeSurface({
       setPhotoNote("failed");
       return;
     }
-    revokePreviewUrl(draft.photoPreviewUrl);
+    revokePreviewUrl(draftRef.current.photoPreviewUrl);
     const previewUrl = URL.createObjectURL(file);
     onDraftChange({
-      ...draft,
+      ...draftRef.current,
       photoName: file.name,
       photoUrl: null,
       photoPreviewUrl: previewUrl,
@@ -111,7 +113,7 @@ export function AssistComposeSurface({
       const classification =
         result.classification ?? classifyPhotoFilename(file.name);
       onDraftChange({
-        ...draft,
+        ...draftRef.current,
         photoName: file.name,
         photoUrl: result.blobUrl,
         photoPreviewUrl: previewUrl,
@@ -129,7 +131,7 @@ export function AssistComposeSurface({
       if (ac.signal.aborted) return;
       const fallback = classifyPhotoFilename(file.name);
       onDraftChange({
-        ...draft,
+        ...draftRef.current,
         photoName: file.name,
         photoUrl: null,
         photoPreviewUrl: previewUrl,
