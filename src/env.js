@@ -32,6 +32,12 @@ export const env = createEnv({
     VERCEL_OIDC_TOKEN: z.string().optional(),
     /** Private Vercel Blob store for Assist photo uploads. */
     BLOB_READ_WRITE_TOKEN: z.string().optional(),
+    /**
+     * The spatial place index. Without both, place lookups fall back to the
+     * existing Mapbox/Google path.
+     */
+    SPATIAL_API_URL: z.string().url().optional(),
+    SPATIAL_API_KEY: z.string().optional(),
     /** Mint fake drivers and auto-advance trips. Defaults on outside production. */
     SIMULATE_DRIVERS: z.enum(["true", "false"]).optional(),
     NODE_ENV: z
@@ -67,6 +73,8 @@ export const env = createEnv({
     AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
     VERCEL_OIDC_TOKEN: process.env.VERCEL_OIDC_TOKEN,
     BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
+    SPATIAL_API_URL: process.env.SPATIAL_API_URL,
+    SPATIAL_API_KEY: process.env.SPATIAL_API_KEY,
     NEXT_PUBLIC_MAPBOX_TOKEN: process.env.NEXT_PUBLIC_MAPBOX_TOKEN,
     SIMULATE_DRIVERS: process.env.SIMULATE_DRIVERS,
     NODE_ENV: process.env.NODE_ENV,

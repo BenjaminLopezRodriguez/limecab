@@ -15,6 +15,13 @@ import {
   SHOP_CATEGORIES,
   type RestStop,
 } from "@/lib/limecab/rest-stops";
+import {
+  PIT_STOP_ENTITY_TYPES,
+  restStopsFromPlaces,
+  SHOP_ENTITY_TYPES,
+  type EntityType,
+  type LimePlace,
+} from "@/lib/limecab/spatial";
 import type { Location } from "@/lib/service-app/services";
 
 /**
@@ -112,10 +119,17 @@ async function fetchNearbyCategory(
   categories: readonly string[] | undefined,
   fallback: readonly RestStop[],
   signal?: AbortSignal,
+  entityTypes?: readonly EntityType[],
 ): Promise<RestStop[]> {
   if (origin.latitude === undefined || origin.longitude === undefined) {
     return nearbyRestStops(origin, fallback);
   }
+  const indexed = await fetchFromIndex(
+    { latitude: origin.latitude, longitude: origin.longitude },
+    entityTypes,
+    signal,
+  );
+  if (indexed.length > 0) return indexed;
   try {
     const query = categories?.length
       ? `&categories=${categories.join(",")}`
@@ -132,6 +146,33 @@ async function fetchNearbyCategory(
     /* Mapbox down or unconfigured — fixtures still answer. */
   }
   return nearbyRestStops(origin, fallback);
+}
+
+/**
+ * The spatial index first. Empty is the same answer as unconfigured here —
+ * either way Category Search runs next, so a cold index costs a hop, never a
+ * row.
+ */
+async function fetchFromIndex(
+  origin: { latitude: number; longitude: number },
+  entityTypes: readonly EntityType[] | undefined,
+  signal?: AbortSignal,
+): Promise<RestStop[]> {
+  if (!entityTypes?.length) return [];
+  try {
+    const query = new URLSearchParams({
+      lat: String(origin.latitude),
+      lng: String(origin.longitude),
+      types: entityTypes.join(","),
+      limit: "8",
+    });
+    const res = await fetch(`/api/map/nearby?${query}`, { signal });
+    if (!res.ok) return [];
+    const body = (await res.json()) as { places?: LimePlace[] };
+    return restStopsFromPlaces(body.places ?? []);
+  } catch {
+    return [];
+  }
 }
 
 /** Curb-side pickup candidates for confirm-pickup. Token stays on the server. */
@@ -165,7 +206,13 @@ export async function fetchNearbyRestStops(
   origin: Location,
   signal?: AbortSignal,
 ): Promise<RestStop[]> {
-  return fetchNearbyCategory(origin, undefined, REST_STOPS, signal);
+  return fetchNearbyCategory(
+    origin,
+    undefined,
+    REST_STOPS,
+    signal,
+    PIT_STOP_ENTITY_TYPES,
+  );
 }
 
 /** Grocery, supermarket and pharmacy around the rider — Lime Shop's stores. */
@@ -175,7 +222,19 @@ export async function fetchNearbyShops(
   opts?: { hardware?: boolean },
 ): Promise<RestStop[]> {
   if (opts?.hardware) {
-    return fetchNearbyCategory(origin, HARDWARE_CATEGORIES, HARDWARE_PLACES, signal);
+    return fetchNearbyCategory(
+      origin,
+      HARDWARE_CATEGORIES,
+      HARDWARE_PLACES,
+      signal,
+      SHOP_ENTITY_TYPES,
+    );
   }
-  return fetchNearbyCategory(origin, SHOP_CATEGORIES, SHOP_PLACES, signal);
+  return fetchNearbyCategory(
+    origin,
+    SHOP_CATEGORIES,
+    SHOP_PLACES,
+    signal,
+    SHOP_ENTITY_TYPES,
+  );
 }
