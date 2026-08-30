@@ -32,6 +32,11 @@ import {
 } from "@/lib/limecab/pickup-pin";
 import { distanceMiles } from "@/lib/limecab/domain";
 import {
+  MARKETPLACE_FALLBACK_K,
+  MARKETPLACE_K,
+  tripsWithinMarketplaceMiles,
+} from "@/lib/limecab/marketplace";
+import {
   cellCenter,
   cellDisk,
   isCell,
@@ -105,9 +110,6 @@ function takeFromCompleted(
  */
 const FIX_FRESH_MS = 45_000;
 
-/** k=2 at res 8 is roughly a 1.5 km radius. That is the marketplace. */
-const MARKETPLACE_K = 2;
-
 /**
  * The lattice a driver reads off a dash mount: k=3 at res 8 is 37 cells, a
  * glanceable neighbourhood. The cap is where a grid stops being a grid — past
@@ -172,6 +174,65 @@ function firstName(name: string | null | undefined): string | null {
 }
 
 type AppDb = typeof import("@/server/db").db;
+
+type DriverFix = {
+  lastH3: string | null;
+  lastLatitude: number | null;
+  lastLongitude: number | null;
+  lastSeenAt: Date | null;
+};
+
+/**
+ * Open trips for the inbox. A fresh fix narrows by H3 first; when the disk is
+ * empty — common across town or on a cell boundary — widen the ring, then fall
+ * back to miles so a driver in Phoenix still sees a pickup in Mesa.
+ */
+async function openTripsForInbox(database: AppDb, driver: DriverFix) {
+  const baseWhere = and(
+    eq(trips.status, "requested"),
+    isNull(trips.driverId),
+  );
+
+  if (!hasFreshFix(driver)) {
+    return database.query.trips.findMany({
+      where: baseWhere,
+      orderBy: [desc(trips.requestedAt)],
+    });
+  }
+
+  const diskWhere = (cells: string[]) =>
+    and(
+      baseWhere,
+      or(inArray(trips.pickupH3, cells), isNull(trips.pickupH3)),
+    );
+
+  const disk = cellDisk(driver.lastH3!, MARKETPLACE_K);
+  let rows = disk.length
+    ? await database.query.trips.findMany({
+        where: diskWhere(disk),
+        orderBy: [desc(trips.requestedAt)],
+      })
+    : [];
+
+  if (rows.length === 0) {
+    const wideDisk = cellDisk(driver.lastH3!, MARKETPLACE_FALLBACK_K);
+    if (wideDisk.length) {
+      rows = await database.query.trips.findMany({
+        where: diskWhere(wideDisk),
+        orderBy: [desc(trips.requestedAt)],
+      });
+    }
+  }
+
+  if (rows.length > 0) return rows;
+
+  const allOpen = await database.query.trips.findMany({
+    where: baseWhere,
+    orderBy: [desc(trips.requestedAt)],
+    limit: 100,
+  });
+  return tripsWithinMarketplaceMiles(allOpen, driver);
+}
 
 async function completedForDriver(database: AppDb, driverId: string) {
   return database.query.trips.findMany({
@@ -289,33 +350,8 @@ export const driverRouter = createTRPCRouter({
           }
         : null;
 
-    /**
-     * The open set, by cell first and heading second.
-     *
-     * A stale or missing fix is not an empty marketplace: Chrome denying
-     * location, or a simulator with no geolocation at all, keeps today's
-     * global list. Only a driver who is actually reporting a position gets
-     * narrowed to their own disk.
-     */
-    const disk = hasFreshFix(driver)
-      ? cellDisk(driver.lastH3!, MARKETPLACE_K)
-      : null;
-    const openWhere = disk?.length
-      ? and(
-          eq(trips.status, "requested"),
-          isNull(trips.driverId),
-          // ponytail: rollout clause, added 2026-08-27. Trips requested
-          // before `pickupH3` existed have none; drop the `isNull` leg once
-          // no null-pickupH3 `requested` rows remain.
-          or(inArray(trips.pickupH3, disk), isNull(trips.pickupH3)),
-        )
-      : and(eq(trips.status, "requested"), isNull(trips.driverId));
-
     const [openAll, activeRows, completed] = await Promise.all([
-      ctx.db.query.trips.findMany({
-        where: openWhere,
-        orderBy: [desc(trips.requestedAt)],
-      }),
+      openTripsForInbox(ctx.db, driver),
       ctx.db.query.trips.findMany({
         where: and(
           eq(trips.driverId, driver.id),

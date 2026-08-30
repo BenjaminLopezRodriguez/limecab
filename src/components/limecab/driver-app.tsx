@@ -492,6 +492,14 @@ function DriverFlow({
   // every GPS tick — the cadence is the interval, not the sensor.
   const lastFix = useRef<MapPoint | null>(device);
   lastFix.current = device;
+  const syncLocation = useCallback(async () => {
+    const fix = lastFix.current;
+    if (!fix) return;
+    await pingLocation.mutateAsync({
+      latitude: fix.latitude,
+      longitude: fix.longitude,
+    });
+  }, [pingLocation]);
   const onDuty = scene !== "offline" && scene !== "complete";
   useEffect(() => {
     if (!onDuty) return;
@@ -556,6 +564,12 @@ function DriverFlow({
   /** The ride is the driver's now — it is not declined, it is theirs. */
   const clearOffer = useCallback(() => setOfferedId(null), []);
 
+  /** Timer ran out — advance to the next card without blacklisting the trip. */
+  const skipOffer = useCallback(() => {
+    setOfferedId(null);
+    perform("offerDismissed");
+  }, [perform]);
+
   const dismissOffer = useCallback(
     (tripId: string) => {
       setDeclined((current) =>
@@ -566,6 +580,10 @@ function DriverFlow({
     },
     [perform],
   );
+
+  useEffect(() => {
+    setDeclined((current) => current.filter((id) => open.some((t) => t.id === id)));
+  }, [open]);
 
   /* ---- what the canvas is showing ------------------------------------- */
 
@@ -1360,6 +1378,8 @@ function DriverFlow({
           onOpenTrends={openTrends}
           onOpenPreferences={() => router.push(preferences)}
           onDismissOffer={dismissOffer}
+          onSkipOffer={skipOffer}
+          onGoOnline={syncLocation}
           onFocusOffer={setOfferedId}
           offerStack={candidate}
           queued={queuedJobs.map(toJobTrip)}
@@ -1451,6 +1471,8 @@ function DriverSurfaces({
   onOpenTrends,
   onOpenPreferences,
   onDismissOffer,
+  onSkipOffer,
+  onGoOnline,
   onFocusOffer,
   offerStack,
   queued,
@@ -1505,6 +1527,8 @@ function DriverSurfaces({
   onOpenTrends: () => void;
   onOpenPreferences: () => void;
   onDismissOffer: (tripId: string) => void;
+  onSkipOffer: () => void;
+  onGoOnline: () => Promise<void>;
   onFocusOffer: (tripId: string) => void;
   offerStack: OfferTrip[];
   queued: JobTrip[];
@@ -1581,6 +1605,7 @@ function DriverSurfaces({
         to: next ? "online" : "offline",
         task: async () => {
           await setAvailable.mutateAsync({ available: next });
+          if (next) await onGoOnline();
           await refresh();
         },
       })
@@ -1601,8 +1626,8 @@ function DriverSurfaces({
     if (offerId) setFailure(null);
   }, [offerId]);
 
-  const dismiss = useRef(onDismissOffer);
-  dismiss.current = onDismissOffer;
+  const skip = useRef(onSkipOffer);
+  skip.current = onSkipOffer;
   const locked = surface.progress.locked;
 
   useEffect(() => {
@@ -1615,7 +1640,7 @@ function DriverSurfaces({
       // Never yank an offer out from under a driver mid-accept.
       if (remaining <= 0 && !locked) {
         window.clearInterval(id);
-        dismiss.current(offerId);
+        skip.current();
         return;
       }
       setLeft(Math.max(0, remaining));
