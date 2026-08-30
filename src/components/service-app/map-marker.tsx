@@ -51,6 +51,7 @@ export type RouteAnchor =
   | "left-center";
 export type LocationPuckType = "consumer" | "earner";
 export type LocationPuckSize = "small" | "medium" | "large";
+export type LabelEnhancerPosition = "top" | "bottom" | "left" | "right";
 
 const kindSurface = cva("", {
   variants: {
@@ -220,10 +221,18 @@ function PinHead({
   );
 }
 
+function LabelEnhancer({ children }: { children: ReactNode }) {
+  return (
+    <span className="bg-card text-foreground max-w-[10rem] truncate rounded-md px-1.5 py-0.5 text-[11px] leading-none font-semibold shadow-[0_2px_8px_rgba(0,0,0,0.28)]">
+      {children}
+    </span>
+  );
+}
+
 /**
- * Pin pushed into the map: pinhead + optional needle. The needle tip sits on
- * the coordinate — the root is a 0×0 origin so Mapbox `anchor="center"`
- * does not drift on zoom.
+ * Pin pushed into the map: pinhead + optional needle. The needle tip is the
+ * bottom-center of this box — Mapbox `anchor="bottom"` (not a 0×0 origin,
+ * which Mapbox clips under a CSS transform).
  */
 export function FixedMarker({
   label,
@@ -233,6 +242,8 @@ export function FixedMarker({
   dragging = false,
   startEnhancer,
   endEnhancer,
+  labelEnhancerContent,
+  labelEnhancerPosition = "top",
   className,
 }: {
   label?: ReactNode;
@@ -242,34 +253,35 @@ export function FixedMarker({
   dragging?: boolean;
   startEnhancer?: ReactNode;
   endEnhancer?: ReactNode;
+  labelEnhancerContent?: ReactNode;
+  labelEnhancerPosition?: LabelEnhancerPosition;
   className?: string;
 }) {
   const compact = isCompact(size);
-  const tipAtBottom = needle !== "none";
-  return (
-    <span className={cn("relative inline-block size-0", className)}>
-      <span
-        className={cn(
-          "absolute left-1/2 flex -translate-x-1/2 flex-col items-center",
-          tipAtBottom ? "bottom-0" : "top-1/2 -translate-y-1/2",
-          "transition-transform duration-200 ease-out motion-reduce:transition-none",
-          dragging && "-translate-y-1.5",
-        )}
-      >
-        {compact ? (
-          <CompactAnchor size={size} kind={kind} />
-        ) : (
-          <PinHead
-            label={label}
-            size={size}
-            kind={kind}
-            variant="fixed"
-            startEnhancer={startEnhancer}
-            endEnhancer={endEnhancer}
-          />
-        )}
-        <Needle size={needle} kind={kind} />
-      </span>
+  const enhancer = labelEnhancerContent ? (
+    <LabelEnhancer>{labelEnhancerContent}</LabelEnhancer>
+  ) : null;
+  const pinColumn = (
+    <span
+      className={cn(
+        "relative flex flex-col items-center",
+        "transition-transform duration-200 ease-out motion-reduce:transition-none",
+        dragging && "-translate-y-1.5",
+      )}
+    >
+      {compact ? (
+        <CompactAnchor size={size} kind={kind} />
+      ) : (
+        <PinHead
+          label={label}
+          size={size}
+          kind={kind}
+          variant="fixed"
+          startEnhancer={startEnhancer}
+          endEnhancer={endEnhancer}
+        />
+      )}
+      <Needle size={needle} kind={kind} />
       <span
         aria-hidden="true"
         className={cn(
@@ -279,6 +291,33 @@ export function FixedMarker({
           dragging ? "opacity-70" : "opacity-0",
         )}
       />
+    </span>
+  );
+
+  if (!enhancer) {
+    return (
+      <span className={cn("relative inline-flex flex-col items-center", className)}>
+        {pinColumn}
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className={cn(
+        "relative inline-grid grid-cols-[1fr_auto_1fr] items-end justify-items-center gap-x-1",
+        className,
+      )}
+    >
+      {labelEnhancerPosition === "top" ? (
+        <span className="col-span-3 mb-0.5">{enhancer}</span>
+      ) : null}
+      {labelEnhancerPosition === "left" ? enhancer : <span />}
+      {pinColumn}
+      {labelEnhancerPosition === "right" ? enhancer : <span />}
+      {labelEnhancerPosition === "bottom" ? (
+        <span className="col-span-3 mt-0.5">{enhancer}</span>
+      ) : null}
     </span>
   );
 }

@@ -62,6 +62,10 @@ export function LocationSearchScene({
   renderResults,
   rowAction,
   inputAriaLabel,
+  start,
+  fieldsClassName,
+  inputClassName,
+  requireAddress = true,
 }: {
   open: boolean;
   adapter: GeocodeAdapter;
@@ -115,6 +119,12 @@ export function LocationSearchScene({
   /** Trailing control on a suggestion row, e.g. filing the address. */
   rowAction?: ComponentProps<typeof LocationSearch>["rowAction"];
   inputAriaLabel?: string;
+  /** Leading glyph inside a single-field search. Route stacks keep their rail. */
+  start?: ReactNode;
+  fieldsClassName?: string;
+  inputClassName?: string;
+  /** Ride dropoffs need a full address. A query commit does not. */
+  requireAddress?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [locating, setLocating] = useState(false);
@@ -154,10 +164,11 @@ export function LocationSearchScene({
 
   const choose = (result: Location) => {
     const address = result.address.trim();
-    if (address.length < 4) {
+    if (requireAddress && address.length < 4) {
       onError?.("Enter a full address.");
       return;
     }
+    if (!address) return;
     onSelect({ ...result, address });
   };
 
@@ -217,7 +228,7 @@ export function LocationSearchScene({
             fieldsClassName={
               route
                 ? "bg-card ring-border flex flex-col rounded-2xl ring-1"
-                : undefined
+                : fieldsClassName
             }
             inputClassName={
               route
@@ -229,8 +240,9 @@ export function LocationSearchScene({
                       ? "border-transparent"
                       : "border-x-0 border-t-0 border-b-border",
                   )
-                : undefined
+                : inputClassName
             }
+            start={route ? undefined : start}
             before={
               route ? (
                 <>

@@ -41,6 +41,11 @@ export type MapPoint = {
    * marker draws the ones it has a glyph for. Ignored on every other kind.
    */
   category?: string;
+  /**
+   * Street or place caption outside the pinhead (Uber label enhancer).
+   * Compact pinheads cannot hold text; this is where the location name goes.
+   */
+  detail?: string;
 };
 
 export type MapViewProps = {
@@ -111,6 +116,27 @@ export function zoomForMode(mode: MapMode): number {
  */
 export function tracksProvider(mode: MapMode): boolean {
   return mode === "provider_arrival" || mode === "active_route";
+}
+
+const PUCK_MODES: ReadonlySet<MapMode> = new Set([
+  "home",
+  "select_location",
+  "coverage",
+]);
+
+/**
+ * Where a Mapbox / placeholder HTML marker attaches to the coordinate.
+ * Needle pins sit on their tip (`bottom`); pucks and cars sit on their center.
+ */
+export function mapMarkerAnchor(
+  point: MapPoint,
+  mode: MapMode,
+): "bottom" | "center" {
+  const kind = point.kind ?? "marker";
+  if (kind === "destination" || kind === "selection") return "bottom";
+  if (kind === "pickup") return point.selected ? "bottom" : "center";
+  if (kind === "origin") return PUCK_MODES.has(mode) ? "center" : "bottom";
+  return "center";
 }
 
 /**

@@ -421,6 +421,9 @@ function DriverFlow({
       latitude,
       longitude,
       kind: toDestination ? "destination" : "origin",
+      label: splitAddress(
+        toDestination ? trip.destinationAddress : trip.pickupAddress,
+      ).line,
     };
   }, [active, offer, scene]);
 

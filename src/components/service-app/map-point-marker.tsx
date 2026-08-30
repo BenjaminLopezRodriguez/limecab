@@ -26,11 +26,14 @@ export function MapPointMarker({
   onSelect?: () => void;
 }) {
   const kind = point.kind ?? "marker";
+  const place = point.label?.trim();
+  const street = point.detail?.trim();
 
   if (kind === "pickup") {
     return (
       <PickupPointMarker
-        label={point.label ?? "Pickup"}
+        label={place ?? "Pickup"}
+        detail={street}
         selected={point.selected}
         onSelect={onSelect}
       />
@@ -40,7 +43,7 @@ export function MapPointMarker({
   if (kind === "poi") {
     return (
       <RestStopMarker
-        label={point.label ?? "Stop"}
+        label={place ?? "Stop"}
         selected={point.selected}
         category={point.category}
         onSelect={onSelect}
@@ -63,6 +66,8 @@ export function MapPointMarker({
         size="x-small-square"
         kind="default"
         needle="short"
+        labelEnhancerContent={place}
+        labelEnhancerPosition="top"
       />
     );
   }
@@ -82,6 +87,8 @@ export function MapPointMarker({
       size="x-small-circle"
       kind="accent"
       needle="short"
+      labelEnhancerContent={place}
+      labelEnhancerPosition="top"
     />
   );
 }

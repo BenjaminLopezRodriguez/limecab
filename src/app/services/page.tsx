@@ -4,7 +4,7 @@ import {
   Home01Icon,
   Package01Icon,
   ShoppingBasket01Icon,
-  WheelchairIcon,
+  SparklesIcon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
 import Link from "next/link";
@@ -20,7 +20,7 @@ const ICONS: Record<string, IconSvgElement> = {
   courier: Package01Icon,
   shop: ShoppingBasket01Icon,
   help: Home01Icon,
-  assist: WheelchairIcon,
+  assist: SparklesIcon,
 };
 
 export default function ServicesPage() {
@@ -52,9 +52,9 @@ export default function ServicesPage() {
       ) : null}
 
       <p className="text-muted-foreground mt-5 text-sm leading-relaxed">
-        Rides, Courier, Reserve, Shop, and Help are live. Assist is ride
-        accessibility — a hand getting into the car — and is listed so you can
-        see where LimeCab is going, not to take your booking.
+        Rides, Courier, Reserve, Shop, Help, and Assist are live. Assist is
+        the launcher — say what you want, and LimeCab stages the ride, shop,
+        send, or help quote. You always confirm before anything is requested.
       </p>
     </TabPage>
   );
@@ -115,7 +115,9 @@ function Tile({
           ? "/?service=shop"
           : service.id === "help"
             ? "/?service=help"
-            : "/";
+            : service.id === "assist"
+              ? "/?service=assist"
+              : "/";
 
   return (
     <Link

@@ -6,6 +6,7 @@ import {
   boundsForPoints,
   boundsToFitCorners,
   expandBoundsToSpan,
+  mapMarkerAnchor,
   panCenter,
   pointAlongPath,
   pointsFromLineString,
@@ -87,4 +88,24 @@ test("tracksProvider is the live vehicle modes, not the preview", () => {
   assert.equal(tracksProvider("active_route"), true);
   assert.equal(tracksProvider("route_preview"), false);
   assert.equal(tracksProvider("results"), false);
+});
+
+test("needle pins attach at the tip; pucks and cars attach at the center", () => {
+  const origin: MapPoint = { ...downtown, kind: "origin", label: "Main St" };
+  const drop: MapPoint = { ...east, kind: "destination", label: "Union Station" };
+  const selected: MapPoint = {
+    ...north,
+    kind: "pickup",
+    label: "Front",
+    selected: true,
+  };
+  const alternate: MapPoint = { ...north, kind: "pickup", label: "Side" };
+  const car: MapPoint = { ...downtown, kind: "provider" };
+
+  assert.equal(mapMarkerAnchor(origin, "home"), "center");
+  assert.equal(mapMarkerAnchor(origin, "route_preview"), "bottom");
+  assert.equal(mapMarkerAnchor(drop, "route_preview"), "bottom");
+  assert.equal(mapMarkerAnchor(selected, "select_location"), "bottom");
+  assert.equal(mapMarkerAnchor(alternate, "select_location"), "center");
+  assert.equal(mapMarkerAnchor(car, "provider_arrival"), "center");
 });

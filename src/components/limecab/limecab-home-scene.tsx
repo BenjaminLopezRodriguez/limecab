@@ -7,6 +7,7 @@ import {
   Home01Icon,
   Location01Icon,
 } from "@hugeicons/core-free-icons";
+import type { ReactNode } from "react";
 
 import Link from "next/link";
 
@@ -40,6 +41,9 @@ export function LimeCabHomeScene({
   destination,
   destinationHint = "Where to?",
   title,
+  triggerClassName,
+  triggerStart,
+  hideTagline = false,
   saved,
   recents,
   traveling,
@@ -52,6 +56,9 @@ export function LimeCabHomeScene({
   destinationHint?: string;
   /** Optional scene eyebrow, e.g. "Send a package". */
   title?: string;
+  triggerClassName?: string;
+  triggerStart?: ReactNode;
+  hideTagline?: boolean;
   /** This user's own Home, Work and custom spots. Empty is a real answer. */
   saved: Place[];
   /** Derived from their own trips. Nobody is shown a place they never went. */
@@ -83,11 +90,15 @@ export function LimeCabHomeScene({
         hint={destinationHint}
         label={destination?.address}
         onPress={() => onSearch("destination")}
+        className={triggerClassName}
+        start={triggerStart}
         end={<VoiceMicButton onPress={onVoice} />}
       />
-      <p className="text-muted-foreground -mt-2 px-1 text-xs">
-        Ride, send, or get
-      </p>
+      {hideTagline ? null : (
+        <p className="text-muted-foreground -mt-2 px-1 text-xs">
+          Ride, send, or get
+        </p>
+      )}
 
       {traveling ? (
         <>

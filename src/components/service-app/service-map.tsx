@@ -16,6 +16,7 @@ import { MapPointMarker } from "@/components/service-app/map-point-marker";
 import { SpatialEtaMarker } from "@/components/service-app/spatial-eta-marker";
 import {
   fitMetersPerUnit,
+  mapMarkerAnchor,
   panCenter,
   projectPoint,
   tracksProvider,
@@ -440,11 +441,15 @@ function PlaceholderCanvas({
           const kind = point.kind ?? "marker";
           const emphasised = treatment.emphasis.includes(kind);
           const dimmed = treatment.dimOthers && !emphasised;
+          const tip = mapMarkerAnchor(point, mode) === "bottom";
           return (
             <span
               key={`${kind}-${point.latitude},${point.longitude},${index}`}
               className={cn(
-                "absolute z-[1] -translate-x-1/2 -translate-y-1/2",
+                "absolute z-[1]",
+                tip
+                  ? "-translate-x-1/2 -translate-y-full"
+                  : "-translate-x-1/2 -translate-y-1/2",
                 point.selected && "z-[2]",
                 dimmed && "opacity-45",
               )}

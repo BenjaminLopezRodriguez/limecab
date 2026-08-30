@@ -228,8 +228,8 @@ export const LIMECAB_SERVICES = [
   {
     id: "assist",
     title: "Assist",
-    description: "Extra help getting in",
-    status: "coming_soon" as const,
+    description: "Say what you need",
+    status: "available" as const,
   },
 ];
 

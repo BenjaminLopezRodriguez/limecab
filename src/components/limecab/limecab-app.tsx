@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-import { BookmarkAdd01Icon, Gps01Icon } from "@hugeicons/core-free-icons";
+import {
+  BookmarkAdd01Icon,
+  Gps01Icon,
+  PlusSignIcon,
+} from "@hugeicons/core-free-icons";
 
 import { useAdaptiveSurface } from "@/components/service-app/adaptive-surface";
 import { LocationPinScene } from "@/components/service-app/location-pin-scene";
@@ -22,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { LimeCabCompleteScene } from "@/components/limecab/limecab-complete-scene";
 import { LimeCabConfigureScene } from "@/components/limecab/limecab-configure-scene";
+import { renderAssistSearchResults } from "@/components/limecab/limecab-assist-results";
 import { LimeCabHomeScene } from "@/components/limecab/limecab-home-scene";
 import {
   LimeCabCancelSurfaces,
@@ -107,6 +112,18 @@ import {
   shopListUnitCount,
   type ShopItem,
 } from "@/lib/limecab/shop-list";
+import { createAssistSearchAdapter } from "@/lib/limecab/assist-search";
+import {
+  parseAssistTiming,
+  scheduledTimeFromQuery,
+  type AssistPlace,
+  type AssistPlan,
+} from "@/lib/limecab/assist";
+import {
+  shopDeliveryStatusLabel,
+  shouldAbortDraftForAssist,
+  shouldResetAssistDraft,
+} from "@/lib/limecab/assist-draft";
 import type { SearchIntent } from "@/lib/limecab/search-intent";
 import {
   searchInputContract,
@@ -365,6 +382,7 @@ function LimeCabFlow({
   const wantReserve = searchParams.get("service") === "reserve";
   const wantShop = searchParams.get("service") === "shop";
   const wantHelp = searchParams.get("service") === "help";
+  const wantAssist = searchParams.get("service") === "assist";
 
   const [state, setState] = useState<ServiceAppState>("home");
   const [bookingMode, setBookingMode] = useState<BookingMode>(
@@ -376,7 +394,9 @@ function LimeCabFlow({
           ? "courier"
           : wantReserve
             ? "reserve"
-            : "ride",
+            : wantAssist
+              ? "assist"
+              : "ride",
   );
   /**
    * Lime Shop's store, once chosen. Not a scene flag: it is the fact that
@@ -410,6 +430,8 @@ function LimeCabFlow({
    * `ServiceAppState`.
    */
   const [rideMinimized, setRideMinimized] = useState(false);
+  const [shopMapCallout, setShopMapCallout] = useState<string | null>(null);
+  const prevWantAssist = useRef(wantAssist);
   const [recentering, setRecentering] = useState(false);
   const [mapRecenterAt, setMapRecenterAt] = useState(0);
   const [phaseStart, setPhaseStart] = useState(() => Date.now());
@@ -427,6 +449,7 @@ function LimeCabFlow({
    * then kind, then where — so it is a booking mode, not a second reducer.
    */
   const help = bookingMode === "help";
+  const assist = bookingMode === "assist";
 
   // ---- the server is the truth -------------------------------------------
   const [tripId, setTripId] = useState<string | null>(null);
@@ -596,8 +619,34 @@ function LimeCabFlow({
     if (wantReserve) {
       setBookingMode("reserve");
       setProductId("lime-reserve");
+      return;
     }
-  }, [wantCourier, wantHelp, wantReserve, wantShop, state]);
+    if (wantAssist && (state === "home" || rideMinimized)) {
+      setBookingMode("assist");
+    }
+  }, [wantAssist, wantCourier, wantHelp, wantReserve, wantShop, rideMinimized, state]);
+
+  const clearAssistDraft = useCallback(() => {
+    setDestination(null);
+    setStops([]);
+    setShopStore(null);
+    setProductId(null);
+    setShopMapCallout(null);
+  }, []);
+
+  /** Assist ribbon while a draft ride/shop sheet is still open → fresh Assist home. */
+  useEffect(() => {
+    const enteredAssist = wantAssist && !prevWantAssist.current;
+    prevWantAssist.current = wantAssist;
+    if (
+      shouldAbortDraftForAssist({ wantAssist, state, enteredAssist: enteredAssist })
+    ) {
+      clearAssistDraft();
+      surfaces.perform("leaveTask");
+      setState("home");
+      setBookingMode("assist");
+    }
+  }, [clearAssistDraft, state, surfaces, wantAssist]);
 
   useEffect(() => {
     if (
@@ -605,6 +654,7 @@ function LimeCabFlow({
       wantReserve ||
       wantShop ||
       wantHelp ||
+      wantAssist ||
       isCommitted(state) ||
       state !== "home"
     ) {
@@ -617,7 +667,7 @@ function LimeCabFlow({
         ? null
         : id,
     );
-  }, [wantCourier, wantHelp, wantReserve, wantShop, state]);
+  }, [wantAssist, wantCourier, wantHelp, wantReserve, wantShop, state]);
 
   const go = useCallback(
     (
@@ -664,6 +714,7 @@ function LimeCabFlow({
             latitude: destination.latitude,
             longitude: destination.longitude,
             kind: "destination",
+            label: splitAddress(destination.address).line,
           }
         : null,
     [destination],
@@ -674,6 +725,7 @@ function LimeCabFlow({
       latitude: pickup.latitude ?? CAMERA_FALLBACK.latitude,
       longitude: pickup.longitude ?? CAMERA_FALLBACK.longitude,
       kind: "origin",
+      label: splitAddress(pickup.address).line,
     }),
     [pickup],
   );
@@ -806,11 +858,18 @@ function LimeCabFlow({
       case "active":
         return {
           state: "active",
-          completedSteps: Math.floor(t * 4),
-          totalSteps: 4,
-          currentStep: destination
-            ? `On the way to ${splitAddress(destination.address).line}`
-            : "On the way",
+          completedSteps: Math.floor(t * (shop ? 3 : 4)),
+          totalSteps: shop ? 3 : 4,
+          currentStep:
+            shop && shopStore
+              ? t < 0.45
+                ? `Shopping at ${splitAddress(shopStore.address).line}`
+                : destination
+                  ? `Delivering to ${splitAddress(destination.address).line}`
+                  : "Delivering your order"
+              : destination
+                ? `On the way to ${splitAddress(destination.address).line}`
+                : "On the way",
           remainingSeconds: secondsLeft,
         };
       case "completing":
@@ -825,7 +884,7 @@ function LimeCabFlow({
       default:
         return { state: "pending" };
     }
-  }, [courier, destination, duration, failure, state, t, trip]);
+  }, [courier, destination, duration, failure, shop, shopStore, state, t, trip]);
 
   const mapPosture = surfaces.layout.map?.presentation ?? "bounded";
   const pinning = state === "location_pin";
@@ -910,7 +969,7 @@ function LimeCabFlow({
     // A live ride is minimized behind Home. The launcher is not an invitation
     // to book a second one — the reducer refuses that — so it is the way back
     // to the ride already running.
-    if (rideMinimized) return restoreRide();
+    if (rideMinimized && bookingMode !== "assist") return restoreRide();
     setSearchTarget(target);
     if (isCommitted(state)) {
       if (surfaces.layout.search.emphasis !== "primary") {
@@ -919,7 +978,11 @@ function LimeCabFlow({
       return;
     }
     surfaces.perform(
-      target === "pickup" ? "openPickupSearch" : "openDestinationSearch",
+      bookingMode === "assist"
+        ? "openAssistSearch"
+        : target === "pickup"
+          ? "openPickupSearch"
+          : "openDestinationSearch",
     );
     go("open_search");
   };
@@ -1239,7 +1302,11 @@ function LimeCabFlow({
                 callout={
                   locatingPickup || status.state === "failed"
                     ? null
-                    : serviceStatusView(status).callout
+                    : shopMapCallout ??
+                      serviceStatusView(status, {
+                        provider: shop || courier ? "courier" : "driver",
+                        service: shop ? "delivery" : courier ? "delivery" : "ride",
+                      }).callout
                 }
               />
               {!pinning &&
@@ -1331,10 +1398,14 @@ function LimeCabFlow({
         reserve={reserve}
         shop={shop}
         help={help}
+        assist={assist}
+        wantAssist={wantAssist}
         shopStore={shopStore}
         setShopStore={setShopStore}
         setSearchTarget={setSearchTarget}
         setBookingMode={setBookingMode}
+        clearAssistDraft={clearAssistDraft}
+        onShopMapCallout={setShopMapCallout}
         trip={trip}
         serverStatus={serverStatus}
         startTrip={startTrip}
@@ -1439,10 +1510,14 @@ function LimeCabSurfaces({
   reserve,
   shop,
   help,
+  assist,
+  wantAssist,
   shopStore,
   setShopStore,
   setSearchTarget,
   setBookingMode,
+  clearAssistDraft,
+  onShopMapCallout,
   trip,
   serverStatus,
   startTrip,
@@ -1498,10 +1573,14 @@ function LimeCabSurfaces({
   reserve: boolean;
   shop: boolean;
   help: boolean;
+  assist: boolean;
+  wantAssist: boolean;
   shopStore: Location | null;
   setShopStore: (next: Location | null) => void;
   setSearchTarget: (next: RideSearchTarget) => void;
   setBookingMode: (next: BookingMode) => void;
+  clearAssistDraft: () => void;
+  onShopMapCallout: (label: string | null) => void;
   trip: Trip | null;
   serverStatus: TripStatus | null;
   startTrip: (input: {
@@ -1554,6 +1633,8 @@ function LimeCabSurfaces({
    * typed rather than an item; `normalizeShopList` decides what is real.
    */
   const [shopItems, setShopItems] = useState<ShopItem[]>([{ label: "" }]);
+  /** Shop from Assist with a later delivery window — uses the When scene. */
+  const [shopScheduled, setShopScheduled] = useState(false);
   /** What needs doing at the house. Inline on the kind scene, not a scene. */
   const [helpNote, setHelpNote] = useState("");
   const [traveling, setTraveling] = useState(false);
@@ -1570,7 +1651,18 @@ function LimeCabSurfaces({
   const [searchAudience, setSearchAudience] = useState<SearchAudience>("self");
   const [locatingHere, setLocatingHere] = useState(false);
   const applyVoiceRef = useRef<(text: string) => void>(() => undefined);
+  const landAssistRef = useRef<(plan: AssistPlan) => void>(() => undefined);
+  const pickupRef = useRef(pickup);
+  pickupRef.current = pickup;
   const voice = useVoiceCapture((text) => applyVoiceRef.current(text));
+  const assistAdapter = useMemo(
+    () =>
+      createAssistSearchAdapter({
+        origin: () => pickupRef.current,
+        onLand: (plan) => landAssistRef.current(plan),
+      }),
+    [],
+  );
 
   const bookingMode: BookingMode = help
     ? "help"
@@ -1580,7 +1672,9 @@ function LimeCabSurfaces({
         ? "courier"
         : reserve
           ? "reserve"
-          : "ride";
+          : assist
+            ? "assist"
+            : "ride";
   const searchContract = searchInputContract({
     mode: bookingMode,
     target: searchTarget,
@@ -1589,7 +1683,7 @@ function LimeCabSurfaces({
 
   useEffect(() => {
     setSearchAudience("self");
-  }, [searchTarget, help, shop, courier, reserve]);
+  }, [searchTarget, help, shop, courier, reserve, assist]);
 
   /** The rider themselves, for the courier flow's "send it to me" prefill. */
   const rider = api.rider.me.useQuery(undefined, { enabled: signedIn }).data;
@@ -1724,7 +1818,7 @@ function LimeCabSurfaces({
   };
 
   const openVoice = () => {
-    if (rideMinimized) return onRestoreRide();
+    if (rideMinimized && !assist && !wantAssist) return onRestoreRide();
     setVoiceError(null);
     setSearchError(null);
     voiceOpenedSearch.current = state !== "location_search";
@@ -1888,7 +1982,7 @@ function LimeCabSurfaces({
   const chooseLocation = (result: Location) => {
     // Same reason as the launcher: a saved place cannot re-route a committed
     // ride, and the reducer's `select_location` has no committed guard.
-    if (rideMinimized) return onRestoreRide();
+    if (rideMinimized && !assist && !wantAssist) return onRestoreRide();
     setSearchError(null);
 
     // Lime Help's only place: the house is where the helper comes and where
@@ -2002,7 +2096,7 @@ function LimeCabSurfaces({
     suggestion: { id: string; address: string },
     intent: SearchIntent,
   ) => {
-    if (rideMinimized) return onRestoreRide();
+    if (rideMinimized && !assist && !wantAssist) return onRestoreRide();
     void (async () => {
       let result: Location;
       try {
@@ -2078,6 +2172,195 @@ function LimeCabSurfaces({
       });
     })();
   };
+
+  const hereLocation = (): Location =>
+    pickup.address && pickup.latitude !== undefined
+      ? {
+          address: pickup.address,
+          latitude: pickup.latitude,
+          longitude: pickup.longitude,
+        }
+      : {
+          address: CURRENT_LOCATION.address,
+          latitude: CURRENT_LOCATION.latitude,
+          longitude: CURRENT_LOCATION.longitude,
+        };
+
+  const resolveAssistPlace = (place?: AssistPlace): Location | null => {
+    if (!place) return null;
+    const slot = place.address.trim().toLowerCase();
+    if (slot === "home" && savedQuery.data?.home) {
+      return {
+        address: savedQuery.data.home.address,
+        latitude: savedQuery.data.home.latitude ?? undefined,
+        longitude: savedQuery.data.home.longitude ?? undefined,
+      };
+    }
+    if (slot === "work" && savedQuery.data?.work) {
+      return {
+        address: savedQuery.data.work.address,
+        latitude: savedQuery.data.work.latitude ?? undefined,
+        longitude: savedQuery.data.work.longitude ?? undefined,
+      };
+    }
+    if (place.latitude !== undefined && place.longitude !== undefined) {
+      return {
+        address: place.address,
+        latitude: place.latitude,
+        longitude: place.longitude,
+      };
+    }
+    return locationFromFixture(place.address);
+  };
+
+  const landAssistPlan = (plan: AssistPlan) => {
+    if (rideMinimized && !assist && !wantAssist) return onRestoreRide();
+    const dest = resolveAssistPlace(plan.destination);
+    const store = resolveAssistPlace(plan.store);
+    const items = plan.items?.length ? plan.items : [{ label: "" }];
+    const itemsOpen = normalizeShopList(items).length === 0;
+    const here = hereLocation();
+
+    if (plan.kind === "reserve") {
+      if (!dest) return;
+      setBookingMode("reserve");
+      setProductId("lime-reserve");
+      setDestination(dest);
+      surfaces.perform("destinationSelected");
+      go("select_location", {
+        hasLocation: true,
+        hasService: true,
+        needsConfigure: false,
+        needsServiceSelect: false,
+      });
+      return;
+    }
+
+    if (plan.kind === "help") {
+      const house = dest ?? here;
+      setBookingMode("help");
+      setPickup({ ...pickup, ...house, followsDevice: false });
+      setDestination(house);
+      surfaces.perform("chooseRide");
+      go("select_service", {
+        hasService: false,
+        hasLocation: false,
+        needsConfigure: true,
+        needsServiceSelect: true,
+        locationAfterConfigure: true,
+        selectAfterConfigure: true,
+      });
+      return;
+    }
+
+    if (plan.kind === "shop") {
+      const timing = plan.timing ?? parseAssistTiming(plan.title);
+      const scheduled = timing === "scheduled";
+      const whenHint = `${plan.title} ${plan.subtitle ?? ""}`;
+      const when = scheduled ? scheduledTimeFromQuery(whenHint) : null;
+      setShopScheduled(scheduled);
+      setScheduledAt(when);
+      onShopMapCallout(
+        scheduled ? null : shopDeliveryStatusLabel(product?.etaMinutes),
+      );
+      setProductId("courier-small");
+      setBookingMode("shop");
+      setShopItems(itemsOpen ? [{ label: "" }] : [...items, { label: "" }]);
+      setDestination(here);
+      setCourierValues({
+        ...defaultOptionValues(COURIER_OPTIONS),
+        recipientName: rider?.name ?? "",
+        recipientPhone: rider?.phone ?? "",
+      });
+      const needsWhen = scheduled && !when;
+      if (!store) {
+        if (needsWhen) {
+          surfaces.perform("chooseRide");
+          go("select_location", {
+            hasService: true,
+            hasLocation: false,
+            needsConfigure: true,
+            needsServiceSelect: false,
+            locationAfterConfigure: true,
+            needsPickupConfirm: false,
+          });
+          return;
+        }
+        setSearchTarget("pickup");
+        surfaces.perform("openShopSearch");
+        go("open_search");
+        return;
+      }
+      setPickup({ ...pickup, ...store, followsDevice: false });
+      setShopStore(store);
+      surfaces.perform("shopSelected");
+      go("select_location", {
+        hasService: true,
+        hasLocation: !itemsOpen && !needsWhen,
+        needsConfigure: itemsOpen || needsWhen,
+        needsServiceSelect: false,
+        locationAfterConfigure: true,
+        needsPickupConfirm: false,
+      });
+      return;
+    }
+
+    if (plan.kind === "courier") {
+      setProductId("courier-small");
+      setBookingMode("courier");
+      const origin = resolveAssistPlace(plan.pickup);
+      if (origin) {
+        setPickup({ ...pickup, ...origin, followsDevice: false });
+      }
+      if (dest) setDestination(dest);
+      setCourierValues(defaultOptionValues(COURIER_OPTIONS));
+      surfaces.perform("destinationSelected");
+      go("select_location", {
+        hasLocation: Boolean(dest),
+        hasService: true,
+        needsConfigure: true,
+        needsServiceSelect: false,
+        needsPickupConfirm: false,
+      });
+      return;
+    }
+
+    if (!dest) return;
+    setBookingMode("ride");
+    setDestination(dest);
+    surfaces.perform("destinationSelected");
+    go("select_location", {
+      hasLocation: true,
+      hasService: false,
+      needsConfigure: false,
+      needsServiceSelect: true,
+    });
+  };
+  landAssistRef.current = landAssistPlan;
+
+  /**
+   * Assist home must not inherit a prior ride or shop draft — otherwise
+   * "flowers for tonight" can inherit an old destination and route as a ride.
+   */
+  useEffect(() => {
+    if (
+      !shouldResetAssistDraft({
+        wantAssist: assist,
+        state,
+        rideMinimized,
+        inAssistSearch: state === "location_search" && assist,
+      })
+    ) {
+      return;
+    }
+    clearAssistDraft();
+    setShopItems([{ label: "" }]);
+    setScheduledAt(null);
+    setShopScheduled(false);
+    setCourierValues(defaultOptionValues(COURIER_OPTIONS));
+    setHelpNote("");
+    onShopMapCallout(null);
+  }, [assist, clearAssistDraft, onShopMapCallout, rideMinimized, state]);
 
   const skipForTheWay = () => {
     surfaces.perform("skipForTheWay");
@@ -2170,7 +2453,9 @@ function LimeCabSurfaces({
               // Reserve already had the instant client-side; a visit needs it
               // on the row, so both send it now.
               scheduledAt:
-                help || reserve ? (scheduledAt ?? undefined) : undefined,
+                help || reserve || (shop && shopScheduled)
+                  ? (scheduledAt ?? undefined)
+                  : undefined,
               courier: courier
                 ? {
                     recipientName: draft.recipientName,
@@ -2238,6 +2523,7 @@ function LimeCabSurfaces({
     setCourierValues(defaultOptionValues(COURIER_OPTIONS));
     setShopItems([{ label: "" }]);
     setShopStore(null);
+    setShopScheduled(false);
     setHelpNote("");
     setDestination(null);
     setStops([]);
@@ -2268,9 +2554,11 @@ function LimeCabSurfaces({
     }
     surfaces.perform("leaveTask");
     setShopStore(null);
+    setProductId(null);
     setDestination(null);
     setStops([]);
     setShopItems([{ label: "" }]);
+    setShopScheduled(false);
     setScheduledAt(null);
     setCourierValues(defaultOptionValues(COURIER_OPTIONS));
     setHelpNote("");
@@ -2375,7 +2663,7 @@ function LimeCabSurfaces({
 
       {visible === "home" || rideMinimized ? (
         <LimeCabHomeScene
-          destination={destination}
+          destination={assist ? null : destination}
           saved={savedSlots}
           recents={recents}
           title={
@@ -2390,14 +2678,27 @@ function LimeCabSurfaces({
                     : undefined
           }
           destinationHint={
-            help
-              ? "When should they arrive?"
-              : shop
-                ? "Which shop?"
-                : courier
-                  ? "Where is it going?"
-                  : "Where to?"
+            assist
+              ? "What would you like to do?"
+              : help
+                ? "When should they arrive?"
+                : shop
+                  ? "Which shop?"
+                  : courier
+                    ? "Where is it going?"
+                    : "Where to?"
           }
+          triggerClassName={assist ? "border-lime" : undefined}
+          triggerStart={
+            assist ? (
+              <Icon
+                icon={PlusSignIcon}
+                size={20}
+                className="text-lime shrink-0"
+              />
+            ) : undefined
+          }
+          hideTagline={assist}
           traveling={traveling}
           onTravelingChange={setTraveling}
           onSearch={(target) => {
@@ -2411,7 +2712,10 @@ function LimeCabSurfaces({
             openSearch(shop ? "pickup" : target);
           }}
           onVoice={openVoice}
-          onChooseLocation={chooseLocation}
+          onChooseLocation={(result) => {
+            if (assist) setBookingMode("ride");
+            chooseLocation(result);
+          }}
         />
       ) : null}
 
@@ -2544,7 +2848,17 @@ function LimeCabSurfaces({
                   slotsFor={helpVisitSlots}
                   emptyDayNote="No visits left today. Try tomorrow."
                 />
+              ) : shop && shopScheduled && !scheduledAt ? (
+                <LimeCabWhenScene
+                  value={scheduledAt}
+                  onChange={setScheduledAt}
+                  onContinue={() => go("configure_done")}
+                  title="When should it arrive?"
+                  description="Today or tomorrow. Your shop runs at the time you pick."
+                  action="Continue"
+                />
               ) : shop && shopStore ? (
+                shopList.length === 0 ? (
                 <LimeCabShopScene
                   store={
                     shopStore.shortName ?? splitAddress(shopStore.address).line
@@ -2564,12 +2878,37 @@ function LimeCabSurfaces({
                   }}
                   onEditStore={() => openSearch("pickup")}
                   onContinue={() => {
-                    // The remaining unknown is the drop-off, so the reducer
-                    // sends this to a prepared search and back revises here.
+                    if (shopScheduled && !scheduledAt) return;
                     setSearchTarget("destination");
                     go("configure_done", { locationAfterConfigure: true });
                   }}
                 />
+                ) : (
+                  <LimeCabShopScene
+                    store={
+                      shopStore.shortName ?? splitAddress(shopStore.address).line
+                    }
+                    items={shopItems}
+                    onItemsChange={setShopItems}
+                    values={courierValues}
+                    ready={shopReady}
+                    onChange={(id, value) => {
+                      setCourierValues((current) => {
+                        const next = { ...current, [id]: value };
+                        if (id === "size") {
+                          setProductId(courierProductFromOptions(next).id);
+                        }
+                        return next;
+                      });
+                    }}
+                    onEditStore={() => openSearch("pickup")}
+                    onContinue={() => {
+                      if (shopScheduled && !scheduledAt) return;
+                      setSearchTarget("destination");
+                      go("configure_done", { locationAfterConfigure: true });
+                    }}
+                  />
+                )
               ) : reserve ? (
                 <LimeCabWhenScene
                   value={scheduledAt}
@@ -2645,19 +2984,25 @@ function LimeCabSurfaces({
                 etaLine={
                   help && scheduledAt
                     ? `${helpVisitLabel(scheduledAt)} · ${helpKindLabel(product.id)}`
-                    : courier
-                      ? `Pickup in ~${product.etaMinutes} min · Deliver by ${clockTime(product.etaMinutes + quote.minutes)}`
-                      : reserve && scheduledAt
-                        ? reservedLabel(scheduledAt)
-                        : undefined
+                    : shop && shopScheduled && scheduledAt
+                      ? `${reservedLabel(scheduledAt)} · ${shopListSummary(shopList)}`
+                      : courier
+                        ? shop
+                          ? `Shopping now · Deliver by ${clockTime(product.etaMinutes + quote.minutes)}`
+                          : `Pickup in ~${product.etaMinutes} min · Deliver by ${clockTime(product.etaMinutes + quote.minutes)}`
+                        : reserve && scheduledAt
+                          ? reservedLabel(scheduledAt)
+                          : undefined
                 }
                 confirmLabel={
                   signedIn
                     ? help
                       ? `${isCareProduct(product.id) ? "Schedule Care" : "Schedule Help"} · ${formatMoney(payableCents)}`
-                      : reserve
-                        ? `Reserve Lime · ${formatMoney(payableCents)}`
-                        : undefined
+                      : shop && shopScheduled
+                        ? `Schedule delivery · ${formatMoney(payableCents)}`
+                        : reserve
+                          ? `Reserve Lime · ${formatMoney(payableCents)}`
+                          : undefined
                     : undefined
                 }
                 footnote={
@@ -2827,17 +3172,32 @@ function LimeCabSurfaces({
             state === "location_search" ||
             surfaces.layout.search.emphasis === "primary"
           }
-          adapter={placesAdapter}
+          adapter={assist ? assistAdapter : placesAdapter}
           places={searchPlaces}
           title={searchContract.title}
           placeholder={searchContract.placeholder}
           inputAriaLabel={searchContract.ariaLabel}
+          requireAddress={searchContract.commit !== "query"}
+          start={
+            assist ? (
+              <Icon
+                icon={PlusSignIcon}
+                size={18}
+                className="text-lime"
+              />
+            ) : undefined
+          }
+          inputClassName={
+            assist ? "border-lime bg-card" : undefined
+          }
           value={
-            searchContract.showRoute
+            assist
               ? ""
-              : searchContract.role === "store"
-                ? (shopStore?.address ?? "")
-                : (destination?.address ?? "")
+              : searchContract.showRoute
+                ? ""
+                : searchContract.role === "store"
+                  ? (shopStore?.address ?? "")
+                  : (destination?.address ?? "")
           }
           route={
             searchContract.showRoute
@@ -2897,8 +3257,17 @@ function LimeCabSurfaces({
               onUseHere={useHere}
             />
           }
-          onSelect={chooseLocation}
-          onChooseOnMap={isCommitted(state) ? undefined : onChooseOnMap}
+          onSelect={(result) => {
+            if (assist) {
+              const plan = assistAdapter.planMatching(result);
+              if (plan) landAssistPlan(plan);
+              return;
+            }
+            chooseLocation(result);
+          }}
+          onChooseOnMap={
+            assist || isCommitted(state) ? undefined : onChooseOnMap
+          }
           onDismiss={() => {
             setSearchError(null);
             voice.stop();
@@ -2935,7 +3304,7 @@ function LimeCabSurfaces({
             )
           }
           rowAction={
-            signedIn
+            signedIn && !assist
               ? (suggestion) => (
                   <SaveRowButton
                     onPress={() => {
@@ -2956,12 +3325,19 @@ function LimeCabSurfaces({
                 )
               : undefined
           }
-          normalizeQuery={limeCabNormalizeQuery}
+          normalizeQuery={assist ? undefined : limeCabNormalizeQuery}
           renderResults={(input) =>
-            renderLimeCabSearchResults({
-              ...input,
-              onChooseIntent: chooseIntent,
-            })
+            assist
+              ? renderAssistSearchResults({
+                  ...input,
+                  planFor: assistAdapter.planFor,
+                  onChoose: landAssistPlan,
+                  response: assistAdapter.lastResponse(),
+                })
+              : renderLimeCabSearchResults({
+                  ...input,
+                  onChooseIntent: chooseIntent,
+                })
           }
         />
       </ManagedSurface>

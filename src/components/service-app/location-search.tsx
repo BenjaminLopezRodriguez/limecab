@@ -29,6 +29,7 @@ export function LocationSearch({
   inputRef,
   before,
   after,
+  start,
   end,
   fieldsClassName,
   inputClassName,
@@ -54,6 +55,8 @@ export function LocationSearch({
    */
   before?: React.ReactNode;
   after?: React.ReactNode;
+  /** Leading glyph inside the input (plus). Does not change default chrome. */
+  start?: React.ReactNode;
   /** Trailing control inside the input row (locate, clear). */
   end?: React.ReactNode;
   fieldsClassName?: string;
@@ -77,6 +80,7 @@ export function LocationSearch({
     active: number;
     listId: string;
     setActive: (index: number) => void;
+    searching: boolean;
   }) => React.ReactNode | undefined;
   ariaLabel?: string;
 }) {
@@ -86,6 +90,7 @@ export function LocationSearch({
   const [suggestions, setSuggestions] = React.useState<LocationSuggestion[]>(
     [],
   );
+  const [searching, setSearching] = React.useState(false);
   const [open, setOpen] = React.useState(false);
   const [active, setActive] = React.useState(-1);
 
@@ -103,10 +108,12 @@ export function LocationSearch({
   React.useEffect(() => {
     if (lookup.length < 3) {
       setSuggestions([]);
+      setSearching(false);
       return;
     }
     const controller = new AbortController();
     const timer = setTimeout(() => {
+      setSearching(true);
       void (async () => {
         try {
           const results = await adapter.suggest(lookup, controller.signal);
@@ -114,6 +121,8 @@ export function LocationSearch({
           setActive(-1);
         } catch {
           setSuggestions([]);
+        } finally {
+          if (!controller.signal.aborted) setSearching(false);
         }
       })();
     }, 250);
@@ -146,7 +155,8 @@ export function LocationSearch({
     }
   };
 
-  const listOpen = open && suggestions.length > 0;
+  const listOpen =
+    open && (suggestions.length > 0 || (searching && lookup.length >= 3));
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Escape") {
@@ -179,6 +189,14 @@ export function LocationSearch({
       <div className={cn("relative", fieldsClassName)}>
         {before}
         <div className="relative">
+          {start ? (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 left-4 z-10 flex items-center"
+            >
+              {start}
+            </span>
+          ) : null}
           <Input
             type="text"
             role="combobox"
@@ -209,6 +227,7 @@ export function LocationSearch({
             className={cn(
             "h-12 rounded-full",
               inputClassName,
+              start && "pl-11",
               end && "pr-20",
             )}
           />
@@ -228,6 +247,7 @@ export function LocationSearch({
             active,
             listId,
             setActive,
+            searching,
           }) ??
           (suggestions.length > 0 ? (
             <ul

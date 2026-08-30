@@ -13,18 +13,18 @@ export function LocationPinMarker({
   name: string | null;
   locating?: boolean;
 }) {
+  const label = name?.trim() ? name.trim() : "Set pickup";
   return (
-    <span
-      aria-hidden="true"
-      className="pointer-events-none absolute inset-0 flex items-center justify-center"
-    >
-      <FixedMarker
-        label={name?.trim() ? name.trim() : "…"}
-        kind="accent"
-        size="medium"
-        needle="medium"
-        dragging={locating}
-      />
+    <span aria-hidden="true" className="pointer-events-none absolute inset-0">
+      <span className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-full">
+        <FixedMarker
+          label={label}
+          kind="accent"
+          size="medium"
+          needle="medium"
+          dragging={locating}
+        />
+      </span>
     </span>
   );
 }

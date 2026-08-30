@@ -10,7 +10,13 @@
  * contract in through slots.
  */
 
-export type BookingMode = "ride" | "courier" | "reserve" | "shop" | "help";
+export type BookingMode =
+  | "ride"
+  | "courier"
+  | "reserve"
+  | "shop"
+  | "help"
+  | "assist";
 
 export type SearchTarget = "pickup" | "destination" | `stop:${number}`;
 
@@ -20,7 +26,8 @@ export type SearchFieldRole =
   | "stop"
   | "visit"
   | "store"
-  | "dropoff";
+  | "dropoff"
+  | "query";
 
 /**
  * What leaving the scene may commit.
@@ -66,6 +73,23 @@ export function searchInputContract({
   const other = audience === "other";
   const theirAddress = "Their address…";
   const stop = stopTarget(target);
+
+  if (mode === "assist") {
+    return {
+      role: "query",
+      commit: "query",
+      title: "What would you like to do?",
+      placeholder: "Ride, shop, send, help…",
+      ariaLabel: "What would you like to do?",
+      showRoute: false,
+      allowStops: false,
+      originLabel: "Here",
+      destinationLabel: "Here",
+      shortcuts: [],
+      destinationRequired: false,
+      hereCompletes: true,
+    };
+  }
 
   if (mode === "help") {
     return {

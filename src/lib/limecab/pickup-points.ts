@@ -1,4 +1,5 @@
 import { bearingDegrees, type MapPoint } from "../service-app/map-adapter.ts";
+import { splitAddress } from "../service-app/services.ts";
 
 /**
  * Uber-style pickup candidates for a chosen place.
@@ -327,13 +328,21 @@ export function pickupPointsAsMapPoints(
   points: readonly PickupCandidate[],
   selectedId: string | null,
 ): MapPoint[] {
-  return points.map((point) => ({
-    latitude: point.latitude,
-    longitude: point.longitude,
-    kind: "pickup" as const,
-    label: point.label,
-    selected: point.id === selectedId,
-  }));
+  return points.map((point) => {
+    const street = point.address
+      ? splitAddress(point.address).line
+      : undefined;
+    const detail =
+      street && street.trim() !== point.label.trim() ? street : undefined;
+    return {
+      latitude: point.latitude,
+      longitude: point.longitude,
+      kind: "pickup" as const,
+      label: point.label,
+      selected: point.id === selectedId,
+      ...(detail ? { detail } : {}),
+    };
+  });
 }
 
 /**

@@ -273,6 +273,25 @@ test("map points mark the selected curb and keep the others visible", () => {
   assert.equal(points.find((point) => point.selected)?.label, selected.label);
 });
 
+test("pickup map points carry the street as detail when it differs from the spot", () => {
+  const points = pickupPointsAsMapPoints(
+    [
+      {
+        id: "front",
+        latitude: 34.15,
+        longitude: -118.15,
+        label: "Front",
+        source: "curb",
+        score: 80,
+        address: "630 West 5th Street, Los Angeles, CA",
+      },
+    ],
+    "front",
+  );
+  assert.equal(points[0]?.detail, "630 West 5th Street");
+  assert.equal(points[0]?.label, "Front");
+});
+
 test("same-address spots become Front / Side / Back around the parcel", () => {
   const place = { latitude: 34.15, longitude: -118.15 };
   const named = nameSameAddressSpots(place, [

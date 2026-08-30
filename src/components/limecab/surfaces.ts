@@ -86,6 +86,18 @@ export const limeCabSurfaces = createSurfaceManager({
         search: { emphasis: "hidden" },
       },
     },
+    /**
+     * Assist home pill — same search posture as Where?, different question.
+     * The map stays mounted; the overlay is the prepared query scene.
+     */
+    openAssistSearch: {
+      intent: "expand",
+      surfaces: {
+        map: { emphasis: "background", presentation: "locating" },
+        primary: { emphasis: "hidden" },
+        search: { emphasis: "primary", presentation: "fullscreen" },
+      },
+    },
     /** "Where to?" — the search scene takes the screen; the map stays put. */
     openDestinationSearch: {
       intent: "expand",

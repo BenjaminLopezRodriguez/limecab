@@ -1,8 +1,8 @@
 /**
  * Lime Help — a scheduled visit to someone's home.
  *
- * Not a ride with a different icon and not Assist (which is help getting into
- * a car). A helper comes to the house at a time the rider picked, does light
+ * Not a ride with a different icon and not Assist (the omnisearch launcher).
+ * A helper comes to the house at a time the rider picked, does light
  * household tasks for about an hour, and leaves. Pickup and destination are
  * the same address, so there is no route and no per-mile fare.
  */

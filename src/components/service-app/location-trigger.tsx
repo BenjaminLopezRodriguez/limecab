@@ -19,6 +19,7 @@ export function LocationTrigger({
   onPress,
   size = "md",
   className,
+  start,
   end,
 }: {
   /** The chosen address, or empty to show the hint. */
@@ -28,6 +29,8 @@ export function LocationTrigger({
   /** "lg" is the primary affordance of a launcher screen. */
   size?: "md" | "lg";
   className?: string;
+  /** Leading glyph inside the bar. Defaults to search. */
+  start?: ReactNode;
   /** Trailing control (mic). Sibling of the search tap, never nested in it. */
   end?: ReactNode;
 }) {
@@ -54,12 +57,14 @@ export function LocationTrigger({
           "touch-manipulation",
         )}
       >
-        <Icon
-          icon={Search01Icon}
-          size={large ? 20 : 16}
-          className="text-lime shrink-0"
-          aria-hidden="true"
-        />
+        {start ?? (
+          <Icon
+            icon={Search01Icon}
+            size={large ? 20 : 16}
+            className="text-lime shrink-0"
+            aria-hidden="true"
+          />
+        )}
         <span className={cn("truncate", empty && "text-muted-foreground")}>
           {empty ? hint : label}
         </span>

@@ -20,6 +20,7 @@ import {
   boundsForPoints,
   boundsToFitCorners,
   expandBoundsToSpan,
+  mapMarkerAnchor,
   tracksProvider,
   zoomForMode,
   type MapPoint,
@@ -439,7 +440,7 @@ export function MapboxCanvas({
             key={`${point.kind ?? "marker"}-${index}`}
             longitude={point.longitude}
             latitude={point.latitude}
-            anchor="center"
+            anchor={mapMarkerAnchor(point, mode)}
             rotationAlignment={point.kind === "poi" ? "viewport" : "map"}
             style={{
               overflow: "visible",

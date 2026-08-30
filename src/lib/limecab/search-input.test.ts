@@ -6,6 +6,21 @@ import {
   searchShortcutCopy,
 } from "./search-input.ts";
 
+test("assist is a single query field, not a pickup and dropoff", () => {
+  const contract = searchInputContract({
+    mode: "assist",
+    target: "destination",
+  });
+  assert.equal(contract.role, "query");
+  assert.equal(contract.commit, "query");
+  assert.equal(contract.showRoute, false);
+  assert.equal(contract.allowStops, false);
+  assert.equal(contract.destinationRequired, false);
+  assert.equal(contract.hereCompletes, true);
+  assert.deepEqual(contract.shortcuts, []);
+  assert.equal(contract.title, "What would you like to do?");
+});
+
 test("ride destination still requires a place and a route stack", () => {
   const contract = searchInputContract({
     mode: "ride",
