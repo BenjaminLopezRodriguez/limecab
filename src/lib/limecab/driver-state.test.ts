@@ -8,6 +8,8 @@ import {
   driverJobKind,
   driverSceneForTripStatus,
   driverSceneFromInbox,
+  freightMapScene,
+  freightSceneForLoadStatus,
   isDriving,
   rankLiveJobs,
   reduceDriverAppState,
@@ -181,4 +183,73 @@ test("a visit arrives, starts and completes — it is never a pickup", () => {
   assert.equal(driverAppQuestion("at_pickup", "help").action, "Start visit");
   assert.equal(driverAppQuestion("on_trip", "help").action, "Complete visit");
   assert.match(driverAppQuestion("to_pickup", "help").question, /house/i);
+});
+
+test("every freight load status a driver can be assigned to has a scene", () => {
+  const onTheRoad = [
+    "DRIVER_ASSIGNED",
+    "EN_ROUTE_TO_PICKUP",
+    "AT_PICKUP",
+    "LOADING",
+    "IN_TRANSIT",
+    "AT_DELIVERY",
+    "UNLOADING",
+    "DELIVERED",
+    "POD_PENDING",
+    "EXCEPTION",
+  ];
+  for (const status of onTheRoad) {
+    const scene = freightSceneForLoadStatus(status);
+    assert.ok(scene, `${status} has no scene`);
+    // Every one of them is a driving scene: duty cannot be dropped under load.
+    assert.ok(isDriving(scene), `${status} mapped to ${scene}`);
+  }
+});
+
+test("a load nobody is driving yet, or is finished with, has no scene", () => {
+  for (const status of [
+    "DRAFT",
+    "QUOTE_PENDING",
+    "QUOTED",
+    "AVAILABLE",
+    "BOOKED",
+    "COMPLETED",
+    "CANCELED",
+    "REJECTED",
+  ]) {
+    assert.equal(freightSceneForLoadStatus(status), null, status);
+  }
+});
+
+test("the freight ladder runs pickup, then loading, then the road", () => {
+  assert.equal(freightSceneForLoadStatus("EN_ROUTE_TO_PICKUP"), "to_pickup");
+  assert.equal(freightSceneForLoadStatus("LOADING"), "at_pickup");
+  assert.equal(freightSceneForLoadStatus("IN_TRANSIT"), "on_trip");
+  // Freight never asks a rider question, on any scene.
+  assert.match(driverAppQuestion("at_pickup", "freight").question, /loaded/i);
+  assert.doesNotMatch(
+    driverAppQuestion("to_pickup", "freight").question,
+    /rider|package/i,
+  );
+});
+
+test("the lane is only the road itself", () => {
+  // Both ends of the load are local operations, whatever the fix says.
+  assert.equal(freightMapScene("EN_ROUTE_TO_PICKUP", "far"), "to_pickup");
+  assert.equal(freightMapScene("LOADING", "arrived"), "to_pickup");
+  assert.equal(freightMapScene("IN_TRANSIT", "far"), "linehaul");
+  assert.equal(freightMapScene("IN_TRANSIT", "near"), "near_delivery");
+  assert.equal(freightMapScene("IN_TRANSIT", "arrived"), "near_delivery");
+  // The server saying the truck is at the receiver outranks the fix.
+  assert.equal(freightMapScene("AT_DELIVERY", "far"), "near_delivery");
+  assert.equal(freightMapScene("UNLOADING", null), "near_delivery");
+});
+
+test("an unknown proximity keeps the corridor rather than guessing arrival", () => {
+  assert.equal(freightMapScene("IN_TRANSIT", null), "linehaul");
+});
+
+test("a load nobody is driving has no map scene", () => {
+  assert.equal(freightMapScene("AVAILABLE", "far"), null);
+  assert.equal(freightMapScene("CANCELLED", null), null);
 });

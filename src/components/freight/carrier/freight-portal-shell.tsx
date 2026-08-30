@@ -4,11 +4,15 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { AdaptiveSurface } from "@/components/service-app/adaptive-surface";
 import { cn } from "@/lib/utils";
 
 /**
- * Desktop carrier web portal chrome — Uber Freight portal IA:
- * Search · Saved Lanes · My Loads · Fleet Management
+ * Carrier desk chrome — Search · Saved Lanes · My Loads · Fleet.
+ *
+ * A desk, not a duty session: dispatch is comparison work on a wide screen,
+ * so there is no map-under-sheet here and no surface manager. The road half
+ * of freight lives on `/driver`.
  */
 const NAV = [
   { href: "/freight/carrier", label: "Search", match: (p: string) => p === "/freight/carrier" },
@@ -72,26 +76,14 @@ export function FreightPortalShell({ children }: { children: ReactNode }) {
               })}
             </nav>
           </div>
-          <div className="flex items-center gap-2 text-[12px] font-semibold">
-            <Link
-              href="/freight/driver"
-              className="text-muted-foreground hover:text-foreground rounded-full px-2.5 py-1.5"
-            >
-              App
-            </Link>
-            <Link
-              href="/freight"
-              className="text-muted-foreground hover:text-foreground rounded-full px-2.5 py-1.5"
-            >
-              Ship
-            </Link>
-            <Link
-              href="/partner"
-              className="text-muted-foreground hover:text-foreground rounded-full px-2.5 py-1.5"
-            >
-              Partners
-            </Link>
-          </div>
+          {/* One way out, to the gateway. A per-page product switcher is
+              the role toggle `/partner` exists to replace. */}
+          <Link
+            href="/partner"
+            className="text-muted-foreground hover:text-foreground shrink-0 rounded-full px-2.5 py-1.5 text-[12px] font-semibold"
+          >
+            Partners
+          </Link>
         </div>
         <nav
           aria-label="Carrier portal mobile"
@@ -116,7 +108,13 @@ export function FreightPortalShell({ children }: { children: ReactNode }) {
           })}
         </nav>
       </header>
-      <div className="mx-auto max-w-6xl px-5 py-6 md:px-8 md:py-8">{children}</div>
+      {/* A desk, but the origin/destination question is still an
+          interruption — and an Interrupt with no Root throws on render. */}
+      <AdaptiveSurface.Root>
+        <div className="mx-auto max-w-6xl px-5 py-6 md:px-8 md:py-8">
+          {children}
+        </div>
+      </AdaptiveSurface.Root>
     </div>
   );
 }

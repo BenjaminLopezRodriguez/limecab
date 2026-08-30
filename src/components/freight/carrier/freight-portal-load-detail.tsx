@@ -19,7 +19,7 @@ import {
 import {
   Empty,
   FALLBACK_POINT,
-  formatMoney,
+  formatMoneyOrDash,
   mapAdapter,
   Row,
 } from "@/components/freight/freight-parts";
@@ -149,7 +149,7 @@ export function FreightPortalLoadDetail({ loadId }: { loadId: string }) {
                         className="bg-secondary block rounded-2xl px-3.5 py-3 text-[14px] font-medium"
                       >
                         {loadLaneLabel(r)} ·{" "}
-                        {formatMoney(r.carrierRateMinor, r.currency)}
+                        {formatMoneyOrDash(r.carrierRateMinor, r.currency)}
                       </Link>
                     </li>
                   ))}
@@ -160,7 +160,7 @@ export function FreightPortalLoadDetail({ loadId }: { loadId: string }) {
 
           <aside className="bg-card ring-border h-fit space-y-4 rounded-2xl p-5 ring-1 lg:sticky lg:top-24">
             <p className="text-[28px] font-semibold tabular-nums tracking-tight">
-              {formatMoney(load.carrierRateMinor, load.currency)}
+              {formatMoneyOrDash(load.carrierRateMinor, load.currency)}
             </p>
             <dl className="space-y-2 text-[14px]">
               <Row
@@ -270,12 +270,9 @@ export function FreightPortalLoadDetail({ loadId }: { loadId: string }) {
               </p>
             )}
 
-            <Link
-              href="/freight/driver"
-              className="text-muted-foreground block text-center text-[13px] font-medium underline-offset-2 hover:underline"
-            >
-              Open freight app
-            </Link>
+            <p className="text-muted-foreground text-center text-[13px] leading-relaxed">
+              Once assigned, the load runs on the driver’s road app.
+            </p>
           </aside>
         </div>
       )}

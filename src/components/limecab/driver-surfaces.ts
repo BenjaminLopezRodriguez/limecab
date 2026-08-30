@@ -10,7 +10,10 @@
  */
 
 import type { MapMode } from "@/lib/service-app/map-adapter";
-import type { DriverAppState } from "@/lib/limecab/driver-state";
+import type {
+  DriverAppState,
+  FreightMapScene,
+} from "@/lib/limecab/driver-state";
 import {
   createSurfaceManager,
   type SurfaceRecipe,
@@ -25,6 +28,12 @@ export const DRIVER_MAP_MODE: Record<string, MapMode> = {
   tracking: "provider_arrival",
   trip: "active_route",
   receipt: "results",
+  /**
+   * The lane. `route_preview` is the one mode that is *not* a follow-cam, so
+   * the canvas fits the whole corridor with camera padding and the driver can
+   * read Ontario → Phoenix as one shape. No new map mode, no map inset.
+   */
+  linehaul: "route_preview",
 };
 
 /** The offer takes the screen; everything under it is held, not torn down. */
@@ -143,11 +152,42 @@ const HEADING_PIN = {
   offer: { emphasis: "hidden" },
 } as const;
 
+/**
+ * Freight's map scenes. Local framing at both ends of the lane; the corridor
+ * in between. Only the map is named — the sheet is the duty scene's business.
+ */
+const FREIGHT_LOCAL = {
+  map: {
+    emphasis: "background",
+    presentation: "tracking",
+    interaction: "passive",
+  },
+} as const;
+
+const FREIGHT_LINEHAUL = {
+  map: {
+    emphasis: "background",
+    presentation: "linehaul",
+    interaction: "passive",
+  },
+} as const;
+
+const FREIGHT_ARRIVING = {
+  map: { emphasis: "background", presentation: "trip", interaction: "passive" },
+} as const;
+
 export const driverSurfaces = createSurfaceManager({
   surfaces: {
     map: {
       role: "background",
-      presentations: ["idle", "locating", "tracking", "trip", "receipt"],
+      presentations: [
+        "idle",
+        "locating",
+        "tracking",
+        "trip",
+        "receipt",
+        "linehaul",
+      ],
       initial: {
         emphasis: "background",
         presentation: "idle",
@@ -348,6 +388,44 @@ export const driverSurfaces = createSurfaceManager({
       surfaces: { ...IDLE, interrupt: { emphasis: "hidden" } },
     },
 
+    /**
+     * Freight's three map scenes. Map-only recipes on purpose: which picture
+     * the camera is taking is a different question from where the sheet sits,
+     * and keeping them apart is what lets a minimized load keep its lane.
+     *
+     * Neither intent is `progress`, so a camera move can never tear down an
+     * exception or POD interrupt that is standing over the job.
+     */
+    freightToPickup: { intent: "collapse", surfaces: FREIGHT_LOCAL },
+    /** `Depart pickup`: the camera pulls outward until the lane is legible. */
+    freightLinehaul: { intent: "expand", surfaces: FREIGHT_LINEHAUL },
+    freightNearDelivery: { intent: "collapse", surfaces: FREIGHT_ARRIVING },
+
+    /**
+     * A 795-mile load runs twelve hours; the driver is not held in one sheet
+     * for it. The job is not ended and duty is not dropped — only the sheet
+     * leaves, and the corridor stays on the canvas behind the affordance.
+     */
+    minimizeFreightJob: {
+      intent: "collapse",
+      surfaces: { primary: { emphasis: "hidden", interaction: "inert" } },
+    },
+    restoreFreightJob: {
+      intent: "expand",
+      surfaces: {
+        primary: {
+          emphasis: "primary",
+          presentation: "sheet",
+          interaction: "active",
+        },
+      },
+    },
+
+    /** "Report an issue" — the job sheet is suspended, never unmounted. */
+    openFreightException: { intent: "interrupt", surfaces: ASIDE },
+    /** POD capture is a document, so it takes the screen like search does. */
+    openFreightPod: { intent: "interrupt", surfaces: HEADING },
+
     openHeading: { intent: "interrupt", surfaces: HEADING },
     openSafety: { intent: "interrupt", surfaces: ASIDE },
     /** Same thread the rider sees. Overlay — keyboard plus the messages. */
@@ -414,4 +492,17 @@ export const DRIVER_SCENE_SURFACES: Record<
     },
     offer: { emphasis: "hidden" },
   },
+};
+
+/**
+ * Freight map scene → the action that takes the camera there. One named
+ * action per scene, so nothing in the app sets a map posture by hand.
+ */
+export const DRIVER_FREIGHT_MAP_ACTION: Record<
+  FreightMapScene,
+  DriverSurfaceAction
+> = {
+  to_pickup: "freightToPickup",
+  linehaul: "freightLinehaul",
+  near_delivery: "freightNearDelivery",
 };

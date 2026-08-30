@@ -20,6 +20,8 @@ export type CarrierCapabilities = {
   /** DRIVER (and OWNER for self-drive) may run the load. */
   canDrive: boolean;
   canManageFleet: boolean;
+  /** Money. Dispatch prices lanes; drivers are not paid the load rate. */
+  canSeeRate: boolean;
 };
 
 export function capabilitiesForRole(
@@ -27,10 +29,13 @@ export function capabilitiesForRole(
 ): CarrierCapabilities {
   const dispatch = role === "OWNER" || role === "DISPATCHER";
   return {
-    canBook: dispatch || role === "DRIVER",
+    // Booking binds the carrier to a lane — that is dispatch, not driving
+    // (freeze A). An owner-operator still books, via OWNER.
+    canBook: dispatch,
     canAssign: dispatch,
     canDrive: role === "DRIVER" || role === "OWNER",
     canManageFleet: role === "OWNER",
+    canSeeRate: dispatch,
   };
 }
 
@@ -111,4 +116,48 @@ export async function loadById(database: Db, loadId: string) {
   });
   if (!load) throw new TRPCError({ code: "NOT_FOUND", message: "Load not found." });
   return load;
+}
+
+/**
+ * Strip the money the viewer has no business reading, on the server.
+ *
+ * - Shipper keeps `shipperPriceMinor` — it is the price they agreed to — and
+ *   never sees `carrierRateMinor`, which is the carrier's side of the spread.
+ * - Carrier dispatch keeps `carrierRateMinor` and never sees the shipper
+ *   price: no carrier role has a reason to read the broker margin.
+ * - Everyone else (a DRIVER, or an assigned driver with no dispatch
+ *   capability) gets neither. An employee driver is not paid the load rate.
+ *
+ * Redacted fields are ABSENT, not zero: `$0.00` on a sheet is a lie, while a
+ * missing value lets the surface say nothing.
+ *
+ * ponytail: one helper, applied at the read sites. Not a field-level
+ * permission framework — there are two fields.
+ */
+export type RedactedLoad<T> = Omit<
+  T,
+  "shipperPriceMinor" | "carrierRateMinor"
+> & {
+  shipperPriceMinor?: number;
+  carrierRateMinor?: number;
+};
+
+export function redactLoadForRole<
+  T extends { shipperPriceMinor: number; carrierRateMinor: number },
+>(
+  load: T,
+  viewer: { canSeeRate: boolean; isShipper: boolean },
+): RedactedLoad<T> {
+  const { shipperPriceMinor, carrierRateMinor, ...rest } = load;
+  // The return type is optional on purpose rather than cast back to `T`. A
+  // type that still promises `number` is how this redaction regresses: the
+  // next surface reads `load.carrierRateMinor`, tsc says fine, and a driver
+  // sees `$0.00` — or worse, the field is quietly put back to satisfy it.
+  // Making the absence visible in the type forces every reader to say what
+  // it shows when there is nothing to show.
+  return {
+    ...rest,
+    ...(viewer.isShipper ? { shipperPriceMinor } : {}),
+    ...(viewer.canSeeRate && !viewer.isShipper ? { carrierRateMinor } : {}),
+  };
 }

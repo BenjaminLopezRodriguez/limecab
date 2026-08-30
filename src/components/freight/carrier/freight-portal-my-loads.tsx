@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { freight, loadLaneLabel } from "@/components/freight/freight-api";
-import { Empty, formatMoney } from "@/components/freight/freight-parts";
+import { Empty, formatMoneyOrDash } from "@/components/freight/freight-parts";
 import { cn } from "@/lib/utils";
 
 type Seg = "needs_driver" | "upcoming" | "in_progress" | "done";
@@ -114,7 +114,7 @@ export function FreightPortalMyLoads() {
                   </p>
                 </div>
                 <p className="text-[15px] font-semibold tabular-nums">
-                  {formatMoney(load.carrierRateMinor, load.currency)}
+                  {formatMoneyOrDash(load.carrierRateMinor, load.currency)}
                 </p>
               </button>
             </li>

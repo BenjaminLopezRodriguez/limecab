@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -28,7 +28,9 @@ import {
 } from "@/server/api/trpc";
 import {
   freightAccessorialRequests,
+  freightCarrierInvites,
   freightCarrierMembers,
+  freightCarriers,
   freightDocuments,
   freightDriverAssignments,
   freightExceptions,
@@ -46,11 +48,21 @@ import {
   getAllCarrierMemberships,
   getCarrierMembership,
   loadById,
+  redactLoadForRole,
   requireCarrierAccess,
   requireDriverAssigned,
   requireShipperOwnsLoad,
 } from "@/server/freight/authz";
 import { bookLoadExclusive } from "@/server/freight/booking";
+import {
+  generateInviteCode,
+  INVITABLE_ROLES,
+  INVITE_REFUSAL_MESSAGE,
+  INVITE_TTL_MS,
+  inviteRefusal,
+  normalizeInviteCode,
+  roleGrantLines,
+} from "@/server/freight/invite";
 import { createSimulatedSettlement } from "@/server/freight/settlement";
 
 const equipmentZod = z.enum(EQUIPMENT_TYPES);
@@ -114,6 +126,23 @@ async function completeAfterPod(
     )
     .returning();
   return done ?? load;
+}
+
+/**
+ * Rate visibility for a road-side caller: OWNER self-driving keeps it,
+ * employee DRIVER does not.
+ */
+async function driverRateViewer(
+  database: typeof import("@/server/db").db,
+  userId: string,
+) {
+  const membership = await getCarrierMembership(database, userId);
+  return {
+    canSeeRate: membership
+      ? capabilitiesForRole(membership.role).canSeeRate
+      : false,
+    isShipper: false,
+  };
 }
 
 export const freightRouter = createTRPCRouter({
@@ -198,7 +227,8 @@ export const freightRouter = createTRPCRouter({
         },
       ]);
 
-      return load;
+      // Shipper reads their own price only; the carrier rate is not theirs.
+      return redactLoadForRole(load, { canSeeRate: false, isShipper: true });
     }),
 
   getQuote: protectedProcedure
@@ -295,7 +325,10 @@ export const freightRouter = createTRPCRouter({
         });
       }
 
-      return { load: quoted, quote };
+      return {
+        load: redactLoadForRole(quoted, { canSeeRate: false, isShipper: true }),
+        quote,
+      };
     }),
 
   publishShipment: protectedProcedure
@@ -341,7 +374,10 @@ export const freightRouter = createTRPCRouter({
           ),
         );
 
-      return published;
+      return redactLoadForRole(published, {
+        canSeeRate: false,
+        isShipper: true,
+      });
     }),
 
   /** UX alias — same as publishShipment (shipper publish, not carrier book). */
@@ -371,7 +407,10 @@ export const freightRouter = createTRPCRouter({
           message: "Load no longer QUOTED.",
         });
       }
-      return published;
+      return redactLoadForRole(published, {
+        canSeeRate: false,
+        isShipper: true,
+      });
     }),
 
   myShipments: protectedProcedure
@@ -394,7 +433,9 @@ export const freightRouter = createTRPCRouter({
         with: { stops: true },
         orderBy: [desc(freightLoads.createdAt)],
       });
-      return loads;
+      return loads.map((l) =>
+        redactLoadForRole(l, { canSeeRate: false, isShipper: true }),
+      );
     }),
 
   getLoad: protectedProcedure
@@ -414,20 +455,32 @@ export const freightRouter = createTRPCRouter({
       });
       if (!load) throw new TRPCError({ code: "NOT_FOUND" });
 
-      if (load.shipperUserId === userId) return load;
+      if (load.shipperUserId === userId) {
+        return redactLoadForRole(load, { canSeeRate: false, isShipper: true });
+      }
 
       const membership = await getCarrierMembership(
         ctx.db,
         userId,
         load.carrierId ?? undefined,
       );
+      const anyMembership =
+        membership ?? (await getCarrierMembership(ctx.db, userId));
+      // No carrier role reads no money. The branches below still decide
+      // whether this viewer reads the load at all.
+      const viewer = {
+        canSeeRate: anyMembership
+          ? capabilitiesForRole(anyMembership.role).canSeeRate
+          : false,
+        isShipper: false,
+      };
+
       if (load.status === "AVAILABLE") {
-        const any = await getCarrierMembership(ctx.db, userId);
-        if (any) return load;
+        if (anyMembership) return redactLoadForRole(load, viewer);
       } else if (membership && load.carrierId === membership.carrierId) {
-        return load;
+        return redactLoadForRole(load, viewer);
       } else if (load.assignedDriverUserId === userId) {
-        return load;
+        return redactLoadForRole(load, viewer);
       }
 
       throw new TRPCError({ code: "FORBIDDEN" });
@@ -457,6 +510,10 @@ export const freightRouter = createTRPCRouter({
           message: "Carrier membership required.",
         });
       }
+      const viewer = {
+        canSeeRate: capabilitiesForRole(membership.role).canSeeRate,
+        isShipper: false,
+      };
 
       const available = await ctx.db.query.freightLoads.findMany({
         where: and(
@@ -487,7 +544,10 @@ export const freightRouter = createTRPCRouter({
         ) {
           continue;
         }
+        // A numeric filter over a hidden number is an oracle for it, so a
+        // viewer without canSeeRate does not get to bisect the rate.
         if (
+          viewer.canSeeRate &&
           input.minRateMinor != null &&
           load.carrierRateMinor < input.minRateMinor
         ) {
@@ -528,7 +588,9 @@ export const freightRouter = createTRPCRouter({
         }
 
         const rpm = ratePerMile(load.carrierRateMinor, load.distanceMeters);
-        if (input.minRpm != null && rpm < input.minRpm) continue;
+        if (viewer.canSeeRate && input.minRpm != null && rpm < input.minRpm) {
+          continue;
+        }
 
         candidates.push({
           id: load.id,
@@ -557,10 +619,18 @@ export const freightRouter = createTRPCRouter({
 
       return ranked.map((r) => {
         const c = candidates.find((x) => x.id === r.id)!;
+        // `r` carries the ranker's spread of the candidate — the rate, the
+        // derived rpm, AND the raw nested load. All three are redacted here;
+        // ranking still used the true rate, server-side.
+        const { carrierRateMinor, rpmMinor, ...rest } = r;
         return {
-          ...r,
+          // `rest` still carries the ranker's spread of the raw nested load at
+          // runtime (RankedLoad does not declare it); the redacted `load`
+          // below is written after the spread and wins.
+          ...rest,
+          ...(viewer.canSeeRate ? { carrierRateMinor, rpmMinor } : {}),
           deadheadMeters: c.deadheadMeters,
-          load: c.load,
+          load: redactLoadForRole(c.load, viewer),
         };
       });
     }),
@@ -611,7 +681,10 @@ export const freightRouter = createTRPCRouter({
           message: "That load is no longer available.",
         });
       }
-      return result.load;
+      return redactLoadForRole(result.load, {
+        canSeeRate: caps.canSeeRate,
+        isShipper: false,
+      });
     }),
 
   myLoads: protectedProcedure
@@ -638,7 +711,8 @@ export const freightRouter = createTRPCRouter({
         });
       }
 
-      return ctx.db.query.freightLoads.findMany({
+      const caps = capabilitiesForRole(membership.role);
+      const rows = await ctx.db.query.freightLoads.findMany({
         where: input?.status
           ? and(
               eq(freightLoads.carrierId, membership.carrierId),
@@ -648,6 +722,9 @@ export const freightRouter = createTRPCRouter({
         with: { stops: true },
         orderBy: [desc(freightLoads.updatedAt), desc(freightLoads.createdAt)],
       });
+      return rows.map((l) =>
+        redactLoadForRole(l, { canSeeRate: caps.canSeeRate, isShipper: false }),
+      );
     }),
 
   assignDriver: protectedProcedure
@@ -750,7 +827,10 @@ export const freightRouter = createTRPCRouter({
         vehicleId: input.vehicleId,
       });
 
-      return updated;
+      return redactLoadForRole(updated, {
+        canSeeRate: capabilitiesForRole(membership.role).canSeeRate,
+        isShipper: false,
+      });
     }),
 
   suggestReturnLoads: protectedProcedure
@@ -765,6 +845,10 @@ export const freightRouter = createTRPCRouter({
       if (!membership) {
         throw new TRPCError({ code: "FORBIDDEN" });
       }
+      const viewer = {
+        canSeeRate: capabilitiesForRole(membership.role).canSeeRate,
+        isShipper: false,
+      };
 
       const load = await ctx.db.query.freightLoads.findFirst({
         where: eq(freightLoads.id, input.loadId),
@@ -785,23 +869,34 @@ export const freightRouter = createTRPCRouter({
         with: { stops: true },
       });
 
-      return available.filter((cand) => {
-        const pickup = cand.stops.find((s) => s.type === "PICKUP");
-        if (!pickup) return false;
-        return (
-          deadheadMeters(
-            delivery.lat,
-            delivery.lng,
-            pickup.lat,
-            pickup.lng,
-          ) <= input.radiusMeters
-        );
-      });
+      return available
+        .filter((cand) => {
+          const pickup = cand.stops.find((s) => s.type === "PICKUP");
+          if (!pickup) return false;
+          return (
+            deadheadMeters(
+              delivery.lat,
+              delivery.lng,
+              pickup.lat,
+              pickup.lng,
+            ) <= input.radiusMeters
+          );
+        })
+        .map((cand) => redactLoadForRole(cand, viewer));
     }),
 
   driverCurrent: protectedProcedure.query(async ({ ctx }) => {
     const userId = ctx.session.user.id;
-    return ctx.db.query.freightLoads.findMany({
+    const membership = await getCarrierMembership(ctx.db, userId);
+    // An owner-operator driving their own load still reads the rate; an
+    // employee DRIVER does not — the field is absent, never zero.
+    const viewer = {
+      canSeeRate: membership
+        ? capabilitiesForRole(membership.role).canSeeRate
+        : false,
+      isShipper: false,
+    };
+    const rows = await ctx.db.query.freightLoads.findMany({
       where: and(
         eq(freightLoads.assignedDriverUserId, userId),
         sql`${freightLoads.status} NOT IN ('COMPLETED', 'CANCELED', 'REJECTED')`,
@@ -809,6 +904,7 @@ export const freightRouter = createTRPCRouter({
       with: { stops: true },
       orderBy: [desc(freightLoads.updatedAt)],
     });
+    return rows.map((l) => redactLoadForRole(l, viewer));
   }),
 
   advance: protectedProcedure
@@ -876,7 +972,7 @@ export const freightRouter = createTRPCRouter({
           );
       }
 
-      return advanced;
+      return redactLoadForRole(advanced, await driverRateViewer(ctx.db, userId));
     }),
 
   submitPod: protectedProcedure
@@ -924,7 +1020,10 @@ export const freightRouter = createTRPCRouter({
       }
 
       const completed = await completeAfterPod(ctx.db, pending);
-      return completed;
+      return redactLoadForRole(
+        completed,
+        await driverRateViewer(ctx.db, userId),
+      );
     }),
 
   pingLocation: protectedProcedure
@@ -1258,5 +1357,187 @@ export const freightRouter = createTRPCRouter({
         .delete(freightCarrierMembers)
         .where(eq(freightCarrierMembers.id, input.memberId));
       return { ok: true as const };
+    }),
+  /* ------------------------------------------------------------------ */
+  /* Fleet invites — the only door into carrier membership.             */
+  /* ------------------------------------------------------------------ */
+
+  createFleetInvite: protectedProcedure
+    .input(
+      z.object({
+        role: z.enum(INVITABLE_ROLES),
+        name: z.string().min(1).max(128).optional(),
+        email: z.string().email().max(255).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const membership = await getCarrierMembership(ctx.db, ctx.session.user.id);
+      if (!membership || !capabilitiesForRole(membership.role).canManageFleet) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only a fleet manager can invite members.",
+        });
+      }
+      const carrier = await ctx.db.query.freightCarriers.findFirst({
+        where: eq(freightCarriers.id, membership.carrierId),
+      });
+      if (!carrier) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
+      // The unique index is the real collision check; three tries is plenty
+      // against a 30^8 space. ponytail: no pre-read, no backoff.
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const [row] = await ctx.db
+            .insert(freightCarrierInvites)
+            .values({
+              carrierId: membership.carrierId,
+              code: generateInviteCode(),
+              role: input.role,
+              invitedEmail: input.email ?? null,
+              invitedName: input.name ?? null,
+              createdByUserId: ctx.session.user.id,
+              expiresAt,
+            })
+            .returning();
+          if (row) {
+            return {
+              code: row.code,
+              role: row.role,
+              expiresAt: row.expiresAt,
+              carrierName: carrier.name,
+              grants: roleGrantLines(row.role),
+            };
+          }
+        } catch {
+          // code collision — draw another
+        }
+      }
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Could not mint an invite code. Try again.",
+      });
+    }),
+
+  /**
+   * What am I accepting? Returns the refusal instead of throwing so the join
+   * screen can name the specific cause rather than showing an error toast.
+   */
+  previewFleetInvite: protectedProcedure
+    .input(z.object({ code: z.string().min(1).max(32) }))
+    .query(async ({ ctx, input }) => {
+      const invite = await ctx.db.query.freightCarrierInvites.findFirst({
+        where: eq(freightCarrierInvites.code, normalizeInviteCode(input.code)),
+      });
+      if (!invite) {
+        return {
+          ok: false as const,
+          reason: "unknown" as const,
+          message: "No fleet invite matches that code. Check it and retry.",
+        };
+      }
+      const carrier = await ctx.db.query.freightCarriers.findFirst({
+        where: eq(freightCarriers.id, invite.carrierId),
+      });
+      const existing = await getCarrierMembership(
+        ctx.db,
+        ctx.session.user.id,
+        invite.carrierId,
+      );
+      const refusal = inviteRefusal(invite, {
+        now: new Date(),
+        alreadyMember: Boolean(existing),
+      });
+      if (refusal) {
+        return {
+          ok: false as const,
+          reason: refusal,
+          message: INVITE_REFUSAL_MESSAGE[refusal],
+        };
+      }
+      return {
+        ok: true as const,
+        code: invite.code,
+        carrierName: carrier?.name ?? "This carrier",
+        role: invite.role,
+        grants: roleGrantLines(invite.role),
+        expiresAt: invite.expiresAt,
+        invitedName: invite.invitedName,
+      };
+    }),
+
+  acceptFleetInvite: protectedProcedure
+    .input(z.object({ code: z.string().min(1).max(32) }))
+    .mutation(async ({ ctx, input }) => {
+      const code = normalizeInviteCode(input.code);
+      const invite = await ctx.db.query.freightCarrierInvites.findFirst({
+        where: eq(freightCarrierInvites.code, code),
+      });
+      if (!invite) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "No fleet invite matches that code.",
+        });
+      }
+      const existing = await getCarrierMembership(
+        ctx.db,
+        ctx.session.user.id,
+        invite.carrierId,
+      );
+      const refusal = inviteRefusal(invite, {
+        now: new Date(),
+        alreadyMember: Boolean(existing),
+      });
+      if (refusal) {
+        throw new TRPCError({
+          code: refusal === "already_member" ? "CONFLICT" : "BAD_REQUEST",
+          message: INVITE_REFUSAL_MESSAGE[refusal],
+        });
+      }
+
+      // CAS: the WHERE is the lock, exactly as bookLoadExclusive claims a
+      // load. Two concurrent accepts of one code — the loser updates 0 rows.
+      const now = new Date();
+      const [claimed] = await ctx.db
+        .update(freightCarrierInvites)
+        .set({ acceptedByUserId: ctx.session.user.id, acceptedAt: now })
+        .where(
+          and(
+            eq(freightCarrierInvites.id, invite.id),
+            isNull(freightCarrierInvites.acceptedByUserId),
+            isNull(freightCarrierInvites.revokedAt),
+            gt(freightCarrierInvites.expiresAt, now),
+          ),
+        )
+        .returning();
+      if (!claimed) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: INVITE_REFUSAL_MESSAGE.already_accepted,
+        });
+      }
+
+      // ponytail: the claim above is the single-use gate, so a failure here
+      // burns the code rather than unwinding into a transaction. Membership
+      // already ruled out above; the unique index is the last word.
+      const [member] = await ctx.db
+        .insert(freightCarrierMembers)
+        .values({
+          carrierId: claimed.carrierId,
+          userId: ctx.session.user.id,
+          role: claimed.role,
+        })
+        .returning();
+      if (!member) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+      const carrier = await ctx.db.query.freightCarriers.findFirst({
+        where: eq(freightCarriers.id, claimed.carrierId),
+      });
+      return {
+        carrierId: member.carrierId,
+        carrierName: carrier?.name ?? "your fleet",
+        role: member.role,
+        grants: roleGrantLines(member.role),
+      };
     }),
 });

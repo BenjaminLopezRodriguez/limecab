@@ -21,6 +21,7 @@ import {
   authBlocked,
   EQUIPMENT_LABEL,
   formatMiles,
+  formatMoneyOrDash,
   formatRatePerMile,
   loadLaneLabel,
   type FreightLoadCard,
@@ -38,7 +39,7 @@ export const FALLBACK_POINT: MapPoint = {
   longitude: -118.25,
 };
 
-export { formatMoney };
+export { formatMoney, formatMoneyOrDash };
 
 export type LocField = "pickup" | "delivery" | "origin" | "dest";
 
@@ -174,6 +175,7 @@ export function LocSearch({
       }}
     >
       <LocationSearchScene
+        framed={false}
         open={field != null}
         adapter={placesAdapter}
         title={title}
@@ -241,10 +243,10 @@ export function ShipmentList({
               </span>
             </span>
             <span className="text-[14px] font-medium tabular-nums">
-              {formatMoney(
+              {formatMoneyOrDash(
                 priceMode === "carrier"
                   ? load.carrierRateMinor
-                  : load.shipperPriceMinor || load.carrierRateMinor,
+                  : (load.shipperPriceMinor ?? load.carrierRateMinor),
                 load.currency,
               )}
             </span>
@@ -289,7 +291,7 @@ export function LoadResultCard({
         </div>
         <div className="shrink-0 text-right">
           <p className="text-[16px] font-semibold tabular-nums">
-            {formatMoney(load.carrierRateMinor, load.currency)}
+            {formatMoneyOrDash(load.carrierRateMinor, load.currency)}
           </p>
           <p className="text-muted-foreground text-[12px] tabular-nums">
             {formatRatePerMile(load.carrierRateMinor, load.distanceMeters)}

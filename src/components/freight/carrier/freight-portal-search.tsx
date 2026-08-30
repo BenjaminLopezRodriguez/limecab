@@ -24,7 +24,7 @@ import {
 import {
   Empty,
   EquipmentRow,
-  formatMoney,
+  formatMoneyOrDash,
   LocSearch,
   type LocField,
 } from "@/components/freight/freight-parts";
@@ -188,7 +188,7 @@ export function FreightPortalSearch() {
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="text-[17px] font-semibold tabular-nums">
-                        {formatMoney(load.carrierRateMinor, load.currency)}
+                        {formatMoneyOrDash(load.carrierRateMinor, load.currency)}
                       </p>
                       <p className="text-muted-foreground text-[12px] tabular-nums">
                         {formatRatePerMile(

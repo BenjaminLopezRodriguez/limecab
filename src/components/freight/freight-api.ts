@@ -4,6 +4,7 @@
 
 import type { DriverAction, EquipmentType, LoadStatus } from "@/lib/freight";
 import { driverMay } from "@/lib/freight";
+import { formatMoney } from "@/lib/service-app/services";
 import { api, type RouterOutputs } from "@/trpc/react";
 
 export const freight = api.freight;
@@ -26,6 +27,8 @@ export type StopRow = {
   lng: number;
   appointmentStart?: Date | string | null;
   appointmentEnd?: Date | string | null;
+  /** Facility free text — check-in, gate, parking. Never amenity data. */
+  instructions?: string | null;
 };
 
 /** Normalized card for lists / search hits. */
@@ -36,8 +39,15 @@ export type FreightLoadCard = {
   totalWeight: number;
   weightUnit?: string | null;
   distanceMeters: number;
-  shipperPriceMinor: number;
-  carrierRateMinor: number;
+  /**
+   * Withheld by role, not always present. `redactLoadForRole` on the server
+   * omits the money a viewer may not read — a driver sees neither, a shipper
+   * never sees the carrier's side of the spread — so every surface that
+   * prints one of these must say something when it is absent. `formatMoney`
+   * on `undefined` would be `$NaN`; use `formatMoneyOrDash`.
+   */
+  shipperPriceMinor?: number;
+  carrierRateMinor?: number;
   currency: string;
   simulated: boolean;
   stops?: StopRow[];
@@ -47,7 +57,7 @@ export type FreightLoadCard = {
 export type FreightQuote = {
   loadId: string;
   amountMinor: number;
-  carrierRateMinor: number;
+  carrierRateMinor?: number;
   currency: string;
   distanceMeters: number;
   equipmentType: EquipmentType;
@@ -81,10 +91,24 @@ export function formatMiles(meters: number) {
   return `${milesFromMeters(meters).toFixed(0)} mi`;
 }
 
-export function formatRatePerMile(rateMinor: number, meters: number) {
+export function formatRatePerMile(
+  rateMinor: number | undefined,
+  meters: number,
+) {
   const miles = milesFromMeters(meters);
-  if (miles <= 0) return "—";
+  if (rateMinor == null || miles <= 0) return "—";
   return `$${(rateMinor / miles / 100).toFixed(2)}/mi`;
+}
+
+/**
+ * Money that the viewer's role may have withheld. An em dash says "not yours
+ * to see"; `$0.00` would say "this load pays nothing", which is a lie.
+ */
+export function formatMoneyOrDash(
+  minor: number | undefined,
+  currency?: string,
+) {
+  return minor == null ? "—" : formatMoney(minor, currency);
 }
 
 export const EQUIPMENT_LABEL: Record<EquipmentType, string> = {
@@ -120,6 +144,45 @@ export function primaryDriverAction(status: string): DriverAction | null {
   return (
     DRIVER_PRIMARY.find((a) => driverMay(status as LoadStatus, a)) ?? null
   );
+}
+
+/**
+ * The one question a load asks its driver right now, and the one action that
+ * answers it.
+ *
+ * Freight's ladder is finer than a ride's, so the question belongs to the
+ * *status*, not to the duty scene: `at_pickup` covers both "are they loading
+ * you" and "are you loaded". The action is whatever the server says is legal
+ * — never a label this file invented — so the sheet can never offer a step
+ * the load machine would refuse.
+ *
+ * `POD_PENDING` and `EXCEPTION` have no driver action. They get a status line
+ * and no button, because there is nothing for the driver to do.
+ */
+const LOAD_QUESTION: Record<string, string> = {
+  DRIVER_ASSIGNED: "Head to pickup?",
+  EN_ROUTE_TO_PICKUP: "Have you reached the shipper?",
+  AT_PICKUP: "Are they loading you?",
+  LOADING: "Are you loaded?",
+  IN_TRANSIT: "Have you reached the receiver?",
+  AT_DELIVERY: "Are they unloading you?",
+  UNLOADING: "Is the trailer empty?",
+  DELIVERED: "Do you have the paperwork?",
+  POD_PENDING: "Paperwork is in",
+  EXCEPTION: "This load is on hold",
+};
+
+export function freightLoadQuestion(status: string): {
+  question: string;
+  action: DriverAction | null;
+  actionLabel: string | null;
+} {
+  const action = primaryDriverAction(status);
+  return {
+    question: LOAD_QUESTION[status] ?? status.replaceAll("_", " "),
+    action,
+    actionLabel: action ? DRIVER_CTA[action] : null,
+  };
 }
 
 export function loadLaneLabel(load: {
@@ -230,8 +293,8 @@ export function asLoadCard(
     totalWeight: number;
     weightUnit?: string | null;
     distanceMeters: number;
-    shipperPriceMinor: number;
-    carrierRateMinor: number;
+    shipperPriceMinor?: number;
+    carrierRateMinor?: number;
     currency: string;
     simulated: boolean;
     stops?: StopRow[] | null;

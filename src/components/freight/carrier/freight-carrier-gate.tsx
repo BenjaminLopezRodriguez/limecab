@@ -50,13 +50,10 @@ export function FreightCarrierGate({
             Fleet hub
           </Link>
           <Link href="/freight" className="underline-offset-2 hover:underline">
-            Ship
+            Ship freight
           </Link>
-          <Link
-            href="/freight/driver"
-            className="underline-offset-2 hover:underline"
-          >
-            Freight app
+          <Link href="/partner" className="underline-offset-2 hover:underline">
+            All partner products
           </Link>
         </nav>
       </div>

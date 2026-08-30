@@ -10,6 +10,7 @@ import {
 import {
   BackRow,
   formatMoney,
+  formatMoneyOrDash,
   Row,
 } from "@/components/freight/freight-parts";
 
@@ -50,7 +51,7 @@ export function QuoteScene({
         />
         <Row
           label="Carrier rate"
-          value={formatMoney(quote.carrierRateMinor, quote.currency)}
+          value={formatMoneyOrDash(quote.carrierRateMinor, quote.currency)}
         />
         <Row label="Pricing" value={`${quote.pricingVersion} · Simulated`} />
       </dl>

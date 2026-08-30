@@ -99,6 +99,13 @@
       "when": 1788106583084,
       "tag": "0013_freight_settlements",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788112752977,
+      "tag": "0014_freight_fleet_invites",
+      "breakpoints": true
     }
   ]
 }

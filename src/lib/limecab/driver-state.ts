@@ -16,6 +16,7 @@
  */
 
 import { isCourierProduct } from "./courier.ts";
+import type { ProximityBand } from "./freight-schedule.ts";
 import { isHelpProduct } from "./help.ts";
 import { isShopTrip } from "./shop-list.ts";
 
@@ -26,7 +27,7 @@ import { isShopTrip } from "./shop-list.ts";
  * Derived from the trip, never stored: a courier trip carrying a list is a
  * Shop job, which is why Shop has no product id and no inbox flag of its own.
  */
-export type DriverJobKind = "ride" | "courier" | "shop" | "help";
+export type DriverJobKind = "ride" | "courier" | "shop" | "help" | "freight";
 
 export function driverJobKind(
   trip: { productId: string; itemList?: string | null } | null | undefined,
@@ -119,6 +120,13 @@ export function driverAppQuestion(
 ): { question: string; action: string; exit: string } {
   const courier = kind === "courier" || kind === "shop";
   const shop = kind === "shop";
+  /**
+   * Freight asks its question per *load status*, not per scene: `at_pickup`
+   * covers both "are they loading you" and "are you loaded". The headline and
+   * the CTA come from `freightLoadQuestion`, which reads the server's own
+   * ladder — these are only the fallbacks the scene never shows.
+   */
+  const freight = kind === "freight";
   // A visit is not a pickup and not a delivery: the driver arrives at a house,
   // starts the visit, finishes it. PIN is the wrong object at every step.
   const help = kind === "help";
@@ -136,6 +144,13 @@ export function driverAppQuestion(
         exit: "Go offline",
       };
     case "to_pickup":
+      if (freight) {
+        return {
+          question: "Have you reached the shipper?",
+          action: "Continue",
+          exit: "None",
+        };
+      }
       return {
         question: help
           ? "Have you arrived at the house?"
@@ -148,6 +163,13 @@ export function driverAppQuestion(
         exit: "Cancel this job",
       };
     case "at_pickup":
+      if (freight) {
+        return {
+          question: "Are you loaded?",
+          action: "Continue",
+          exit: "None",
+        };
+      }
       // Shop has nothing sealed to take custody of — the courier bought the
       // list themselves, so the question is the list and not a code.
       return {
@@ -168,6 +190,13 @@ export function driverAppQuestion(
         exit: "Cancel this job",
       };
     case "on_trip":
+      if (freight) {
+        return {
+          question: "Have you delivered?",
+          action: "Continue",
+          exit: "None",
+        };
+      }
       return {
         question: help ? "Have you finished the visit?" : "Have you finished?",
         action: help
@@ -200,6 +229,40 @@ export function driverSceneForTripStatus(
     case "arriving":
       return "at_pickup";
     case "in_progress":
+      return "on_trip";
+    default:
+      return null;
+  }
+}
+
+/**
+ * A live freight load's status, as a duty scene.
+ *
+ * The freight ladder is finer than the ride one — arrive, load, depart,
+ * arrive, unload, deliver, POD — so several statuses share a scene. That is
+ * the point: the scene decides only where the surfaces sit and what the map
+ * draws. Which question is being asked, and which single action answers it,
+ * comes from the server's own legal-action list.
+ *
+ * Statuses before a driver is assigned, and terminal ones, have no scene: the
+ * driver is not on the road for them.
+ */
+export function freightSceneForLoadStatus(
+  status: string,
+): DriverAppState | null {
+  switch (status) {
+    case "DRIVER_ASSIGNED":
+    case "EN_ROUTE_TO_PICKUP":
+      return "to_pickup";
+    case "AT_PICKUP":
+    case "LOADING":
+      return "at_pickup";
+    case "IN_TRANSIT":
+    case "AT_DELIVERY":
+    case "UNLOADING":
+    case "DELIVERED":
+    case "POD_PENDING":
+    case "EXCEPTION":
       return "on_trip";
     default:
       return null;
@@ -260,4 +323,35 @@ export function driverSceneFromInbox(
     if (fromTrip) return fromTrip;
   }
   return inbox?.driver?.available ? "online" : "offline";
+}
+
+/**
+ * The map scene a live load is in. Not a duty scene: it changes what the
+ * *camera* is a picture of, never which question the driver is answering.
+ *
+ * A ride has one spatial grammar — the block you are on — and freight has
+ * three. `Ontario → Phoenix · 795 mi` drawn as a street-level route around
+ * the driver's own block is the wrong picture: the job is a lane.
+ *
+ * - `to_pickup`      driver + shipper. Local, operational.
+ * - `linehaul`       truck + receiver, whole corridor legible.
+ * - `near_delivery`  local navigation again, at the far end.
+ */
+export type FreightMapScene = "to_pickup" | "linehaul" | "near_delivery";
+
+export function freightMapScene(
+  status: string,
+  proximity: ProximityBand | null,
+): FreightMapScene | null {
+  const scene = freightSceneForLoadStatus(status);
+  if (!scene) return null;
+  if (scene !== "on_trip") return "to_pickup";
+  // Only the road itself is a corridor. Once the server says the truck is at
+  // the receiver the framing is local again, whatever the fix claims.
+  if (status !== "IN_TRANSIT") return "near_delivery";
+  // An unknown proximity keeps the lane: a corridor is the honest picture of
+  // a truck in transit, and a guessed arrival is not.
+  return proximity === "near" || proximity === "arrived"
+    ? "near_delivery"
+    : "linehaul";
 }

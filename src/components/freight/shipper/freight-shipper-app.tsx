@@ -4,7 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Location01Icon } from "@hugeicons/core-free-icons";
 
-import { AdaptiveSurface } from "@/components/service-app/adaptive-surface";
+import {
+  AdaptiveSurface,
+  useAdaptiveSurface,
+} from "@/components/service-app/adaptive-surface";
 import { LocationTrigger } from "@/components/service-app/location-trigger";
 import { ServiceAppShell } from "@/components/service-app/service-app-shell";
 import { ServiceMap } from "@/components/service-app/service-map";
@@ -38,7 +41,7 @@ import {
   Empty,
   EquipmentRow,
   FALLBACK_POINT,
-  formatMoney,
+  formatMoneyOrDash,
   LocSearch,
   mapAdapter,
   type LocField,
@@ -73,6 +76,7 @@ export function FreightShipperApp({ loadId }: { loadId?: string }) {
 function ShipperHome() {
   const router = useRouter();
   const surfaces = useSurfaceManager<ShipperSurfaceId, ShipperSurfaceAction>();
+  const surface = useAdaptiveSurface();
   const { perform } = surfaces;
 
   const [pickup, setPickup] = useState<FreightPlace | null>(null);
@@ -92,12 +96,99 @@ function ShipperHome() {
   const publish = freight.publishShipment.useMutation();
   const bookShipment = freight.bookShipment.useMutation();
 
+  const [failure, setFailure] = useState<string | null>(null);
+
   const mapCenter = pickup
     ? { latitude: pickup.latitude, longitude: pickup.longitude }
     : FALLBACK_POINT;
 
-  const showingQuote =
-    quote != null && surfaces.layout.primary?.presentation === "sheet";
+  /*
+   * Which question the shipper is on *is* whether there is a quote. It used
+   * to be read back out of `layout.primary.presentation`, which made the
+   * scene a function of surface posture — the quote disappeared for any other
+   * reason the rung changed. Posture says where the sheet sits, never what
+   * the user has answered.
+   */
+
+  /**
+   * Compose → quote is a progression: the draft and its price replace the
+   * form, and there is nothing to come back to but a revision. The request
+   * runs under the transition, so the surface moves on the tap and a refusal
+   * puts the shipper back on their own inputs with the reason.
+   */
+  const requestQuote = () => {
+    if (!pickup || !delivery || surface.progress.locked) return;
+    const weightLb = Number(weight) || 0;
+    const pickupAt = pickupDate
+      ? new Date(`${pickupDate}T12:00:00`)
+      : new Date();
+    setFailure(null);
+    void surface
+      .transition({
+        intent: "progress",
+        from: "home",
+        to: "quote",
+        interim: "map",
+        task: async () => {
+          const draft = await createDraft.mutateAsync({
+            pickup: toStopInput(pickup, pickupAt),
+            delivery: toStopInput(delivery),
+            equipmentType: equipment,
+            weightLb,
+          });
+          const result = await getQuote.mutateAsync({ loadId: draft.id });
+          setDraftLoadId(draft.id);
+          setQuote(quoteFromResult(result));
+        },
+      })
+      .then(
+        () => perform("showQuote"),
+        (reason: unknown) =>
+          setFailure(
+            reason instanceof Error && reason.message.trim()
+              ? reason.message
+              : "Couldn’t price that move. Nothing was published.",
+          ),
+      );
+  };
+
+  /**
+   * Publish is the shipper's commitment: the load goes on the board. It is a
+   * progression back to the compose surface, which is now a clean form.
+   */
+  const publishQuote = () => {
+    const id = draftLoadId;
+    if (!id || surface.progress.locked) return;
+    setFailure(null);
+    void surface
+      .transition({
+        intent: "progress",
+        from: "quote",
+        to: "home",
+        interim: "map",
+        task: async () => {
+          // A draft that was already booked answers `publish` with a refusal;
+          // booking it is the same commitment by the other door.
+          await publish
+            .mutateAsync({ loadId: id })
+            .catch(() => bookShipment.mutateAsync({ loadId: id }));
+          await shipments.refetch();
+        },
+      })
+      .then(
+        () => {
+          setQuote(null);
+          setDraftLoadId(undefined);
+          perform("showHome");
+        },
+        (reason: unknown) =>
+          setFailure(
+            reason instanceof Error && reason.message.trim()
+              ? reason.message
+              : "Couldn’t publish that shipment.",
+          ),
+      );
+  };
 
   const openLoc = (field: LocField) => {
     setLocField(field);
@@ -125,39 +216,19 @@ function ShipperHome() {
         }
       >
         <ManagedSurface<ShipperSurfaceId> id="primary">
-          {showingQuote && quote ? (
+          {quote ? (
             <QuoteScene
               quote={quote}
               pickup={pickup}
               delivery={delivery}
-              busy={publish.isPending || bookShipment.isPending}
-              error={
-                publish.error?.message ?? bookShipment.error?.message ?? null
-              }
+              busy={surface.progress.locked}
+              error={failure}
               onBack={() => {
+                setFailure(null);
                 setQuote(null);
                 perform("showHome");
               }}
-              onPublish={() => {
-                const id = draftLoadId;
-                if (!id) return;
-                const done = () => {
-                  void shipments.refetch();
-                  setQuote(null);
-                  perform("showHome");
-                };
-                publish.mutate(
-                  { loadId: id },
-                  {
-                    onSuccess: done,
-                    onError: () =>
-                      bookShipment.mutate(
-                        { loadId: id },
-                        { onSuccess: done },
-                      ),
-                  },
-                );
-              }}
+              onPublish={publishQuote}
             />
           ) : (
             <div className="pb-8 pt-2 md:pt-0">
@@ -216,54 +287,17 @@ function ShipperHome() {
               <Button
                 size="lg"
                 className="mt-5 h-14 w-full text-[17px]"
-                disabled={
-                  !pickup ||
-                  !delivery ||
-                  getQuote.isPending ||
-                  createDraft.isPending
-                }
-                aria-busy={
-                  getQuote.isPending || createDraft.isPending || undefined
-                }
-                onClick={() => {
-                  if (!pickup || !delivery) return;
-                  const weightLb = Number(weight) || 0;
-                  const pickupAt = pickupDate
-                    ? new Date(`${pickupDate}T12:00:00`)
-                    : new Date();
-                  createDraft.mutate(
-                    {
-                      pickup: toStopInput(pickup, pickupAt),
-                      delivery: toStopInput(delivery),
-                      equipmentType: equipment,
-                      weightLb,
-                    },
-                    {
-                      onSuccess: (draft) => {
-                        setDraftLoadId(draft.id);
-                        getQuote.mutate(
-                          { loadId: draft.id },
-                          {
-                            onSuccess: (result) => {
-                              setQuote(quoteFromResult(result));
-                              perform("showQuote");
-                            },
-                          },
-                        );
-                      },
-                    },
-                  );
-                }}
+                disabled={!pickup || !delivery || surface.progress.locked}
+                aria-busy={surface.progress.locked || undefined}
+                onClick={requestQuote}
               >
-                {getQuote.isPending || createDraft.isPending
-                  ? "Getting quote…"
-                  : "Get quote"}
+                {surface.progress.locked ? "Getting quote…" : "Get quote"}
               </Button>
 
-              {(getQuote.error || createDraft.error) &&
+              {failure &&
               !authBlocked(getQuote.error ?? createDraft.error) ? (
                 <p role="alert" className="text-destructive mt-3 text-[14px]">
-                  {getQuote.error?.message ?? createDraft.error?.message}
+                  {failure}
                 </p>
               ) : null}
 
@@ -356,7 +390,7 @@ function ShipperLoadDetail({ loadId }: { loadId: string }) {
             <dl className="mt-5 space-y-2.5 text-[15px]">
               <Row
                 label="Shipper price"
-                value={formatMoney(load.shipperPriceMinor, load.currency)}
+                value={formatMoneyOrDash(load.shipperPriceMinor, load.currency)}
               />
               <Row
                 label="$/mi"

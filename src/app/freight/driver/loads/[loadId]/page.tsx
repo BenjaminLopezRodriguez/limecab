@@ -1,15 +1,6 @@
-import { FreightChrome } from "@/components/freight/freight-chrome";
-import { FreightDriverLoadDetail } from "@/components/freight/driver/freight-driver-load-detail";
+import { redirect } from "next/navigation";
 
-export default async function FreightDriverLoadPage({
-  params,
-}: {
-  params: Promise<{ loadId: string }>;
-}) {
-  const { loadId } = await params;
-  return (
-    <FreightChrome product="driver" duty>
-      <FreightDriverLoadDetail loadId={loadId} />
-    </FreightChrome>
-  );
+/** Old deep link into the retired freight app. The load is on the road app. */
+export default function FreightDriverLoadPage() {
+  redirect("/driver");
 }

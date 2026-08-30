@@ -635,6 +635,43 @@ export const freightCarrierMembers = createTable(
   ],
 );
 
+export const freightCarrierInvites = createTable(
+  "freight_carrier_invite",
+  (d) => ({
+    id: d
+      .varchar({ length: 255 })
+      .notNull()
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    carrierId: d
+      .varchar({ length: 255 })
+      .notNull()
+      .references(() => freightCarriers.id),
+    /** Short, human-typable. Unique so acceptance can CAS on one row. */
+    code: d.varchar({ length: 32 }).notNull(),
+    role: d.varchar({ length: 16 }).$type<CarrierMemberRole>().notNull(),
+    invitedEmail: d.varchar({ length: 255 }),
+    invitedName: d.varchar({ length: 128 }),
+    createdByUserId: d
+      .varchar({ length: 255 })
+      .notNull()
+      .references(() => users.id),
+    expiresAt: d.timestamp({ withTimezone: true }).notNull(),
+    /** Set once. The single-use gate — acceptance CASes on this being null. */
+    acceptedByUserId: d.varchar({ length: 255 }).references(() => users.id),
+    acceptedAt: d.timestamp({ withTimezone: true }),
+    revokedAt: d.timestamp({ withTimezone: true }),
+    createdAt: d
+      .timestamp({ withTimezone: true })
+      .$defaultFn(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  }),
+  (t) => [
+    unique("limecab_freight_carrier_invite_code_unique").on(t.code),
+    index("limecab_freight_carrier_invite_carrier_idx").on(t.carrierId),
+  ],
+);
+
 export const freightVehicles = createTable(
   "freight_vehicle",
   (d) => ({
@@ -1112,6 +1149,7 @@ export const freightCarriersRelations = relations(
   freightCarriers,
   ({ many }) => ({
     members: many(freightCarrierMembers),
+    invites: many(freightCarrierInvites),
     vehicles: many(freightVehicles),
     loads: many(freightLoads),
     savedLanes: many(freightSavedLanes),
@@ -1128,6 +1166,16 @@ export const freightCarrierMembersRelations = relations(
     user: one(users, {
       fields: [freightCarrierMembers.userId],
       references: [users.id],
+    }),
+  }),
+);
+
+export const freightCarrierInvitesRelations = relations(
+  freightCarrierInvites,
+  ({ one }) => ({
+    carrier: one(freightCarriers, {
+      fields: [freightCarrierInvites.carrierId],
+      references: [freightCarriers.id],
     }),
   }),
 );

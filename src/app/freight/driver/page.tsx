@@ -1,14 +1,10 @@
-import { FreightChrome } from "@/components/freight/freight-chrome";
-import { FreightDriverApp } from "@/components/freight/driver/freight-driver-app";
+import { redirect } from "next/navigation";
 
 /**
- * Freight mobile app — Book / My Loads / Drivers / Account.
- * Dispatcher desktop portal: /freight/carrier.
+ * Freeze A: `/driver` is the one road app. Freight is a capability on it,
+ * unlocked by carrier fleet membership — not a second driver product.
+ * Finding and booking loads is dispatch and lives in the carrier portal.
  */
 export default function FreightDriverPage() {
-  return (
-    <FreightChrome product="driver" duty>
-      <FreightDriverApp />
-    </FreightChrome>
-  );
+  redirect("/driver");
 }

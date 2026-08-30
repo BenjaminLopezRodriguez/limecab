@@ -4,8 +4,8 @@ import { FreightCarrierGate } from "@/components/freight/carrier/freight-carrier
 import { FreightPortalShell } from "@/components/freight/carrier/freight-portal-shell";
 
 /**
- * Carrier web portal — Search / Saved Lanes / My Loads / Fleet Management.
- * Desktop-first (Uber Freight portal shape). Mobile app: /freight/driver.
+ * Carrier desk — Search / Saved Lanes / My Loads / Fleet.
+ * Dispatch work, desktop-first. Driving a booked load happens on `/driver`.
  */
 export default function FreightCarrierLayout({
   children,

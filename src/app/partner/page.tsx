@@ -1,6 +1,9 @@
 import Link from "next/link";
 import {
+  Airplane01Icon,
   DeliveryTruck01Icon,
+  Hotel01Icon,
+  MenuRestaurantIcon,
   Store01Icon,
   ContainerTruckIcon,
   UserGroupIcon,
@@ -12,9 +15,11 @@ import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
 
 /**
- * Partner gateway — Uber-style multi-destination chooser.
- * Operating model only: separate products, not one role-toggle app.
- * Do not copy Uber visual design or proprietary wording.
+ * The partner gateway, and the only place products are switched.
+ *
+ * Every partner surface links back here rather than carrying its own
+ * Ship/Carrier/App strip: a role toggle on every page is how the driver ends
+ * up in the wrong product with the right data.
  */
 
 type PartnerDest = {
@@ -27,23 +32,18 @@ type PartnerDest = {
 };
 
 /**
- * Mirrors Uber’s split logins / hubs:
- * Drive app · Fleet Hub · Freight Shipping · Freight Carrier · Merchant signup
+ * One road app, one shipper desk, one carrier desk, plus the hubs and
+ * early interest lanes. Freight unlocks inside Drive when the user joins
+ * a carrier fleet — there is no second driver product.
  */
 const DESTINATIONS: PartnerDest[] = [
   {
     id: "drive",
     title: "Drive",
-    description: "Rides, courier, help — Lime’s general driver app.",
+    description:
+      "Rides, courier, help — and freight loads once you’re on a fleet.",
     href: "/driver",
     icon: Car01Icon,
-  },
-  {
-    id: "freight-app",
-    title: "Freight app",
-    description: "Book loads, my loads, drivers, account — on the road.",
-    href: "/freight/driver",
-    icon: DeliveryTruck01Icon,
   },
   {
     id: "fleets",
@@ -72,6 +72,32 @@ const DESTINATIONS: PartnerDest[] = [
     description: "List your store for Lime Shop. Interest form to get started.",
     href: "/partner/merchants",
     icon: Store01Icon,
+    badge: "Interest",
+  },
+  {
+    id: "stay",
+    title: "Stay",
+    description: "List hotels and stays for Lime Stay. Interest form to start.",
+    href: "/partner/stay",
+    icon: Hotel01Icon,
+    badge: "Interest",
+  },
+  {
+    id: "travel",
+    title: "Travel",
+    description:
+      "Partner on airport, tours, and trip add-ons. Interest form to start.",
+    href: "/partner/travel",
+    icon: Airplane01Icon,
+    badge: "Interest",
+  },
+  {
+    id: "chow",
+    title: "Chow",
+    description:
+      "List your restaurant for Lime Chow. Interest form to get started.",
+    href: "/partner/chow",
+    icon: MenuRestaurantIcon,
     badge: "Interest",
   },
 ];
@@ -114,8 +140,8 @@ export default function PartnerPage() {
               Choose how you work with Lime
             </h1>
             <p className="text-muted-foreground mt-3 max-w-sm text-[16px] leading-relaxed">
-              Separate products for drivers, fleets, freight, and merchants —
-              pick your entry point.
+              Separate products for drivers, fleets, freight, shops, stays,
+              travel, and restaurants — pick your entry point.
             </p>
             <p className="text-muted-foreground mt-8 hidden text-[13px] leading-relaxed md:block">
               Looking to move freight as a business? Start with{" "}

@@ -148,5 +148,149 @@ Leave a clean working tree summary for the human.
 
 ## Session plan
 
-_(Agent: write freeze A/B + file-level keep/rewrite/delete here before
-large UI rewrites.)_
+**Freeze: A** — decided 2026-08-30 by the default rule in this file (human
+unreachable). `/driver` is the one road app. Freight is a **capability on it**,
+unlocked by carrier fleet membership, not a second driver product.
+`/freight/driver` becomes a redirect. B is closed; do not reopen it without a
+new handoff.
+
+### What A means, concretely
+
+A freight load assigned to this user is a **job on the existing duty session**:
+the same map, the same sheet, the same one-question/one-primary-action rule as
+a ride. It is not a tab bar, not a board, not a document page.
+
+- The **duty scene** (`to_pickup | at_pickup | on_trip`) is derived from the
+  load status and only drives surface posture + map mode.
+- The **question and the primary action** come from the freight ladder
+  (`primaryDriverAction` / `DRIVER_CTA`), which is finer-grained than the ride
+  ladder (arrive → load → depart → arrive → unload → deliver → POD). The server
+  stays the source of legal actions; the sheet offers the one it returns.
+- There is **no offer/accept for freight** — a dispatcher assigns it. So no
+  countdown, no interrupt. It is simply the job that is running.
+- While a freight load is live, **ride offers are suppressed** and duty cannot
+  be dropped. One driver, one job.
+- Finding and booking loads is **dispatch**, not driving. It stays in the
+  carrier portal desk. The road app does not carry a load board.
+
+### File-level keep / rewrite / delete
+
+| File | Verdict |
+|---|---|
+| `src/lib/freight/*`, `src/server/freight/*`, router, migrations, seed | **keep** — untouched |
+| `components/freight/freight-chrome.tsx` | **delete** — phone product switcher = the role toggle the gateway replaces |
+| `components/freight/driver/freight-driver-app.tsx` | **delete** — tabbed Uber-app clone; road work moves to `/driver` |
+| `components/freight/driver/freight-driver-load-detail.tsx` | **delete** — dispatch half duplicates the portal, road half moves to `/driver` |
+| `components/freight/driver/freight-driver-surfaces.ts` | **delete** — never wired (false promise) |
+| `components/freight/carrier/freight-carrier-surfaces.ts` | **delete** — never wired; the portal is a desk, not a duty session |
+| `app/freight/driver/**` | **rewrite** → `redirect("/driver")` |
+| `components/limecab/driver-freight-scene.tsx` | **new** — the freight job sheet |
+| `lib/limecab/driver-state.ts` | **extend** — `freight` job kind, freight questions, load-status → scene |
+| `components/limecab/driver-app.tsx` | **extend** — `freight.driverCurrent`, freight target/route, freight advance under `surface.transition` |
+| `components/freight/shipper/freight-shipper-app.tsx` | **fix** — quote was derived from *surface posture*; publish was a bare `mutate` |
+| `components/freight/carrier/freight-portal-shell.tsx` | **fix** — drop the App/Ship product switcher; `/partner` is the gateway |
+| `app/partner/**` | **fix** — remove the second driver product from the gateway and the fleet hub |
+
+### Out of scope this session
+
+Freight-specific registration (a fleet driver still registers once on
+`/driver` — one road app, one vehicle record), freight earnings on the peek,
+exception reporting UI, accessorials, POD file capture.
+
+---
+
+## Status — done 2026-08-30 (freeze A implemented, uncommitted)
+
+### Shipped
+
+| Concern | File |
+|---|---|
+| Freight job on the duty sheet | `src/components/limecab/driver-freight-scene.tsx` (new) |
+| `freight` job kind, freight questions, load-status → scene | `src/lib/limecab/driver-state.ts` (+ 3 tests) |
+| `driverCurrent` poll, scene precedence, offer suppression, map target, `advance`/`submitPod` under `surface.transition` | `src/components/limecab/driver-app.tsx` |
+| `freightLoadQuestion` — question + CTA from the server's legal-action list | `src/components/freight/freight-api.ts` |
+| `/freight/driver` and `/freight/driver/loads/[id]` → `redirect("/driver")` | `src/app/freight/driver/**` |
+| Quote/publish as real progressions; scene no longer read off surface posture | `src/components/freight/shipper/freight-shipper-app.tsx` |
+| Product switcher gone; `AdaptiveSurface.Root` added | `src/components/freight/carrier/freight-portal-shell.tsx` |
+| One driver product on the gateway and the fleet hub | `src/app/partner/**` |
+
+Deleted: `freight-chrome.tsx`, `driver/freight-driver-app.tsx`,
+`driver/freight-driver-load-detail.tsx`, `driver/freight-driver-surfaces.ts`,
+`carrier/freight-carrier-surfaces.ts`. Zero unwired `*surfaces.ts` remain.
+`src/lib/freight/*`, `src/server/freight/*`, the router, migrations and seed
+are untouched.
+
+### Two bugs found in the browser, not in the plan
+
+1. **`/freight/carrier` threw on render** — `FreightPortalSearch` mounts
+   `LocSearch`, which is an `AdaptiveSurface.Interrupt`, and the portal had no
+   `AdaptiveSurface.Root`. The membership gate had been hiding it. Root now
+   lives in `FreightPortalShell`. It cannot go in the server layout: a
+   namespace import of a client component does not survive the RSC boundary,
+   so `AdaptiveSurface.Root` comes back `undefined` there.
+2. **The location search drew two frames.** `LocSearch` passed a `label` to
+   the Interrupt *and* a `title` to `LocationSearchScene`, so the fullscreen
+   interrupt's header sat on top of the scene's own. Fixed with
+   `framed={false}`, which is what `driver-app.tsx` already does.
+
+### Deliberately not built
+
+- **No fare splash for freight.** When the load completes it leaves
+  `driverCurrent` and the reconcile effect puts the driver straight back in
+  the ride hunt. A splash would need a retained copy of the row and its own
+  timer for one screen.
+- **No freight registration.** A fleet driver still registers once on
+  `/driver`; the vehicle record is the truck.
+- **No freight affordance on the idle peek.** A fleet member with no assigned
+  load sees the ordinary rides home. Add it when there is something to say.
+- **POD is still `mock://pod/<id>`.** File capture, accessorials and exception
+  reporting have no UI.
+- `POD_PENDING` / `EXCEPTION` render a status line and no button, because the
+  server exposes no legal driver action for them.
+
+### Verified 2026-08-30
+
+Dev server on **:3000**, Playwright, 1280×860 and 390×844, against the live
+database as a phone-signed-in user made OWNER of `seed_freight_carrier`.
+
+Desktop: `/partner` → `/freight` compose → location interrupt (one frame now)
+→ quote → publish → the load appears under Shipments. `/freight/carrier`
+search → load detail → Book → Assign driver (self) → `DRIVER_ASSIGNED`.
+
+Mobile: `/freight/driver` redirects to `/driver`, which shows the load as a
+duty job — full-bleed map, lane chip, avatar/shield/911 overlay, one primary
+in the thumb zone. Walked the whole ladder: en route → arrived → start
+loading → depart (map target flips to the receiver) → arrived → start
+unloading → finish delivery → Submit POD → load closes out and the driver is
+back on "Looking for rides", still online.
+
+`tsc --noEmit` clean. 348 tests, 0 fail. `next lint` 20 errors, all
+pre-existing (26 on the stashed baseline). Console clean — no errors and no
+`[SurfaceManager]` invariant warnings.
+
+### How to re-run the whole workflow yourself
+
+Sign-in needs no bypass: this build has no SMS, so
+`login.requestPhoneCode` returns the code and the page prints it. Any fake
+number works — enter it, read the six digits off the screen, sign in.
+
+The one step with no UI is joining a fleet (`/partner/fleets/join` is a
+labelled stub), so the carrier membership is still a hand-written row:
+
+```sql
+insert into <freight_carrier_member> (id, "carrierId", "userId", role)
+values ('demo_freight_member', 'seed_freight_carrier', '<your user id>', 'OWNER');
+```
+
+OWNER is the useful role for a solo walkthrough — it can book on the desk,
+assign, and drive the load itself. Then: `/freight/carrier` search Ontario →
+open *Ontario → Phoenix* → Book → assign it to yourself → `/driver`.
+
+### Test data left in the dev database
+
+- Two phone accounts, `(323) 555-0199` and `(323) 555-0142`, are members of
+  `seed_freight_carrier` as **OWNER**. Delete the rows to test the gate.
+- `seed_freight_load_ontario_phoenix` was run end to end twice and has been
+  **reset to `AVAILABLE`** both times, so it is ready to run again.
+  `pnpm db:seed:freight` also resets it.
+- One published shipment, "California → Arizona 85004", `AVAILABLE`.

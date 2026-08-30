@@ -63,6 +63,15 @@ import {
   type TrendCell,
 } from "@/components/limecab/driver-scenes";
 import {
+  DriverFreightDeliveredScene,
+  DriverFreightJobScene,
+  type FreightJob,
+} from "@/components/limecab/driver-freight-scene";
+import {
+  FreightExceptionSurface,
+  FreightPodSurface,
+} from "@/components/limecab/driver-freight-interrupts";
+import {
   DRIVER_TAB_HEIGHT,
   DriverTabBar,
 } from "@/components/limecab/driver-tabs";
@@ -73,6 +82,7 @@ import {
   type Dashcam,
 } from "@/components/limecab/driver-safety-toolkit";
 import {
+  DRIVER_FREIGHT_MAP_ACTION,
   DRIVER_MAP_MODE,
   DRIVER_SCENE_SURFACES,
   driverSurfaces,
@@ -82,15 +92,34 @@ import {
 import { isCourierProduct } from "@/lib/limecab/courier";
 import { isHelpProduct } from "@/lib/limecab/help";
 import {
+  formatMiles,
+  freight,
+  freightLoadQuestion,
+  loadLaneLabel,
+  nextStop as freightNextStop,
+  stopPoint as freightStopPoint,
+} from "@/components/freight/freight-api";
+import {
   currentJob,
   driverAppQuestion,
+  freightMapScene,
+  freightSceneForLoadStatus,
   driverJobKind,
   driverSceneForTripStatus,
   type DriverAppState,
+  type DriverJobKind,
   isDriving,
   reduceDriverAppState,
   type DriverAppEvent,
 } from "@/lib/limecab/driver-state";
+import {
+  etaFromDistance,
+  haversineMeters,
+  proximityBand,
+  scheduleStanding,
+  type ProximityBand,
+  type ScheduleStanding,
+} from "@/lib/limecab/freight-schedule";
 import { ridePinBlocksStart } from "@/lib/limecab/pickup-pin";
 import { cellCenter, cellPolygon, toDriverCell } from "@/lib/limecab/h3";
 import {
@@ -126,7 +155,15 @@ type ActiveTrip = Inbox["active"][number];
 
 /** Questions *about* the duty session, not scenes. Pin is a phase of the
  *  heading question, so it lives here rather than as an extra boolean. */
-type DriverAside = "heading" | "heading_pin" | "safety" | "chat" | null;
+type DriverAside =
+  | "heading"
+  | "heading_pin"
+  | "safety"
+  | "chat"
+  /** Freight's two interrupts. Both suspend the job sheet and return to it. */
+  | "freight_issue"
+  | "freight_pod"
+  | null;
 
 const placesAdapter = createPlacesAdapter();
 
@@ -196,6 +233,16 @@ function DriverFlow({
    * own copy rather than reading a row that no longer exists.
    */
   const [finished, setFinished] = useState<JobTrip | null>(null);
+  /** The closed-out load, held for the delivered splash. Same reason. */
+  const [finishedFreight, setFinishedFreight] = useState<FreightJob | null>(
+    null,
+  );
+  /**
+   * A live load, swiped away. Surface *emphasis*, not a scene: the reducer
+   * never hears about it, duty is not dropped, and ride offers stay
+   * suppressed underneath exactly as they were.
+   */
+  const [freightMinimized, setFreightMinimized] = useState(false);
   const [device, setDevice] = useState<MapPoint | null>(null);
   const [route, setRoute] = useState<MapPoint[] | null>(null);
   const [aside, setAside] = useState<DriverAside>(null);
@@ -234,6 +281,98 @@ function DriverFlow({
     refetchInterval: hunting ? HUNTING_MS : RESTING_MS,
   });
 
+  /**
+   * Freight, as a capability on this one road app (freeze A).
+   *
+   * A load only reaches this query if a dispatcher assigned it to this user,
+   * which the server only allows for a carrier fleet member — so the fleet
+   * membership *is* the gate, enforced where it cannot drift. A rides-only
+   * driver gets an empty array and never sees a word about freight.
+   *
+   * There is no offer and no accept here: freight work is assigned, not
+   * auctioned. The load simply is the job that is running.
+   */
+  const freightLoads = freight.driverCurrent.useQuery(undefined, {
+    refetchInterval: RESTING_MS,
+    refetchOnWindowFocus: false,
+  });
+  const freightLoad = useMemo(() => {
+    const rows = freightLoads.data ?? [];
+    return rows.find((row) => freightSceneForLoadStatus(row.status)) ?? null;
+  }, [freightLoads.data]);
+  const freightScene = freightLoad
+    ? freightSceneForLoadStatus(freightLoad.status)
+    : null;
+
+  /** The stop this truck is driving to, per the server's own ladder. */
+  const freightStop = useMemo(
+    () =>
+      freightLoad
+        ? freightNextStop({
+            stops: freightLoad.stops,
+            status: freightLoad.status,
+          })
+        : null,
+    [freightLoad],
+  );
+
+  /**
+   * Where this truck stands, computed from the device fix and nothing else.
+   * Every one of these is `null` when unknown — an invented ETA against a
+   * real appointment is what gets a driver turned away at a gate.
+   */
+  const freightStopPointValue = freightStopPoint(freightStop);
+  const freightStopLat = freightStopPointValue?.latitude ?? null;
+  const freightStopLng = freightStopPointValue?.longitude ?? null;
+  const deviceLat = device?.latitude ?? null;
+  const deviceLng = device?.longitude ?? null;
+  const freightDistanceMeters = useMemo(
+    () =>
+      deviceLat != null &&
+      deviceLng != null &&
+      freightStopLat != null &&
+      freightStopLng != null
+        ? haversineMeters(
+            { latitude: deviceLat, longitude: deviceLng },
+            { latitude: freightStopLat, longitude: freightStopLng },
+          )
+        : null,
+    [deviceLat, deviceLng, freightStopLat, freightStopLng],
+  );
+  const freightProximity = proximityBand(freightDistanceMeters);
+  const freightEtaAt = useMemo(
+    () => etaFromDistance(freightDistanceMeters),
+    [freightDistanceMeters],
+  );
+  /**
+   * Lane remaining — the whole load, not the current leg — for the minimized
+   * affordance. Great-circle: enough to say "612 mi remaining", never a route.
+   */
+  const freightDropoff =
+    freightLoad?.stops?.filter((stop) => stop.type === "DROPOFF").at(-1) ??
+    null;
+  const freightRemainingMeters =
+    deviceLat != null && deviceLng != null && freightDropoff
+      ? haversineMeters(
+          { latitude: deviceLat, longitude: deviceLng },
+          { latitude: freightDropoff.lat, longitude: freightDropoff.lng },
+        )
+      : null;
+
+  const freightStanding = useMemo(
+    () => scheduleStanding(freightStop?.appointmentStart ?? null, freightEtaAt),
+    [freightEtaAt, freightStop?.appointmentStart],
+  );
+
+  /**
+   * What the camera is a picture of. A ride only ever frames the block you
+   * are on; a load is a lane, and the lane has three framings.
+   */
+  const freightCamera =
+    freightLoad && scene !== "complete"
+      ? freightMapScene(freightLoad.status, freightProximity)
+      : null;
+
   const available = inbox.data?.driver?.available ?? false;
   const todayCents = inbox.data?.todayCents ?? 0;
   const headingAddress = inbox.data?.driver?.headingAddress ?? null;
@@ -264,13 +403,17 @@ function DriverFlow({
   useEffect(() => {
     // The fare splash is this client's moment; it outlives the trip row.
     if (scene === "complete") return;
-    const target = activeStatus
-      ? (driverSceneForTripStatus(activeStatus) ?? scene)
-      : available
-        ? "online"
-        : "offline";
+    // A truck under load outranks everything: it is the longest commitment
+    // the driver has made and the server will hold them to it.
+    const target =
+      freightScene ??
+      (activeStatus
+        ? (driverSceneForTripStatus(activeStatus) ?? scene)
+        : available
+          ? "online"
+          : "offline");
     if (target !== scene) setScene(target);
-  }, [activeStatus, available, scene]);
+  }, [activeStatus, available, freightScene, scene]);
 
   // The scene says which question; the recipe says how the surfaces sit. A
   // scene *change* ends every idle panel — there is nothing to return to — but
@@ -282,8 +425,32 @@ function DriverFlow({
       setFocus(null);
     }
     lastScene.current = scene;
+    // While the load is minimized `minimizeFreightJob` owns the posture: the
+    // server advancing the status must not pop the sheet back over the map.
+    if (freightMinimized) return;
     apply("progress", DRIVER_SCENE_SURFACES[scene]);
-  }, [apply, scene]);
+  }, [apply, freightMinimized, scene]);
+
+  /**
+   * Freight's map scene, as one named action per framing. The recipes name
+   * only the map, so this cannot fight the sheet — and neither action is a
+   * progression, so a camera move never tears down an interrupt standing over
+   * the job. While one is up the camera holds still and re-frames on return.
+   */
+  useLayoutEffect(() => {
+    if (!freightCamera || aside) return;
+    perform(DRIVER_FREIGHT_MAP_ACTION[freightCamera]);
+    // `freightMinimized` and `scene` are dependencies because both re-apply
+    // the duty recipe, and that recipe's map posture is the ride's. The lane
+    // has to be put back *after* it, or the camera falls to a street-level
+    // follow-cam and a 795-mile load looks like a trip across town.
+    //
+    // `scene` matters even though this effect does not read it: the freight
+    // camera lands one commit *before* the reconcile effect moves the scene,
+    // so without it the duty recipe overwrites the lane and nothing ever
+    // re-asserts. This effect is declared after the scene effect, so on a
+    // shared commit it runs second and wins.
+  }, [aside, freightCamera, freightMinimized, perform, scene]);
 
   /**
    * The device fix, live. The driver *is* the provider point on this canvas,
@@ -352,9 +519,11 @@ function DriverFlow({
    * card forward. Accepting one does not stop the rest from landing.
    */
   const candidate = useMemo(() => {
-    if (!hunting || !available) return [];
+    // One driver, one job: a ride offer on top of a running load is a
+    // question the driver cannot answer.
+    if (!hunting || !available || freightScene) return [];
     return open.filter((trip) => !declined.includes(trip.id));
-  }, [available, declined, hunting, open]);
+  }, [available, declined, freightScene, hunting, open]);
 
   const candidateIds = candidate.map((trip) => trip.id).join(",");
   useEffect(() => {
@@ -402,11 +571,20 @@ function DriverFlow({
 
   const job: JobTrip | null = useMemo(() => {
     if (scene === "complete") return finished;
+    if (freightScene) return null;
     return active ? toJobTrip(active) : null;
-  }, [active, finished, scene]);
+  }, [active, finished, freightScene, scene]);
 
   /** The point the driver is currently driving to. */
   const target = useMemo<MapPoint | null>(() => {
+    if (freightLoad) {
+      if (!freightStopPointValue || !freightStop) return null;
+      return {
+        ...freightStopPointValue,
+        kind: freightStop.type === "DROPOFF" ? "destination" : "origin",
+        label: freightStop.city ?? splitAddress(freightStop.address).line,
+      };
+    }
     const trip = active ?? offer;
     if (!trip) return null;
     const toDestination = scene === "on_trip" || scene === "complete";
@@ -425,7 +603,7 @@ function DriverFlow({
         toDestination ? trip.destinationAddress : trip.pickupAddress,
       ).line,
     };
-  }, [active, offer, scene]);
+  }, [active, freightLoad, freightStop, freightStopPointValue, offer, scene]);
 
   /**
    * One route request per leg, not per GPS tick: the geometry is drawn from
@@ -433,7 +611,7 @@ function DriverFlow({
    * pretend to — `Open in Maps` is the honest escape hatch.
    */
   const legKey = target
-    ? `${active?.id ?? offer?.id ?? ""}:${target.kind}`
+    ? `${freightLoad?.id ?? active?.id ?? offer?.id ?? ""}:${target.kind}`
     : null;
   const legStart = useRef(driverPoint);
   legStart.current = driverPoint;
@@ -557,9 +735,15 @@ function DriverFlow({
   const trendCells = trends.data?.cells ?? [];
 
   const jobChip = job ?? offer;
+  /** Same chip slot, freight's lane in it. */
+  const freightChip = freightLoad
+    ? loadLaneLabel({ stops: freightLoad.stops })
+    : null;
 
   const openAside = useCallback(
-    (kind: "heading" | "safety" | "chat") => {
+    (
+      kind: "heading" | "safety" | "chat" | "freight_issue" | "freight_pod",
+    ) => {
       // The offer already owns the interrupt rung; 911 on the map still works.
       if (kind === "safety" && offeredId) return;
       if (kind === "heading") setSearchProximity(device);
@@ -569,7 +753,11 @@ function DriverFlow({
             ? "openSafety"
             : kind === "chat"
               ? "openTripChat"
-              : "openHeading",
+              : kind === "freight_issue"
+                ? "openFreightException"
+                : kind === "freight_pod"
+                  ? "openFreightPod"
+                  : "openHeading",
         );
       }
       setAside(kind);
@@ -757,6 +945,7 @@ function DriverFlow({
 
   const finishFare = useCallback(() => {
     setFinished(null);
+    setFinishedFreight(null);
     const next = currentJob(liveJobs);
     if (next) {
       setFocusTripId(next.id);
@@ -778,6 +967,31 @@ function DriverFlow({
   useEffect(() => {
     if (mapPosture === "idle") setRecenterAt(Date.now());
   }, [mapPosture]);
+
+  /**
+   * Minimize and restore a live load. One named action each; the reducer is
+   * not told, because nothing about the *job* changed — only what is on
+   * screen. Restoring re-applies the duty recipe, which is what puts the
+   * sheet back; the freight camera effect re-frames the lane behind it.
+   *
+   * ponytail: the sheet unmounts, exactly as a minimized ride's does. The
+   * freight scene holds no draft — it is derived from the server row — so
+   * "restore the exact state" costs nothing beyond re-deriving it.
+   */
+  const minimizeFreightJob = useCallback(() => {
+    setFreightMinimized(true);
+    perform("minimizeFreightJob");
+  }, [perform]);
+
+  const restoreFreightJob = useCallback(() => {
+    setFreightMinimized(false);
+    perform("restoreFreightJob");
+  }, [perform]);
+
+  // A load that closed out while minimized leaves nothing to restore.
+  useEffect(() => {
+    if (!freightLoad && freightMinimized) setFreightMinimized(false);
+  }, [freightLoad, freightMinimized]);
 
   const recenter = useCallback(() => {
     setFocus(null);
@@ -933,7 +1147,42 @@ function DriverFlow({
                     </div>
                   </div>
 
-                  {jobChip ? (
+                  {/* A minimized load is still running: this is the way back
+                      into it, and the only thing on the canvas that says so.
+                      It is not an end, and not a way off duty. */}
+                  {freightMinimized && freightLoad ? (
+                    <button
+                      type="button"
+                      onClick={restoreFreightJob}
+                      className="bg-card ring-border focus-visible:ring-ring absolute inset-x-3 bottom-[calc(max(1rem,env(safe-area-inset-bottom))_+_var(--nav-pill-clear,0px))] z-10 flex min-h-14 items-center justify-between gap-3 rounded-full px-5 text-left shadow-[0_4px_16px_rgba(26,24,20,0.18)] ring-1 focus-visible:ring-2 focus-visible:outline-none"
+                    >
+                      <span className="min-w-0">
+                        <span className="text-lime block text-[11px] font-semibold tracking-[0.14em] uppercase">
+                          Freight
+                        </span>
+                        <span className="block truncate text-[15px] font-medium tracking-tight">
+                          {freightChip}
+                          {freightRemainingMeters != null ? (
+                            <span className="text-muted-foreground tabular-nums">
+                              {" · "}
+                              {formatMiles(freightRemainingMeters)} remaining
+                            </span>
+                          ) : null}
+                        </span>
+                      </span>
+                      <Icon
+                        icon={ArrowRight01Icon}
+                        size={18}
+                        aria-hidden="true"
+                      />
+                    </button>
+                  ) : null}
+
+                  {freightChip ? (
+                    <p className="bg-card/95 ring-border absolute inset-x-3 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.25rem)] z-10 truncate rounded-full px-4 py-2 text-[15px] font-medium tracking-tight shadow-[0_4px_16px_rgba(26,24,20,0.12)] ring-1 backdrop-blur-sm">
+                      {freightChip}
+                    </p>
+                  ) : jobChip ? (
                     <p className="bg-card/95 ring-border absolute inset-x-3 top-[calc(max(0.75rem,env(safe-area-inset-top))+3.25rem)] z-10 truncate rounded-full px-4 py-2 text-[15px] font-medium tracking-tight shadow-[0_4px_16px_rgba(26,24,20,0.12)] ring-1 backdrop-blur-sm">
                       {splitAddress(jobChip.pickupAddress).line}
                       {/* A visit stays at one address; an arrow back to it
@@ -1068,6 +1317,15 @@ function DriverFlow({
         <DriverSurfaces
           scene={scene}
           go={go}
+          freightLoad={freightLoad}
+          refreshFreight={freightLoads.refetch}
+          freightStanding={freightStanding}
+          freightEtaAt={freightEtaAt}
+          freightProximity={freightProximity}
+          freightDistanceMeters={freightDistanceMeters}
+          finishedFreight={finishedFreight}
+          onFreightDelivered={setFinishedFreight}
+          onMinimizeFreight={minimizeFreightJob}
           offer={offer}
           job={job}
           todayCents={todayCents}
@@ -1085,6 +1343,8 @@ function DriverFlow({
           dashcam={dashcam}
           onOpenChat={() => openAside("chat")}
           onOpenHeading={() => openAside("heading")}
+          onReportFreightIssue={() => openAside("freight_issue")}
+          onAddFreightPod={() => openAside("freight_pod")}
           onChooseHeadingOnMap={chooseHeadingOnMap}
           onBackFromHeadingPin={backFromHeadingPin}
           pinAddress={pinAddress}
@@ -1148,6 +1408,15 @@ function SafetyControl({
 function DriverSurfaces({
   scene,
   go,
+  freightLoad,
+  refreshFreight,
+  freightStanding,
+  freightEtaAt,
+  freightProximity,
+  freightDistanceMeters,
+  finishedFreight,
+  onFreightDelivered,
+  onMinimizeFreight,
   offer,
   job,
   todayCents,
@@ -1165,6 +1434,8 @@ function DriverSurfaces({
   dashcam,
   onOpenChat,
   onOpenHeading,
+  onReportFreightIssue,
+  onAddFreightPod,
   onChooseHeadingOnMap,
   onBackFromHeadingPin,
   pinAddress,
@@ -1191,6 +1462,15 @@ function DriverSurfaces({
 }: {
   scene: DriverAppState;
   go: (event: DriverAppEvent) => void;
+  freightLoad: FreightJob | null;
+  refreshFreight: () => Promise<unknown>;
+  freightStanding: ScheduleStanding | null;
+  freightEtaAt: Date | null;
+  freightProximity: ProximityBand | null;
+  freightDistanceMeters: number | null;
+  finishedFreight: FreightJob | null;
+  onFreightDelivered: (load: FreightJob) => void;
+  onMinimizeFreight: () => void;
   offer: OfferTrip | null;
   job: JobTrip | null;
   todayCents: number;
@@ -1208,6 +1488,8 @@ function DriverSurfaces({
   dashcam: Dashcam;
   onOpenChat: () => void;
   onOpenHeading: () => void;
+  onReportFreightIssue: () => void;
+  onAddFreightPod: () => void;
   onChooseHeadingOnMap: () => void;
   onBackFromHeadingPin: () => void;
   pinAddress: string | null;
@@ -1277,10 +1559,12 @@ function DriverSurfaces({
   };
   const accept = api.driver.accept.useMutation();
   const advance = api.driver.advance.useMutation();
+  const freightAdvance = freight.advance.useMutation();
+  const freightPod = freight.submitPod.useMutation();
 
   // Job kind, derived from the row: a courier trip carrying a list is Shop.
   // The duty machine does not grow a member for either.
-  const kind = driverJobKind(job);
+  const kind: DriverJobKind = freightLoad ? "freight" : driverJobKind(job);
   const courier = kind === "courier" || kind === "shop";
   const shop = kind === "shop";
   const helpJob = kind === "help";
@@ -1454,6 +1738,73 @@ function DriverSurfaces({
       );
   };
 
+  /**
+   * One step of the load, under the same choreography as a ride's.
+   *
+   * The action is whatever the server said was legal — never a step this
+   * component chose — and POD goes through its own mutation because the
+   * router refuses `submit_pod` on `advance`. On refusal the driver lands
+   * back on the same sheet with the reason next to the button, and the load
+   * has not moved: the status is re-read either way.
+   */
+  const runFreightAdvance = () => {
+    if (!freightLoad || surface.progress.locked) return;
+    const { action } = freightLoadQuestion(freightLoad.status);
+    if (!action) return;
+    // POD is a document, not a step. The primary opens the surface that
+    // captures one; the mutation runs on what that surface actually took.
+    if (action === "submit_pod") {
+      setFailure(null);
+      onAddFreightPod();
+      return;
+    }
+    const loadId = freightLoad.id;
+    setFailure(null);
+    void surface
+      .transition({
+        intent: "progress",
+        from: scene,
+        to: scene,
+        task: async () => {
+          await freightAdvance.mutateAsync({ loadId, action });
+          await refreshFreight();
+        },
+      })
+      .then(
+        () => undefined,
+        (reason: unknown) => setFailure(errorMessage(reason)),
+      );
+  };
+
+  /**
+   * The POD landed. The load closes out and leaves `driverCurrent`, so the
+   * copy taken here is the only thing left to acknowledge it with — the same
+   * trick `finished` plays for a fare.
+   */
+  const submitFreightPod = (storageReference: string) => {
+    if (!freightLoad || surface.progress.locked) return;
+    const load = freightLoad;
+    setFailure(null);
+    void surface
+      .transition({
+        intent: "progress",
+        from: scene,
+        to: "complete",
+        task: async () => {
+          await freightPod.mutateAsync({ loadId: load.id, storageReference });
+          onFreightDelivered(load);
+          await refreshFreight();
+        },
+      })
+      .then(
+        () => {
+          surfaces.perform("completed");
+          go("completed");
+        },
+        (reason: unknown) => setFailure(errorMessage(reason)),
+      );
+  };
+
   /** The fare is read, not dismissed into a dead end. */
   const resumeIdle = useCallback(() => {
     onResumed();
@@ -1573,6 +1924,13 @@ function DriverSurfaces({
             presentation={posture}
             overlaySnap={
               panel === "trends" || panel === "recommended" || pinOverlay
+            }
+            /* Swipe the load away. Twelve hours is too long to be held in one
+               sheet — and this ends the sheet, never the job. */
+            onDismiss={
+              freightLoad && posture === "sheet" && isDriving(visible)
+                ? onMinimizeFreight
+                : undefined
             }
             onSnapChange={
               pinOverlay
@@ -1701,7 +2059,20 @@ function DriverSurfaces({
             {/* Nothing about a job is asserted until the server has confirmed
                 one: no address, no rider, no PIN before the row exists. */}
             {!loading && aside !== "heading_pin" && isDriving(visible) ? (
-              job ? (
+              freightLoad ? (
+                <DriverFreightJobScene
+                  load={freightLoad}
+                  busy={surface.progress.locked}
+                  error={failure}
+                  onAdvance={runFreightAdvance}
+                  onReportIssue={onReportFreightIssue}
+                  onAddPod={onAddFreightPod}
+                  standing={freightStanding}
+                  etaAt={freightEtaAt}
+                  proximity={freightProximity}
+                  distanceMeters={freightDistanceMeters}
+                />
+              ) : job ? (
                 pinOverlay ? (
                   <DriverPickupPinScene
                     riderName={job.riderName}
@@ -1738,9 +2109,23 @@ function DriverSurfaces({
               )
             ) : null}
 
+            {/* The load closed out. A beat on the outcome — the walkthrough
+                that dropped straight back to the rides home read as if the
+                POD had never landed. */}
             {!loading &&
             aside !== "heading_pin" &&
             visible === "complete" &&
+            finishedFreight ? (
+              <DriverFreightDeliveredScene
+                load={finishedFreight}
+                onDone={resumeIdle}
+              />
+            ) : null}
+
+            {!loading &&
+            aside !== "heading_pin" &&
+            visible === "complete" &&
+            !finishedFreight &&
             job ? (
               <DriverCompleteScene
                 trip={job}
@@ -1801,6 +2186,35 @@ function DriverSurfaces({
         onConfirm={confirmCancelJob}
         onCancel={dismissCancelJob}
       />
+
+      {/* Freight's two interrupts. Both suspend the job sheet and return to
+          it; neither unmounts it, and neither is a step of the ladder. */}
+      {freightLoad ? (
+        <>
+          <FreightExceptionSurface
+            load={freightLoad}
+            open={aside === "freight_issue"}
+            onOpenChange={(next) => {
+              if (!next && aside === "freight_issue") onCloseAside();
+            }}
+            onReported={() => {
+              onCloseAside();
+              void refreshFreight();
+            }}
+          />
+          <FreightPodSurface
+            load={freightLoad}
+            open={aside === "freight_pod"}
+            onOpenChange={(next) => {
+              if (!next && aside === "freight_pod") onCloseAside();
+            }}
+            onSubmitted={(storageReference) => {
+              onCloseAside();
+              submitFreightPod(storageReference);
+            }}
+          />
+        </>
+      ) : null}
 
       <AdaptiveSurface.Interrupt
         id="interrupt"

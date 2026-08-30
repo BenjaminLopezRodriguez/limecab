@@ -1,9 +1,8 @@
 import Link from "next/link";
 
 /**
- * Fleet hub entry — Uber Fleet Hub operating shape:
- * operators manage drivers/vehicles; drivers join via invite.
- * Lime maps operator tools → freight carrier portal for now.
+ * Fleet hub entry: operators manage drivers and vehicles; drivers join by
+ * invite, which is what unlocks freight inside Drive.
  */
 export default function PartnerFleetsPage() {
   return (
@@ -29,9 +28,9 @@ export default function PartnerFleetsPage() {
 
       <ul className="mt-8 grid gap-3 sm:grid-cols-2">
         <HubLink
-          href="/freight/driver"
-          title="Freight app"
-          body="Book · My Loads · Drivers · Account — mobile carrier app."
+          href="/driver"
+          title="Open Drive"
+          body="One road app. Assigned loads show up here after you join a fleet."
         />
         <HubLink
           href="/freight/carrier"
@@ -40,18 +39,13 @@ export default function PartnerFleetsPage() {
         />
         <HubLink
           href="/partner/fleets/invite"
-          title="Invite a driver"
-          body="Send a fleet invite by name and phone (stub)."
+          title="Invite to your fleet"
+          body="Create a single-use code for a driver or dispatcher."
         />
         <HubLink
           href="/partner/fleets/join"
           title="Join a fleet"
-          body="Accept an invite and unlock freight in Drive."
-        />
-        <HubLink
-          href="/driver"
-          title="Open Drive"
-          body="Unified driver app — freight jobs after fleet membership."
+          body="Enter an invite code. Accepting unlocks freight in Drive."
         />
       </ul>
     </main>
