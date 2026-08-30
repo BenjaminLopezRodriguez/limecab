@@ -75,7 +75,7 @@ export function FreightPortalLoadDetail({ loadId }: { loadId: string }) {
       ) ?? [];
     if (drivers[0] && driverUserId === FREIGHT_SEED.driverUserId) {
       const seed = drivers.find((d) => d.userId === FREIGHT_SEED.driverUserId);
-      setDriverUserId(seed?.userId ?? drivers[0]!.userId);
+      setDriverUserId(seed?.userId ?? drivers[0].userId);
     }
     const vehicles = fleet.data?.vehicles ?? [];
     if (vehicles[0] && vehicleId === FREIGHT_SEED.vehicleId) {
@@ -264,11 +264,11 @@ export function FreightPortalLoadDetail({ loadId }: { loadId: string }) {
               </p>
             ) : null}
 
-            {(book.error || assign.error) && (
+            {book.error ?? assign.error ? (
               <p role="alert" className="text-destructive text-[13px]">
                 {book.error?.message ?? assign.error?.message}
               </p>
-            )}
+            ) : null}
 
             <p className="text-muted-foreground text-center text-[13px] leading-relaxed">
               Once assigned, the load runs on the driver’s road app.

@@ -105,7 +105,7 @@ async function completeAfterPod(
   database: typeof import("@/server/db").db,
   load: typeof freightLoads.$inferSelect,
 ) {
-  const to = assertSystemComplete(load.status as LoadStatus);
+  const to = assertSystemComplete(load.status);
   const docs = await database.query.freightDocuments.findMany({
     where: and(
       eq(freightDocuments.loadId, load.id),
@@ -338,14 +338,14 @@ export const freightRouter = createTRPCRouter({
       const load = await loadById(ctx.db, input.loadId);
       requireShipperOwnsLoad(load, userId);
 
-      if (!shipperMay(load.status as LoadStatus, "publish")) {
+      if (!shipperMay(load.status, "publish")) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
           message: `Cannot publish from ${load.status}.`,
         });
       }
       const to = ACTION_TARGET.publish;
-      if (!canTransition(load.status as LoadStatus, to)) {
+      if (!canTransition(load.status, to)) {
         throw new TRPCError({ code: "PRECONDITION_FAILED" });
       }
 
@@ -388,7 +388,7 @@ export const freightRouter = createTRPCRouter({
       const userId = ctx.session.user.id;
       const load = await loadById(ctx.db, input.loadId);
       requireShipperOwnsLoad(load, userId);
-      if (!shipperMay(load.status as LoadStatus, "publish")) {
+      if (!shipperMay(load.status, "publish")) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
           message: `Cannot publish from ${load.status}.`,
@@ -477,7 +477,7 @@ export const freightRouter = createTRPCRouter({
 
       if (load.status === "AVAILABLE") {
         if (anyMembership) return redactLoadForRole(load, viewer);
-      } else if (membership && load.carrierId === membership.carrierId) {
+      } else if (load.carrierId === membership?.carrierId) {
         return redactLoadForRole(load, viewer);
       } else if (load.assignedDriverUserId === userId) {
         return redactLoadForRole(load, viewer);
@@ -663,7 +663,7 @@ export const freightRouter = createTRPCRouter({
 
       const load = await loadById(ctx.db, input.loadId);
       requireCarrierAccess(load, membership);
-      if (!carrierMay(load.status as LoadStatus, "book")) {
+      if (!carrierMay(load.status, "book")) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
           message: `Cannot book from ${load.status}.`,
@@ -757,7 +757,7 @@ export const freightRouter = createTRPCRouter({
           message: "Role cannot assign drivers.",
         });
       }
-      if (!carrierMay(load.status as LoadStatus, "assign_driver")) {
+      if (!carrierMay(load.status, "assign_driver")) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
           message: `Cannot assign from ${load.status}.`,
@@ -919,7 +919,7 @@ export const freightRouter = createTRPCRouter({
       const load = await loadById(ctx.db, input.loadId);
       requireDriverAssigned(load, userId);
 
-      const action = input.action as DriverAction;
+      const action = input.action;
       if (action === "submit_pod") {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -933,7 +933,7 @@ export const freightRouter = createTRPCRouter({
         });
       }
 
-      const to = assertDriverAdvance(load.status as LoadStatus, action);
+      const to = assertDriverAdvance(load.status, action);
       const now = new Date();
 
       const [advanced] = await ctx.db
@@ -988,7 +988,7 @@ export const freightRouter = createTRPCRouter({
       requireDriverAssigned(load, userId);
 
       const toPod = assertDriverAdvance(
-        load.status as LoadStatus,
+        load.status,
         "submit_pod",
       );
 
@@ -1083,7 +1083,7 @@ export const freightRouter = createTRPCRouter({
         .values({
           loadId: load.id,
           carrierId: load.carrierId,
-          type: input.type as AccessorialType,
+          type: input.type,
           amountMinor: input.amountMinor ?? null,
           notes: input.notes ?? null,
           status: "REQUESTED",
@@ -1130,7 +1130,7 @@ export const freightRouter = createTRPCRouter({
       if (input.transitionLoad && isDriver) {
         try {
           const to = assertDriverAdvance(
-            load.status as LoadStatus,
+            load.status,
             "report_exception",
           );
           await ctx.db
@@ -1177,7 +1177,7 @@ export const freightRouter = createTRPCRouter({
         .insert(freightDocuments)
         .values({
           loadId: load.id,
-          type: input.type as DocumentType,
+          type: input.type,
           uploadedByUserId: userId,
           storageReference: input.storageReference,
           status: "UPLOADED",

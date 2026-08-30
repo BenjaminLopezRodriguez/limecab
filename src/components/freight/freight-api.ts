@@ -19,7 +19,12 @@ export type FreightPlace = {
 
 export type StopRow = {
   sequence: number;
-  type: "PICKUP" | "DROPOFF" | string;
+  /**
+   * Widened deliberately: a stop row crosses tRPC as whatever the column
+   * holds. `"PICKUP" | "DROPOFF" | string` collapsed to `string` anyway, so
+   * it promised a narrowing the compiler never enforced.
+   */
+  type: string;
   address: string;
   city?: string | null;
   region?: string | null;
@@ -34,7 +39,7 @@ export type StopRow = {
 /** Normalized card for lists / search hits. */
 export type FreightLoadCard = {
   id: string;
-  status: LoadStatus | string;
+  status: string;
   equipmentType: EquipmentType;
   totalWeight: number;
   weightUnit?: string | null;

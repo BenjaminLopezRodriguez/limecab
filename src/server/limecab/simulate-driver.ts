@@ -7,7 +7,7 @@ import {
   isSimulatedDriverId,
   SIM_DRIVER_PREFIX,
 } from "@/lib/limecab/simulate";
-import { db } from "@/server/db";
+import { type db } from "@/server/db";
 import { drivers, trips, users } from "@/server/db/schema";
 import { canTransition } from "@/server/limecab/state";
 

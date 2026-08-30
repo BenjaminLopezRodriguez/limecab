@@ -50,7 +50,7 @@ export async function getCarrierMembership(
   if (rows.length === 0) return null;
   if (carrierId) {
     const hit = rows.find((r) => r.carrierId === carrierId);
-    return hit ? (hit as CarrierMembership) : null;
+    return hit ?? null;
   }
   return rows[0] as CarrierMembership;
 }
@@ -62,7 +62,7 @@ export async function getAllCarrierMemberships(
   const rows = await database.query.freightCarrierMembers.findMany({
     where: eq(freightCarrierMembers.userId, userId),
   });
-  return rows as CarrierMembership[];
+  return rows;
 }
 
 export function requireShipperOwnsLoad(
