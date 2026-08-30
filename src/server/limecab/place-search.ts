@@ -122,8 +122,8 @@ async function resolveIntent(
     street: parsed.street?.trim() ?? heuristic.street,
     area: parsed.area?.trim() ?? heuristic.area,
     landmark: expandLandmark(parsed.landmark) ?? heuristic.landmark,
-    closest: parsed.closest || heuristic.closest,
-    nearby: parsed.nearby || heuristic.nearby,
+    closest: parsed.closest ? true : heuristic.closest,
+    nearby: parsed.nearby ? true : heuristic.nearby,
   };
 }
 
