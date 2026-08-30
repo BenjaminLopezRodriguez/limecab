@@ -1,14 +1,21 @@
 import { NextResponse } from "next/server";
 
 import { planAssist } from "@/server/limecab/assist";
+import type { ShopItem } from "@/lib/limecab/shop-list";
 
 /**
  * Assist omnisearch. The model stays on the server.
  *
- * POST /api/assist  { query, lat?, lng? } → { mode, message, suggestions, cards, plan? }
+ * POST /api/assist  { query, lat?, lng?, items?, storeHints? } → { mode, message, suggestions, cards, plan? }
  */
 export async function POST(request: Request) {
-  let body: { query?: unknown; lat?: unknown; lng?: unknown };
+  let body: {
+    query?: unknown;
+    lat?: unknown;
+    lng?: unknown;
+    items?: unknown;
+    storeHints?: unknown;
+  };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -36,6 +43,33 @@ export async function POST(request: Request) {
     latitude,
     longitude,
     request,
+    items: readItems(body.items),
+    storeHints: readHints(body.storeHints),
   });
   return NextResponse.json(result);
+}
+
+function readItems(value: unknown): ShopItem[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value.flatMap((entry) => {
+    if (typeof entry === "string" && entry.trim()) return [{ label: entry.trim() }];
+    if (entry && typeof entry === "object" && "label" in entry) {
+      const label = (entry as { label?: unknown }).label;
+      if (typeof label !== "string" || !label.trim()) return [];
+      const item: ShopItem = { label: label.trim() };
+      const note = (entry as { note?: unknown }).note;
+      const qty = (entry as { qty?: unknown }).qty;
+      if (typeof note === "string" && note.trim()) item.note = note.trim();
+      if (typeof qty === "number" && qty > 1) item.qty = qty;
+      return [item];
+    }
+    return [];
+  });
+  return items.length > 0 ? items : undefined;
+}
+
+function readHints(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const hints = value.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0);
+  return hints.length > 0 ? hints : undefined;
 }

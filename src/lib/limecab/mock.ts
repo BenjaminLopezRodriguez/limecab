@@ -345,6 +345,27 @@ export const SHOP_PLACES: RestStop[] = [
 ];
 
 /**
+ * Home improvement stores a Shop courier can buy hardware at. Used when
+ * Mapbox Category Search is unavailable — real LA stores.
+ */
+export const HARDWARE_PLACES: RestStop[] = [
+  {
+    address: "The Home Depot, 500 S Alameda St, Los Angeles",
+    shortName: "Home Depot",
+    latitude: 34.0407,
+    longitude: -118.2384,
+    category: "hardware_store",
+  },
+  {
+    address: "Lowe's, 4550 E Olympic Blvd, Los Angeles",
+    shortName: "Lowe's",
+    latitude: 34.0194,
+    longitude: -118.1756,
+    category: "hardware_store",
+  },
+];
+
+/**
  * Places a driver can pause: coffee, and the highway rest areas on the roads
  * out of LA. Used when Mapbox is down, never as invented demand.
  */

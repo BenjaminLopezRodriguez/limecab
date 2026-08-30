@@ -23,6 +23,15 @@ export const env = createEnv({
     GOOGLE_PLACES_API_KEY: z.string().optional(),
     /** Intent parse for colloquial place queries. Heuristic parse without it. */
     DEEPSEEK_API_KEY: z.string().optional(),
+    /** Vision classify for Assist photos (AI Gateway API key). */
+    AI_GATEWAY_API_KEY: z.string().optional(),
+    /**
+     * Short-lived Vercel OIDC JWT from `vercel env pull` / deployments.
+     * Prefer for local/prod Gateway auth when no API key is set.
+     */
+    VERCEL_OIDC_TOKEN: z.string().optional(),
+    /** Private Vercel Blob store for Assist photo uploads. */
+    BLOB_READ_WRITE_TOKEN: z.string().optional(),
     /** Mint fake drivers and auto-advance trips. Defaults on outside production. */
     SIMULATE_DRIVERS: z.enum(["true", "false"]).optional(),
     NODE_ENV: z
@@ -55,6 +64,9 @@ export const env = createEnv({
     MAPBOX_TOKEN: process.env.MAPBOX_TOKEN,
     GOOGLE_PLACES_API_KEY: process.env.GOOGLE_PLACES_API_KEY,
     DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
+    AI_GATEWAY_API_KEY: process.env.AI_GATEWAY_API_KEY,
+    VERCEL_OIDC_TOKEN: process.env.VERCEL_OIDC_TOKEN,
+    BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
     NEXT_PUBLIC_MAPBOX_TOKEN: process.env.NEXT_PUBLIC_MAPBOX_TOKEN,
     SIMULATE_DRIVERS: process.env.SIMULATE_DRIVERS,
     NODE_ENV: process.env.NODE_ENV,

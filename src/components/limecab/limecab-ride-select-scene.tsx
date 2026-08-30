@@ -10,6 +10,11 @@ import {
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 
+import {
+  ChoiceGlyph,
+  ChoiceList,
+  ChoiceRow,
+} from "@/components/service-app/choice-list";
 import { PrimaryAction } from "@/components/service-app/task-scene";
 import { SheetActions } from "@/components/service-app/service-sheet";
 import { Icon } from "@/components/ui/icon";
@@ -22,7 +27,6 @@ import {
 } from "@/lib/limecab/domain";
 import { IMMEDIATE_RIDE_PRODUCTS, quoteFor } from "@/lib/limecab/mock";
 import { formatMoney, type Location } from "@/lib/service-app/services";
-import { cn } from "@/lib/utils";
 
 const PRODUCT_ICON: Record<string, ReactNode> = {
   lime: <Icon icon={Car01Icon} size={24} />,
@@ -94,18 +98,17 @@ export function LimeCabRideSelectScene({
         Choose a ride
       </h2>
 
-      <ul className="-mx-5 mt-4 flex flex-col md:-mx-6">
+      <ChoiceList className="mt-4">
         {rides.map((row) => (
-          <li key={row.product.id}>
-            <RideRow
-              ride={row}
-              tripMinutes={estimate?.minutes ?? 0}
-              selected={row.product.id === product?.id}
-              onSelect={() => onSelect(row.product)}
-            />
-          </li>
+          <RideRow
+            key={row.product.id}
+            ride={row}
+            tripMinutes={estimate?.minutes ?? 0}
+            selected={row.product.id === product?.id}
+            onSelect={() => onSelect(row.product)}
+          />
         ))}
-      </ul>
+      </ChoiceList>
 
       {ready && selected ? (
         <SheetActions>
@@ -160,35 +163,17 @@ function RideRow({
     : UNAVAILABLE;
 
   return (
-    <button
-      type="button"
+    <ChoiceRow
       onClick={onSelect}
-      aria-pressed={selected}
+      selected={selected}
       aria-label={
         available
           ? `${product.name}. ${product.description}. ${product.seats} seats. ${detail}. ${formatMoney(totalCents)}.${badge ? ` ${badge}.` : ""}`
           : `${product.name}. ${UNAVAILABLE}.`
       }
-      className={cn(
-        "relative flex w-full items-center gap-3 overflow-hidden px-5 py-3 text-left md:px-6",
-        "focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset",
-        selected
-          ? "bg-accent before:bg-foreground before:absolute before:inset-y-0 before:left-0 before:w-1 before:content-['']"
-          : "hover:bg-accent/60 active:bg-accent",
-        !available && "opacity-60",
-      )}
+      className={!available ? "opacity-60" : undefined}
     >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "flex size-12 shrink-0 items-center justify-center rounded-2xl [&_svg]:size-6",
-          selected
-            ? "bg-lime text-lime-foreground"
-            : "bg-muted text-foreground",
-        )}
-      >
-        {PRODUCT_ICON[product.id]}
-      </span>
+      <ChoiceGlyph selected={selected}>{PRODUCT_ICON[product.id]}</ChoiceGlyph>
 
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
@@ -218,7 +203,7 @@ function RideRow({
           {formatMoney(totalCents)}
         </span>
       ) : null}
-    </button>
+    </ChoiceRow>
   );
 }
 

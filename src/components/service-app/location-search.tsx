@@ -34,6 +34,8 @@ export function LocationSearch({
   fieldsClassName,
   inputClassName,
   normalizeQuery,
+  onTextChange,
+  keepResultsOpen = false,
   renderResults,
   rowAction,
   ariaLabel = "Address",
@@ -55,17 +57,27 @@ export function LocationSearch({
    */
   before?: React.ReactNode;
   after?: React.ReactNode;
-  /** Leading glyph inside the input (plus). Does not change default chrome. */
+  /** Leading control inside the input (Assist +). Interactive when a button. */
   start?: React.ReactNode;
   /** Trailing control inside the input row (locate, clear). */
   end?: React.ReactNode;
   fieldsClassName?: string;
   inputClassName?: string;
+  /** Fires on every keystroke so a parent can seed @-mentions. */
+  onTextChange?: (text: string) => void;
+  /**
+   * Keep the results slot mounted when suggestions are empty — Assist uses
+   * this for the @-mention picker while lookup is suppressed.
+   */
+  keepResultsOpen?: boolean;
   /** Rewrite the typed string before suggesting, without changing the field. */
   normalizeQuery?: (query: string) => string;
   /**
    * Replace the default suggestion list. Return `undefined` to keep it.
    * Product grouping belongs in the caller, not here.
+   *
+   * Return `{ content, optionCount, pickOption }` when the list is custom
+   * (Assist @-mentions) so arrow keys and Enter use the same keyboard model.
    */
   /**
    * A trailing control per suggestion row — filing the address, say. It sits
@@ -81,10 +93,16 @@ export function LocationSearch({
     listId: string;
     setActive: (index: number) => void;
     searching: boolean;
-  }) => React.ReactNode | undefined;
+  }) => React.ReactNode | LocationSearchCustomResults | undefined;
   ariaLabel?: string;
 }) {
+  type CustomList = {
+    optionCount: number;
+    pickOption: (index: number) => void;
+  };
+
   const listId = React.useId();
+  const customListRef = React.useRef<CustomList | null>(null);
   const [text, setText] = React.useState(value);
   const [lastValue, setLastValue] = React.useState(value);
   const [suggestions, setSuggestions] = React.useState<LocationSuggestion[]>(
@@ -94,12 +112,17 @@ export function LocationSearch({
   const [open, setOpen] = React.useState(false);
   const [active, setActive] = React.useState(-1);
 
-  // Adopt an externally-changed `value` without an effect.
+  // Adopt an externally-changed `value` without an effect. When the parent
+  // echoes our own onTextChange, `value === text` — only bump lastValue so we
+  // do not collapse the open suggestion / @-mention list. An external seed
+  // (Assist inserting `@`) opens the results slot so the picker can appear.
   if (value !== lastValue) {
     setLastValue(value);
-    setText(value);
-    setOpen(false);
-    setSuggestions([]);
+    if (value !== text) {
+      setText(value);
+      setSuggestions([]);
+      setOpen(true);
+    }
   }
 
   const query = open ? text.trim() : "";
@@ -142,6 +165,7 @@ export function LocationSearch({
   const choose = async (suggestion: LocationSuggestion) => {
     setText(suggestion.address);
     setLastValue(suggestion.address);
+    onTextChange?.(suggestion.address);
     setOpen(false);
     setSuggestions([]);
     try {
@@ -156,31 +180,44 @@ export function LocationSearch({
   };
 
   const listOpen =
-    open && (suggestions.length > 0 || (searching && lookup.length >= 3));
+    open &&
+    (keepResultsOpen ||
+      suggestions.length > 0 ||
+      (searching && lookup.length >= 3));
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    const custom = customListRef.current;
+    const optionCount = custom?.optionCount ?? suggestions.length;
+
     if (event.key === "Escape") {
       setOpen(false);
       setActive(-1);
       return;
     }
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      if (!listOpen) return;
+      if (!listOpen || optionCount === 0) return;
       event.preventDefault();
       const delta = event.key === "ArrowDown" ? 1 : -1;
       setActive((index) => {
         const next = index + delta;
-        if (next < 0) return suggestions.length - 1;
-        if (next >= suggestions.length) return 0;
+        if (next < 0) return optionCount - 1;
+        if (next >= optionCount) return 0;
         return next;
       });
       return;
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      const picked = listOpen && active >= 0 ? suggestions[active] : undefined;
-      if (picked) void choose(picked);
-      else commitRaw();
+      if (listOpen && active >= 0) {
+        if (custom) custom.pickOption(active);
+        else {
+          const picked = suggestions[active];
+          if (picked) void choose(picked);
+          else commitRaw();
+        }
+        return;
+      }
+      commitRaw();
     }
   };
 
@@ -190,12 +227,9 @@ export function LocationSearch({
         {before}
         <div className="relative">
           {start ? (
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-y-0 left-4 z-10 flex items-center"
-            >
+            <div className="absolute inset-y-0 left-1 z-10 flex items-center">
               {start}
-            </span>
+            </div>
           ) : null}
           <Input
             type="text"
@@ -214,9 +248,12 @@ export function LocationSearch({
             placeholder={placeholder}
             value={text}
             onChange={(event) => {
-              setText(event.target.value);
+              const next = event.target.value;
+              setText(next);
+              setLastValue(next);
               setOpen(true);
               setActive(-1);
+              onTextChange?.(next);
             }}
             onFocus={() => setOpen(true)}
             onBlur={() => {
@@ -240,16 +277,27 @@ export function LocationSearch({
         {after}
       </div>
       {listOpen
-        ? (renderResults?.({
-            suggestions,
-            query: query,
-            choose: (suggestion) => void choose(suggestion),
-            active,
-            listId,
-            setActive,
-            searching,
-          }) ??
-          (suggestions.length > 0 ? (
+        ? (() => {
+            const rendered = renderResults?.({
+              suggestions,
+              query: query,
+              choose: (suggestion) => void choose(suggestion),
+              active,
+              listId,
+              setActive,
+              searching,
+            });
+            if (isLocationSearchCustomResults(rendered)) {
+              customListRef.current = {
+                optionCount: rendered.optionCount,
+                pickOption: rendered.pickOption,
+              };
+              return rendered.content;
+            }
+            customListRef.current = null;
+            return (
+              rendered ??
+              (suggestions.length > 0 ? (
             <ul
               id={listId}
               role="listbox"
@@ -305,8 +353,29 @@ export function LocationSearch({
                 </li>
               ))}
             </ul>
-          ) : null))
+          ) : null)
+            );
+          })()
         : null}
     </div>
+  );
+}
+
+/** Custom result list — arrow/Enter keyboard nav uses `optionCount` / `pickOption`. */
+export type LocationSearchCustomResults = {
+  content: React.ReactNode;
+  optionCount: number;
+  pickOption: (index: number) => void;
+};
+
+function isLocationSearchCustomResults(
+  value: React.ReactNode | LocationSearchCustomResults | undefined,
+): value is LocationSearchCustomResults {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "content" in value &&
+    "optionCount" in value &&
+    "pickOption" in value
   );
 }

@@ -11,6 +11,7 @@ export const MAP_CATEGORIES = [
   "grocery",
   "supermarket",
   "pharmacy",
+  "hardware_store",
 ] as const;
 
 export type MapCategory = (typeof MAP_CATEGORIES)[number];
@@ -21,6 +22,9 @@ export const SHOP_CATEGORIES: MapCategory[] = [
   "supermarket",
   "pharmacy",
 ];
+
+/** Hardware / home improvement — Home Depot, Lowe's. */
+export const HARDWARE_CATEGORIES: MapCategory[] = ["hardware_store"];
 
 export type RestStop = Location & {
   category?: MapCategory;

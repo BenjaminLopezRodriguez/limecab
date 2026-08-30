@@ -6,7 +6,6 @@ import { useSearchParams } from "next/navigation";
 import {
   BookmarkAdd01Icon,
   Gps01Icon,
-  PlusSignIcon,
 } from "@hugeicons/core-free-icons";
 
 import { useAdaptiveSurface } from "@/components/service-app/adaptive-surface";
@@ -24,6 +23,12 @@ import {
 } from "@/components/service-app/surface-manager";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
+import {
+  AssistComposeChips,
+  AssistComposePlusButton,
+  AssistComposeSurface,
+  AssistMentionMenu,
+} from "@/components/limecab/limecab-assist-compose";
 import { LimeCabCompleteScene } from "@/components/limecab/limecab-complete-scene";
 import { LimeCabConfigureScene } from "@/components/limecab/limecab-configure-scene";
 import { renderAssistSearchResults } from "@/components/limecab/limecab-assist-results";
@@ -114,11 +119,23 @@ import {
 } from "@/lib/limecab/shop-list";
 import { createAssistSearchAdapter } from "@/lib/limecab/assist-search";
 import {
+  activeMentionAt,
+  applyMention,
+  assistLookupQuery,
+  composeAssistQuery,
+  EMPTY_ASSIST_COMPOSE,
+  filterMentions,
+  insertMentionTrigger,
+  type AssistComposeDraft,
+  type AssistMention,
+} from "@/lib/limecab/assist-compose";
+import {
   parseAssistTiming,
   scheduledTimeFromQuery,
   type AssistPlace,
   type AssistPlan,
 } from "@/lib/limecab/assist";
+import { shopItemsFromPhoto } from "@/lib/limecab/assist-photo";
 import {
   shopDeliveryStatusLabel,
   shouldAbortDraftForAssist,
@@ -1650,19 +1667,40 @@ function LimeCabSurfaces({
   const [placeToSave, setPlaceToSave] = useState<Location | null>(null);
   const [searchAudience, setSearchAudience] = useState<SearchAudience>("self");
   const [locatingHere, setLocatingHere] = useState(false);
+  const [assistQuery, setAssistQuery] = useState("");
+  const [assistCompose, setAssistCompose] =
+    useState<AssistComposeDraft>(EMPTY_ASSIST_COMPOSE);
+  const [assistComposeOpen, setAssistComposeOpen] = useState(false);
+  const assistComposeRef = useRef(assistCompose);
+  assistComposeRef.current = assistCompose;
   const applyVoiceRef = useRef<(text: string) => void>(() => undefined);
   const landAssistRef = useRef<(plan: AssistPlan) => void>(() => undefined);
   const pickupRef = useRef(pickup);
   pickupRef.current = pickup;
   const voice = useVoiceCapture((text) => applyVoiceRef.current(text));
-  const assistAdapter = useMemo(
-    () =>
-      createAssistSearchAdapter({
-        origin: () => pickupRef.current,
-        onLand: (plan) => landAssistRef.current(plan),
-      }),
-    [],
-  );
+  const assistAdapter = useMemo(() => {
+    const base = createAssistSearchAdapter({
+      origin: () => pickupRef.current,
+      onLand: (plan) => landAssistRef.current(plan),
+      photoContext: () => {
+        const classified = assistComposeRef.current.photoClassification;
+        if (!classified) return {};
+        return {
+          items: classified.items,
+          storeHints: classified.storeHints,
+        };
+      },
+    });
+    return {
+      ...base,
+      suggest(query: string, signal?: AbortSignal) {
+        return base.suggest(
+          composeAssistQuery(query, assistComposeRef.current),
+          signal,
+        );
+      },
+    };
+  }, []);
 
   const bookingMode: BookingMode = help
     ? "help"
@@ -1729,10 +1767,12 @@ function LimeCabSurfaces({
   const [nearbyShops, setNearbyShops] = useState<Place[]>([]);
   const wantsShops =
     shop && state === "location_search" && searchTarget === "pickup";
+  const hardwareShops =
+    assistCompose.photoClassification?.category === "hardware";
   useEffect(() => {
     if (!wantsShops) return;
     const ac = new AbortController();
-    void fetchNearbyShops(pickup, ac.signal)
+    void fetchNearbyShops(pickup, ac.signal, { hardware: hardwareShops })
       .then((stops) =>
         setNearbyShops(
           stops.slice(0, 8).map((stop, index) => ({
@@ -1742,13 +1782,18 @@ function LimeCabSurfaces({
             latitude: stop.latitude,
             longitude: stop.longitude,
             source: "saved" as const,
-            hint: stop.category === "pharmacy" ? "Pharmacy" : "Grocery",
+            hint:
+              stop.category === "pharmacy"
+                ? "Pharmacy"
+                : stop.category === "hardware_store"
+                  ? "Hardware"
+                  : "Grocery",
           })),
         ),
       )
       .catch(() => undefined);
     return () => ac.abort();
-  }, [pickup, wantsShops]);
+  }, [hardwareShops, pickup, wantsShops]);
 
   /** Home/Work slots, then nearby customs, then recents — not every custom. */
   const searchPlaces = useMemo<Place[]>(() => {
@@ -2217,8 +2262,13 @@ function LimeCabSurfaces({
     if (rideMinimized && !assist && !wantAssist) return onRestoreRide();
     const dest = resolveAssistPlace(plan.destination);
     const store = resolveAssistPlace(plan.store);
-    const items = plan.items?.length ? plan.items : [{ label: "" }];
+    const classifiedItems = shopItemsFromPhoto(
+      assistComposeRef.current.photoClassification,
+    );
+    const sourced = plan.items?.length ? plan.items : classifiedItems;
+    const items = sourced.length ? sourced : [{ label: "" }];
     const itemsOpen = normalizeShopList(items).length === 0;
+    const reviewList = classifiedItems.length > 0;
     const here = hereLocation();
 
     if (plan.kind === "reserve") {
@@ -2296,8 +2346,8 @@ function LimeCabSurfaces({
       surfaces.perform("shopSelected");
       go("select_location", {
         hasService: true,
-        hasLocation: !itemsOpen && !needsWhen,
-        needsConfigure: itemsOpen || needsWhen,
+        hasLocation: !itemsOpen && !needsWhen && !reviewList,
+        needsConfigure: itemsOpen || needsWhen || reviewList,
         needsServiceSelect: false,
         locationAfterConfigure: true,
         needsPickupConfirm: false,
@@ -2313,7 +2363,12 @@ function LimeCabSurfaces({
         setPickup({ ...pickup, ...origin, followsDevice: false });
       }
       if (dest) setDestination(dest);
-      setCourierValues(defaultOptionValues(COURIER_OPTIONS));
+      const courierDefaults = defaultOptionValues(COURIER_OPTIONS);
+      if (assistCompose.recipientName) {
+        courierDefaults.recipientName = assistCompose.recipientName;
+        setSearchAudience("other");
+      }
+      setCourierValues(courierDefaults);
       surfaces.perform("destinationSelected");
       go("select_location", {
         hasLocation: Boolean(dest),
@@ -2328,6 +2383,13 @@ function LimeCabSurfaces({
     if (!dest) return;
     setBookingMode("ride");
     setDestination(dest);
+    if (assistCompose.wantsStops) {
+      const added = addStop({ origin: pickup, destination: dest, stops: [] });
+      if (added) setStops(added.draft.stops);
+    }
+    if (assistCompose.recipientName) {
+      setSearchAudience("other");
+    }
     surfaces.perform("destinationSelected");
     go("select_location", {
       hasLocation: true,
@@ -2359,8 +2421,37 @@ function LimeCabSurfaces({
     setShopScheduled(false);
     setCourierValues(defaultOptionValues(COURIER_OPTIONS));
     setHelpNote("");
+    setAssistQuery("");
+    setAssistCompose((d) => {
+      if (d.photoPreviewUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(d.photoPreviewUrl);
+      }
+      return EMPTY_ASSIST_COMPOSE;
+    });
+    setAssistComposeOpen(false);
     onShopMapCallout(null);
   }, [assist, clearAssistDraft, onShopMapCallout, rideMinimized, state]);
+
+  const openAssistCompose = () => {
+    if (state !== "location_search") openSearch("destination");
+    setAssistComposeOpen(true);
+  };
+
+  const ensureAssistSearch = () => {
+    if (state !== "location_search") openSearch("destination");
+  };
+
+  const insertAssistMentionTrigger = () => {
+    ensureAssistSearch();
+    const next = insertMentionTrigger(assistQuery);
+    setAssistQuery(next.text);
+  };
+
+  const applyAssistMention = (mention: AssistMention) => {
+    ensureAssistSearch();
+    const next = applyMention(assistQuery, assistQuery.length, mention);
+    setAssistQuery(next.text);
+  };
 
   const skipForTheWay = () => {
     surfaces.perform("skipForTheWay");
@@ -2636,6 +2727,7 @@ function LimeCabSurfaces({
     setUnavailable(null);
     setPlaceToSave(null);
     setForTheWayOpen(false);
+    setAssistComposeOpen(false);
   }, [standby]);
 
   const live = isCommitted(visible) && visible !== "complete" && !failure;
@@ -2691,11 +2783,7 @@ function LimeCabSurfaces({
           triggerClassName={assist ? "border-lime" : undefined}
           triggerStart={
             assist ? (
-              <Icon
-                icon={PlusSignIcon}
-                size={20}
-                className="text-lime shrink-0"
-              />
+              <AssistComposePlusButton onPress={openAssistCompose} size={20} />
             ) : undefined
           }
           hideTagline={assist}
@@ -3180,11 +3268,7 @@ function LimeCabSurfaces({
           requireAddress={searchContract.commit !== "query"}
           start={
             assist ? (
-              <Icon
-                icon={PlusSignIcon}
-                size={18}
-                className="text-lime"
-              />
+              <AssistComposePlusButton onPress={openAssistCompose} size={18} />
             ) : undefined
           }
           inputClassName={
@@ -3192,12 +3276,21 @@ function LimeCabSurfaces({
           }
           value={
             assist
-              ? ""
+              ? assistQuery
               : searchContract.showRoute
                 ? ""
                 : searchContract.role === "store"
                   ? (shopStore?.address ?? "")
                   : (destination?.address ?? "")
+          }
+          onTextChange={assist ? setAssistQuery : undefined}
+          keepResultsOpen={
+            assist
+              ? Boolean(activeMentionAt(assistQuery, assistQuery.length))
+              : false
+          }
+          normalizeQuery={
+            assist ? assistLookupQuery : limeCabNormalizeQuery
           }
           route={
             searchContract.showRoute
@@ -3249,13 +3342,39 @@ function LimeCabSurfaces({
               : undefined
           }
           lead={
-            <LimeCabSearchInputAdapter
-              contract={searchContract}
-              audience={searchAudience}
-              locating={locatingHere}
-              onAudienceChange={setSearchAudience}
-              onUseHere={useHere}
-            />
+            assist ? (
+              <AssistComposeChips
+                draft={assistCompose}
+                onClearPhoto={() =>
+                  setAssistCompose((d) => {
+                    if (d.photoPreviewUrl?.startsWith("blob:")) {
+                      URL.revokeObjectURL(d.photoPreviewUrl);
+                    }
+                    return {
+                      ...d,
+                      photoName: null,
+                      photoUrl: null,
+                      photoPreviewUrl: null,
+                      photoClassification: null,
+                    };
+                  })
+                }
+                onClearStops={() =>
+                  setAssistCompose((d) => ({ ...d, wantsStops: false }))
+                }
+                onClearPerson={() =>
+                  setAssistCompose((d) => ({ ...d, recipientName: null }))
+                }
+              />
+            ) : (
+              <LimeCabSearchInputAdapter
+                contract={searchContract}
+                audience={searchAudience}
+                locating={locatingHere}
+                onAudienceChange={setSearchAudience}
+                onUseHere={useHere}
+              />
+            )
           }
           onSelect={(result) => {
             if (assist) {
@@ -3325,20 +3444,40 @@ function LimeCabSurfaces({
                 )
               : undefined
           }
-          normalizeQuery={assist ? undefined : limeCabNormalizeQuery}
-          renderResults={(input) =>
-            assist
-              ? renderAssistSearchResults({
-                  ...input,
-                  planFor: assistAdapter.planFor,
-                  onChoose: landAssistPlan,
-                  response: assistAdapter.lastResponse(),
-                })
-              : renderLimeCabSearchResults({
-                  ...input,
-                  onChooseIntent: chooseIntent,
-                })
-          }
+          renderResults={(input) => {
+            if (assist) {
+              const mention = activeMentionAt(input.query, input.query.length);
+              if (mention) {
+                const options = filterMentions(mention.query);
+                return {
+                  content: (
+                    <AssistMentionMenu
+                      query={mention.query}
+                      active={input.active}
+                      listId={input.listId}
+                      setActive={input.setActive}
+                      onChoose={applyAssistMention}
+                    />
+                  ),
+                  optionCount: options.length,
+                  pickOption: (index) => {
+                    const picked = options[index];
+                    if (picked) applyAssistMention(picked);
+                  },
+                };
+              }
+              return renderAssistSearchResults({
+                ...input,
+                planFor: assistAdapter.planFor,
+                onChoose: landAssistPlan,
+                response: assistAdapter.lastResponse(),
+              });
+            }
+            return renderLimeCabSearchResults({
+              ...input,
+              onChooseIntent: chooseIntent,
+            });
+          }}
         />
       </ManagedSurface>
 
@@ -3434,6 +3573,21 @@ function LimeCabSurfaces({
         open={placeToSave !== null}
         location={placeToSave}
         onClose={() => closeInterrupt(() => setPlaceToSave(null))}
+      />
+
+      <AssistComposeSurface
+        open={assist && assistComposeOpen}
+        onOpenChange={setAssistComposeOpen}
+        draft={assistCompose}
+        onDraftChange={(next) => {
+          setAssistCompose(next);
+          if (next.recipientName) setSearchAudience("other");
+        }}
+        onInsertMentionTrigger={insertAssistMentionTrigger}
+        onApplyMention={applyAssistMention}
+        onQuerySeed={(query) => {
+          setAssistQuery((current) => (current.trim() ? current : query));
+        }}
       />
 
       <LimeCabForTheWaySurface

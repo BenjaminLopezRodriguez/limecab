@@ -2,7 +2,9 @@ import { z } from "zod";
 
 import { env } from "@/env";
 import {
+  applyAssistPhotoContext,
   assistResponseFromPlans,
+  hardwareStore,
   nearestShop,
   placeFromFixtures,
   planAssistHeuristic,
@@ -15,9 +17,10 @@ import {
   type AssistResponse,
 } from "@/lib/limecab/assist";
 import { resolveAssistTextcon } from "@/lib/limecab/assist-textcon";
-import { SHOP_PLACES } from "@/lib/limecab/mock";
+import { SHOP_PLACES, HARDWARE_PLACES } from "@/lib/limecab/mock";
 import { nearbyRestStops } from "@/lib/limecab/rest-stops";
 import { searchNaturalPlaces } from "@/server/limecab/place-search";
+import type { ShopItem } from "@/lib/limecab/shop-list";
 
 const DEEPSEEK_MS = 2800;
 
@@ -105,7 +108,7 @@ const TOOLS = [
     function: {
       name: "find_store",
       description:
-        "Find a grocery, supermarket, or pharmacy the Shop courier can buy from.",
+        "Find a grocery, supermarket, pharmacy, or hardware store (Home Depot, Lowe's) the Shop courier can buy from.",
       parameters: {
         type: "object",
         properties: {
@@ -215,9 +218,16 @@ export async function planAssist(input: {
   latitude: number;
   longitude: number;
   request: Request;
+  items?: ShopItem[];
+  storeHints?: string[];
 }): Promise<AssistResponse> {
   const query = input.query.trim();
-  const fallback = planAssistHeuristic(query);
+  const photo = { items: input.items, storeHints: input.storeHints };
+  const fallback = applyAssistPhotoContext(
+    query,
+    planAssistHeuristic(query),
+    photo,
+  );
   const key = env.DEEPSEEK_API_KEY;
   if (!key) {
     logOnce("deepseek", "[assist] DEEPSEEK_API_KEY missing — heuristic plan");
@@ -232,7 +242,11 @@ export async function planAssist(input: {
       request: input.request,
     });
     if (planned && planned.cards.length > 0) {
-      return reconcileAssistResponse(query, planned);
+      return applyAssistPhotoContext(
+        query,
+        reconcileAssistResponse(query, planned),
+        photo,
+      );
     }
   } catch {
     console.info("[assist] DeepSeek unavailable — heuristic plan");
@@ -242,9 +256,23 @@ export async function planAssist(input: {
 
 async function enrichHeuristic(
   fallback: AssistResponse,
-  input: { query: string; latitude: number; longitude: number; request: Request },
+  input: {
+    query: string;
+    latitude: number;
+    longitude: number;
+    request: Request;
+    items?: ShopItem[];
+    storeHints?: string[];
+  },
 ): Promise<AssistResponse> {
   if (fallback.cards.length > 0) return fallback;
+  // Photo-driven shop ask — do not geocode the typed note as a ride POI.
+  if ((input.items?.length ?? 0) > 0 || (input.storeHints?.length ?? 0) > 0) {
+    return fallback;
+  }
+  if (/\bbuy what is in the photo\b/i.test(input.query)) {
+    return fallback;
+  }
   const places = await resolvePlaces(input.query, input);
   if (places.length === 0) return fallback;
   const plans: AssistPlan[] = places.slice(0, 3).map((destination) => {
@@ -549,9 +577,11 @@ async function resolvePlaces(
 function findStores(query: string, ctx: ToolContext): AssistPlace[] {
   const named = query ? storeFromFixtures(query) : null;
   if (named) return [named];
+  const hardware = /\b(home depot|lowe'?s|hardware)\b/i.test(query);
+  const pool = hardware ? HARDWARE_PLACES : SHOP_PLACES;
   const nearby = nearbyRestStops(
     { address: "", latitude: ctx.latitude, longitude: ctx.longitude },
-    SHOP_PLACES,
+    pool,
     { limit: 5, maxMiles: 40 },
   );
   if (nearby.length > 0) {
@@ -562,7 +592,7 @@ function findStores(query: string, ctx: ToolContext): AssistPlace[] {
       label: stop.shortName,
     }));
   }
-  const fallback = nearestShop();
+  const fallback = hardware ? hardwareStore() : nearestShop();
   return fallback ? [fallback] : [];
 }
 

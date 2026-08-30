@@ -11,6 +11,7 @@ import { PrimaryAction } from "@/components/service-app/task-scene";
 import { LiveSheetHeader } from "@/components/service-app/live-sheet";
 import { SurfaceSkeleton } from "@/components/service-app/surface-skeleton";
 import { SheetActions } from "@/components/service-app/service-sheet";
+import { ChoiceGlyph, ChoiceList, ChoiceRow } from "@/components/service-app/choice-list";
 import { DetailLines } from "@/components/limecab/limecab-parts";
 import { Icon } from "@/components/ui/icon";
 import type { DetailKind } from "@/components/limecab/limecab-interrupts";
@@ -107,15 +108,15 @@ export function LimeCabQuoteScene({
 
       <DetailLines className="mt-4" lines={fareLines} />
 
-      <div className="divide-border ring-border mt-4 divide-y rounded-2xl ring-1">
+      <ChoiceList className="mt-4">
         <SettingRow
-          icon={<Icon icon={CreditCardIcon} size={16} />}
+          icon={<Icon icon={CreditCardIcon} size={24} />}
           label="Payment"
           value={payment.detail}
           onPress={() => onOpenDetail("payment")}
         />
         <SettingRow
-          icon={<Icon icon={Tag01Icon} size={16} />}
+          icon={<Icon icon={Tag01Icon} size={24} />}
           label="Promo"
           value={
             promoApplied
@@ -124,7 +125,7 @@ export function LimeCabQuoteScene({
           }
           onPress={() => onOpenDetail("promo")}
         />
-      </div>
+      </ChoiceList>
 
       {error ? (
         <div role="alert" className="mt-4">
@@ -167,26 +168,18 @@ function SettingRow({
   onPress: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onPress}
-      aria-label={`${label}: ${value}. Change`}
-      className="focus-visible:ring-ring active:bg-accent flex min-h-14 w-full items-center gap-3 px-4 text-left first:rounded-t-2xl last:rounded-b-2xl focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
-    >
-      <span
-        aria-hidden="true"
-        className="text-muted-foreground shrink-0 [&_svg]:size-4"
-      >
-        {icon}
+    <ChoiceRow onClick={onPress} aria-label={`${label}: ${value}. Change`}>
+      <ChoiceGlyph>{icon}</ChoiceGlyph>
+      <span className="min-w-0 flex-1 truncate text-[17px] font-semibold tracking-tight">
+        {value}
       </span>
-      <span className="min-w-0 flex-1 truncate text-[15px]">{value}</span>
       <Icon
         icon={ArrowRight01Icon}
         size={16}
         className="text-muted-foreground shrink-0"
         aria-hidden="true"
       />
-    </button>
+    </ChoiceRow>
   );
 }
 

@@ -5,11 +5,13 @@ import {
 } from "@/lib/service-app/geocode-adapter";
 import {
   CURRENT_LOCATION,
+  HARDWARE_PLACES,
   REST_STOPS,
   SHOP_PLACES,
   geocodeAdapter as staticGeocodeAdapter,
 } from "@/lib/limecab/mock";
 import {
+  HARDWARE_CATEGORIES,
   nearbyRestStops,
   SHOP_CATEGORIES,
   type RestStop,
@@ -168,6 +170,10 @@ export async function fetchNearbyRestStops(
 export async function fetchNearbyShops(
   origin: Location,
   signal?: AbortSignal,
+  opts?: { hardware?: boolean },
 ): Promise<RestStop[]> {
+  if (opts?.hardware) {
+    return fetchNearbyCategory(origin, HARDWARE_CATEGORIES, HARDWARE_PLACES, signal);
+  }
   return fetchNearbyCategory(origin, SHOP_CATEGORIES, SHOP_PLACES, signal);
 }

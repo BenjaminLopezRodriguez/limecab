@@ -66,6 +66,8 @@ export function LocationSearchScene({
   fieldsClassName,
   inputClassName,
   requireAddress = true,
+  onTextChange,
+  keepResultsOpen = false,
 }: {
   open: boolean;
   adapter: GeocodeAdapter;
@@ -115,6 +117,7 @@ export function LocationSearchScene({
   /** Extra rows under the search body (Anywhere, a filter). */
   footer?: ReactNode;
   normalizeQuery?: (query: string) => string;
+  onTextChange?: (text: string) => void;
   renderResults?: ComponentProps<typeof LocationSearch>["renderResults"];
   /** Trailing control on a suggestion row, e.g. filing the address. */
   rowAction?: ComponentProps<typeof LocationSearch>["rowAction"];
@@ -125,6 +128,8 @@ export function LocationSearchScene({
   inputClassName?: string;
   /** Ride dropoffs need a full address. A query commit does not. */
   requireAddress?: boolean;
+  /** Keep results open with an empty suggestion list (@-mention picker). */
+  keepResultsOpen?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [locating, setLocating] = useState(false);
@@ -214,6 +219,8 @@ export function LocationSearchScene({
             value={activeRow?.value ?? value}
             onSelect={choose}
             normalizeQuery={normalizeQuery}
+            onTextChange={onTextChange}
+            keepResultsOpen={keepResultsOpen}
             renderResults={renderResults}
             rowAction={rowAction}
             autoFocus={!framed}

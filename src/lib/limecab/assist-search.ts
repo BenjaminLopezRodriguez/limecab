@@ -4,6 +4,7 @@ import {
   type AssistResponse,
 } from "@/lib/limecab/assist";
 import { CURRENT_LOCATION } from "@/lib/limecab/mock";
+import type { ShopItem } from "@/lib/limecab/shop-list";
 import type {
   GeocodeAdapter,
   LocationSuggestion,
@@ -22,9 +23,14 @@ const REPLY_ONLY = "assist:reply";
 export function createAssistSearchAdapter({
   origin,
   onLand,
+  photoContext,
 }: {
   origin: () => { latitude?: number; longitude?: number };
   onLand: (plan: AssistPlan) => void;
+  photoContext?: () => {
+    items?: ShopItem[];
+    storeHints?: string[];
+  };
 }): GeocodeAdapter & {
   planFor: (id: string) => AssistPlan | undefined;
   planMatching: (result: Location) => AssistPlan | undefined;
@@ -60,6 +66,7 @@ export function createAssistSearchAdapter({
           query,
           lat: point.latitude ?? CURRENT_LOCATION.latitude,
           lng: point.longitude ?? CURRENT_LOCATION.longitude,
+          ...photoContext?.(),
         }),
       });
       if (signal?.aborted) return [];

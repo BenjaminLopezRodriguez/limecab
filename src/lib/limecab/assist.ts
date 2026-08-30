@@ -84,6 +84,24 @@ const KNOWN_STORES: AssistPlace[] = [
     longitude: -118.2694,
     label: "Florist",
   },
+  {
+    address: "The Home Depot, 500 S Alameda St, Los Angeles",
+    latitude: 34.0407,
+    longitude: -118.2384,
+    label: "Home Depot",
+  },
+  {
+    address: "Lowe's, 4550 E Olympic Blvd, Los Angeles",
+    latitude: 34.0194,
+    longitude: -118.1756,
+    label: "Lowe's",
+  },
+  {
+    address: "Target, 735 S Figueroa St, Los Angeles",
+    latitude: 34.0485,
+    longitude: -118.2606,
+    label: "Target",
+  },
 ];
 
 export type { AssistServiceId };
@@ -139,11 +157,16 @@ export type AssistResponse = {
 };
 
 const SHOP_ITEM =
-  /\b(beef|milk|eggs|bread|bananas?|groceries|chicken|rice|oat milk|apples?|coffee|water|flowers?|bouquet)\b/i;
+  /\b(beef|milk|eggs|bread|bananas?|groceries|chicken|rice|oat milk|apples?|coffee|water|flowers?|bouquet|pencils?|pens?|markers?|stationery|notebooks?)\b/i;
+/** Fasteners — "nuts" alone is food; require hex/hardware or bolt/screw. */
+const HARDWARE_ITEM =
+  /\b((?:hex|lag|machine|wood|cap|lock)[\s-]?nuts?|hardware nuts?|bolts?|screws?|washers?|fasteners?|hardware)\b/i;
 const FLOWERS = /\b(flowers?|bouquet)\b/i;
-const BUY = /\b(buy|get me|pick up some|need some|need a|order)\b/i;
+const BUY = /\b(buy|get me|pick up some|need some|need a|need more|order)\b/i;
 const STORE_NAME =
-  /\b(vons|ralphs|trader joe'?s?|cvs|walgreens|whole foods|superior grocers|grand central|florist)\b/i;
+  /\b(vons|ralphs|trader joe'?s?|cvs|walgreens|whole foods|superior grocers|grand central|florist|home depot|lowe'?s|ace hardware|hardware store|target)\b/i;
+const HARDWARE_CUE =
+  /\b(home depot|lowe'?s|ace hardware|hardware store|hardware)\b/i;
 /** Assist-only. Must not catch "help me get to LAX" (that's a ride). */
 const HELP_TASK =
   /\b(help me (?:move|lift|carry)|move (?:a |the )?(?:couch|sofa|furniture)|heavy lifting)\b/i;
@@ -184,7 +207,7 @@ export function scheduledTimeFromQuery(
 /** Assist-only extras on top of the shared classifier. Ride search is unchanged. */
 export function classifyAssistQuery(text: string): ClassifiedQuery {
   const base = classifySearchQuery(text);
-  const shopItem = SHOP_ITEM.test(text);
+  const shopItem = SHOP_ITEM.test(text) || HARDWARE_ITEM.test(text);
   const shopCue = shopItem || BUY.test(text) || STORE_NAME.test(text);
   const helpTask = HELP_TASK.test(text);
 
@@ -232,8 +255,15 @@ function stripHelpTask(placeQuery: string): string {
     .trim();
 }
 
+function isShopItemLabel(label: string): boolean {
+  return SHOP_ITEM.test(label) || HARDWARE_ITEM.test(label);
+}
+
 export function shopItemsFromQuery(text: string): ShopItem[] {
-  const raw = text.trim();
+  const raw = text
+    .replace(/\bphoto:[^\s,]+/gi, " ")
+    .replace(/\bwith stops\b/gi, " ")
+    .trim();
   if (!raw) return [];
   const parts = raw
     .split(ITEM_SPLIT)
@@ -248,8 +278,16 @@ export function shopItemsFromQuery(text: string): ShopItem[] {
         .replace(/\s+/g, " ")
         .trim(),
     )
-    .filter((label) => label.length > 1 && SHOP_ITEM.test(label));
-  if (parts.length > 0) return parts.map((label) => ({ label }));
+    .filter((label) => label.length > 1 && isShopItemLabel(label))
+    .map((label) => {
+      const hardware = HARDWARE_ITEM.exec(label);
+      if (hardware) return { label: hardware[0].toLowerCase() };
+      const grocery = SHOP_ITEM.exec(label);
+      return { label: (grocery?.[0] ?? label).toLowerCase() };
+    });
+  if (parts.length > 0) return parts;
+  const hardware = HARDWARE_ITEM.exec(raw);
+  if (hardware) return [{ label: hardware[0].toLowerCase() }];
   const match = SHOP_ITEM.exec(raw);
   return match ? [{ label: match[0].toLowerCase() }] : [];
 }
@@ -261,11 +299,32 @@ export function placeFromFixtures(query: string): AssistPlace | null {
 export function storeFromFixtures(query: string): AssistPlace | null {
   const needle = query.trim().toLowerCase();
   if (!needle) return nearestShop();
+  for (const place of KNOWN_STORES) {
+    const label = (place.label ?? "").toLowerCase();
+    if (label && needle.includes(label)) return place;
+  }
   return matchPlace(query, KNOWN_STORES);
 }
 
 export function nearestShop(): AssistPlace | null {
-  return KNOWN_STORES.find((place) => place.label !== "Florist") ?? KNOWN_STORES[0] ?? null;
+  return (
+    KNOWN_STORES.find(
+      (place) =>
+        place.label !== "Florist" &&
+        place.label !== "Home Depot" &&
+        place.label !== "Lowe's",
+    ) ??
+    KNOWN_STORES[0] ??
+    null
+  );
+}
+
+export function hardwareStore(): AssistPlace | null {
+  return (
+    KNOWN_STORES.find((place) => place.label === "Home Depot") ??
+    KNOWN_STORES.find((place) => place.label === "Lowe's") ??
+    nearestShop()
+  );
 }
 
 function floristPlace(): AssistPlace | null {
@@ -323,9 +382,14 @@ export function planFromIntent(
 
   if (intent === "store") {
     const flowers = items.some((item) => FLOWERS.test(item.label));
+    const hardware =
+      HARDWARE_CUE.test(query) ||
+      items.some((item) => HARDWARE_ITEM.test(item.label));
     const store = flowers
       ? floristPlace()
-      : (namedStore ?? nearestShop());
+      : hardware
+        ? (namedStore ?? hardwareStore())
+        : (namedStore ?? nearestShop());
     const itemLine = items.map((item) => item.label).join(", ");
     let timing = parseAssistTiming(query);
     if (
@@ -391,8 +455,19 @@ function expandAmbiguousPlans(query: string, plans: AssistPlan[]): AssistPlan[] 
 
   if (shop && items.length > 0) {
     const flowers = items.some((item) => FLOWERS.test(item.label));
-    const store = flowers ? floristPlace() : shop.store;
-    if (store && !next.some((plan) => plan.kind === "ride")) {
+    const store = flowers
+      ? floristPlace()
+      : HARDWARE_CUE.test(query)
+        ? (shop.store ?? hardwareStore())
+        : shop.store;
+    const buyNow =
+      HARDWARE_CUE.test(query) ||
+      items.some((item) => HARDWARE_ITEM.test(item.label));
+    if (
+      store &&
+      !next.some((plan) => plan.kind === "ride") &&
+      !buyNow
+    ) {
       next.push({
         kind: "ride",
         confidence: "low",
@@ -606,4 +681,105 @@ export function reconcileAssistResponse(
     message: model.message.trim() ? model.message : rebuilt.message,
     textcons: model.textcons?.length ? model.textcons : rebuilt.textcons,
   };
+}
+
+/**
+ * Overlay photo-classifier items and store hints onto an Assist response so
+ * Shop lands with a list and Home Depot even when the sentence parse is thin.
+ * Photo-driven asks suppress ride geocode of the typed note alone.
+ */
+export function applyAssistPhotoContext(
+  query: string,
+  response: AssistResponse,
+  extras: {
+    items?: ShopItem[];
+    storeHints?: string[];
+  } = {},
+): AssistResponse {
+  const items = (extras.items ?? []).filter((item) => item.label.trim());
+  const hints = (extras.storeHints ?? [])
+    .map((hint) => hint.trim())
+    .filter(Boolean);
+  if (items.length === 0 && hints.length === 0) return response;
+
+  const hintedStore =
+    (hints.length ? storeFromFixtures(hints.join(" ")) : null) ??
+    (hints[0] ? storeFromFixtures(hints[0]) : null);
+
+  let plans = response.suggestions.map((entry) => entry.plan);
+  if (!plans.some((plan) => plan.kind === "shop")) {
+    const seed = [query, ...hints, ...items.map((item) => item.label)]
+      .filter(Boolean)
+      .join(" ");
+    const seeded = planAssistHeuristic(
+      /\b(buy|deliver|order)\b/i.test(seed) ? seed : `deliver ${seed} now`,
+    );
+    const shopPlans = seeded.suggestions
+      .map((entry) => entry.plan)
+      .filter((plan) => plan.kind === "shop");
+    if (shopPlans.length > 0) plans = [...shopPlans, ...plans];
+  }
+
+  plans = plans.map((plan) => {
+    if (plan.kind !== "shop") return plan;
+    const nextItems = items.length ? items : (plan.items ?? []);
+    const hardware =
+      nextItems.some((item) => HARDWARE_ITEM.test(item.label)) ||
+      hints.some((hint) => HARDWARE_CUE.test(hint));
+    const homeOffice =
+      nextItems.some((item) =>
+        /\b(pencils?|pens?|markers?|stationery|notebooks?)\b/i.test(item.label),
+      ) || hints.some((hint) => /\btarget\b/i.test(hint));
+    const store =
+      plan.store ??
+      hintedStore ??
+      (hardware ? hardwareStore() : undefined) ??
+      (homeOffice
+        ? (KNOWN_STORES.find((place) => place.label === "Target") ??
+          nearestShop())
+        : undefined);
+    return {
+      ...plan,
+      items: nextItems.length ? nextItems : plan.items,
+      store: store ?? plan.store,
+      confidence: nextItems.length || store ? "high" : plan.confidence,
+    };
+  });
+
+  if (!plans.some((plan) => plan.kind === "shop")) {
+    const store =
+      hintedStore ??
+      (items.some((item) => HARDWARE_ITEM.test(item.label))
+        ? hardwareStore()
+        : hints.some((hint) => /\btarget\b/i.test(hint))
+          ? (KNOWN_STORES.find((place) => place.label === "Target") ??
+            nearestShop())
+          : (hardwareStore() ?? nearestShop()));
+    const itemLine = items.map((item) => item.label).join(", ");
+    plans = [
+      {
+        kind: "shop",
+        confidence: "high",
+        timing: "now",
+        title: itemLine ? `Deliver ${itemLine}` : "Shop nearby",
+        subtitle: store?.label ?? store?.address,
+        store: store ?? undefined,
+        items: items.length ? items : undefined,
+      },
+      ...plans,
+    ];
+  }
+
+  // Photo + "need more of these" is a shop ask — drop ride POIs from geocode.
+  if (
+    items.length > 0 &&
+    (/\b(these|those|them)\b/i.test(query) ||
+      /\bdeliver\b.+\bnow\b/i.test(query) ||
+      /\bbuy what is in the photo\b/i.test(query))
+  ) {
+    const shopOnly = plans.filter((plan) => plan.kind === "shop");
+    if (shopOnly.length > 0) plans = shopOnly;
+  }
+
+  return assistResponseFromPlans(query, plans);
 }

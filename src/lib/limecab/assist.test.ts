@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  applyAssistPhotoContext,
   assistResponseFromPlans,
   classifyAssistQuery,
   parseAssistTiming,
@@ -9,6 +10,7 @@ import {
   planAssistHeuristic,
   scheduledTimeFromQuery,
   shopItemsFromQuery,
+  storeFromFixtures,
 } from "./assist.ts";
 
 test("Griffith is a high-confidence ride land", () => {
@@ -110,6 +112,42 @@ test("parseAssistTiming distinguishes now and later", () => {
   assert.equal(parseAssistTiming("deliver flowers now"), "now");
   assert.equal(parseAssistTiming("order flowers for tonight"), "scheduled");
   assert.equal(parseAssistTiming("flowers for later"), "scheduled");
+});
+
+test("hex nuts at Home Depot lands shop with the list and store", () => {
+  const planned = planAssistHeuristic(
+    "deliver hex nuts from Home Depot now",
+  );
+  assert.equal(planned.mode, "land");
+  assert.equal(planned.plan?.kind, "shop");
+  assert.ok(planned.plan?.items?.some((item) => /hex nuts/i.test(item.label)));
+  assert.ok(planned.plan?.store?.label?.includes("Home Depot"));
+  assert.deepEqual(shopItemsFromQuery("deliver hex nuts from Home Depot now"), [
+    { label: "hex nuts" },
+  ]);
+  assert.ok(storeFromFixtures("buy from Home Depot")?.label?.includes("Home Depot"));
+});
+
+test("photo classification fills shop items and Home Depot", () => {
+  const planned = applyAssistPhotoContext("photo:nut.jpg", planAssistHeuristic("photo:nut.jpg"), {
+    items: [{ label: "hex nuts" }],
+    storeHints: ["Home Depot", "Lowe's"],
+  });
+  const shop = planned.suggestions.find((card) => card.plan.kind === "shop")?.plan;
+  assert.ok(shop?.items?.some((item) => item.label === "hex nuts"));
+  assert.ok(shop?.store?.label?.includes("Home Depot"));
+});
+
+test("photo + need more of these stays shop not ride", () => {
+  const query = "deliver pencils from Target now: need more of these";
+  const planned = applyAssistPhotoContext(query, planAssistHeuristic(query), {
+    items: [{ label: "pencils" }],
+    storeHints: ["Target"],
+  });
+  assert.ok(planned.suggestions.every((card) => card.plan.kind === "shop"));
+  const shop = planned.suggestions[0]?.plan;
+  assert.ok(shop?.items?.some((item) => item.label === "pencils"));
+  assert.ok(shop?.store?.label?.includes("Target"));
 });
 
 test("help me move a couch spans help and courier", () => {

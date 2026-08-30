@@ -29,6 +29,12 @@ export { LocationSearchScene } from "@/components/service-app/location-search-sc
 export { LocationPinScene } from "@/components/service-app/location-pin-scene";
 export { SavedPlaces } from "@/components/service-app/saved-places";
 export { ServiceGrid } from "@/components/service-app/service-grid";
+export {
+  ChoiceList,
+  ChoiceRow,
+  ChoiceGlyph,
+  ChoiceCopy,
+} from "@/components/service-app/choice-list";
 export { QuotePanel } from "@/components/service-app/quote-panel";
 export {
   ServiceStatusPanel,

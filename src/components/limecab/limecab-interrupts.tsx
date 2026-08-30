@@ -8,6 +8,12 @@ import {
 } from "@hugeicons/core-free-icons";
 
 import { AdaptiveSurface } from "@/components/service-app/adaptive-surface";
+import {
+  ChoiceCopy,
+  ChoiceGlyph,
+  ChoiceList,
+  ChoiceRow,
+} from "@/components/service-app/choice-list";
 import { ConfirmActionSurface } from "@/components/service-app/confirm-action-surface";
 import { PrimaryAction } from "@/components/service-app/task-scene";
 import { Button } from "@/components/ui/button";
@@ -336,46 +342,30 @@ export function LimeCabPaymentSurface({
       label="Payment method"
       description="Choose how you pay for this ride, or add a method."
     >
-      <ul
-        role="radiogroup"
-        aria-label="Payment methods"
-        className="divide-border ring-border divide-y rounded-2xl ring-1"
-      >
+      <ChoiceList role="radiogroup" aria-label="Payment methods">
         {PAYMENT_METHODS.map((method) => (
-          <li key={method.id}>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={method.id === paymentId}
-              onClick={() => onSelect(method.id)}
-              className="focus-visible:ring-ring active:bg-accent flex min-h-14 w-full items-center gap-3 px-4 text-left first:rounded-t-2xl last:rounded-b-2xl focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
-            >
+          <ChoiceRow
+            key={method.id}
+            role="radio"
+            aria-checked={method.id === paymentId}
+            selected={method.id === paymentId}
+            onClick={() => onSelect(method.id)}
+          >
+            <ChoiceGlyph>
+              <Icon icon={CreditCardIcon} size={24} />
+            </ChoiceGlyph>
+            <ChoiceCopy title={method.label} detail={method.detail} />
+            {method.id === paymentId ? (
               <Icon
-                icon={CreditCardIcon}
-                size={16}
-                className="text-muted-foreground shrink-0"
+                icon={Tick02Icon}
+                size={20}
+                className="text-lime shrink-0"
                 aria-hidden="true"
               />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[15px] font-medium tracking-tight">
-                  {method.label}
-                </span>
-                <span className="text-muted-foreground block truncate text-sm">
-                  {method.detail}
-                </span>
-              </span>
-              {method.id === paymentId ? (
-                <Icon
-                  icon={Tick02Icon}
-                  size={20}
-                  className="text-lime shrink-0"
-                  aria-hidden="true"
-                />
-              ) : null}
-            </button>
-          </li>
+            ) : null}
+          </ChoiceRow>
         ))}
-      </ul>
+      </ChoiceList>
 
       {/* Honest-empty: the affordance is real, the processor is not. */}
       <div className="mt-auto flex flex-col gap-3 pt-6">
@@ -439,19 +429,13 @@ export function LimeCabCancelSurfaces({
         label="Ride cancelled"
         description="What happened? This helps us send a better driver next time."
       >
-        <ul className="divide-border ring-border divide-y rounded-2xl ring-1">
+        <ChoiceList>
           {CANCEL_REASONS.map((reason) => (
-            <li key={reason}>
-              <button
-                type="button"
-                onClick={() => onFinish(reason)}
-                className="focus-visible:ring-ring active:bg-accent flex min-h-14 w-full items-center px-4 text-left text-[15px] first:rounded-t-2xl last:rounded-b-2xl focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
-              >
-                {reason}
-              </button>
-            </li>
+            <ChoiceRow key={reason} onClick={() => onFinish(reason)}>
+              <ChoiceCopy title={reason} />
+            </ChoiceRow>
           ))}
-        </ul>
+        </ChoiceList>
         <Button
           variant="ghost"
           className="text-muted-foreground h-11 w-full rounded-xl text-sm font-normal"
@@ -534,24 +518,16 @@ export function LimeCabForTheWaySurface({
       label="Add something for the ride?"
       description="Coffee, tea, or sparkling water. One stop on the way. Skip to keep the ride as-is."
     >
-      <ul className="divide-border ring-border divide-y rounded-2xl ring-1">
+      <ChoiceList>
         {FOR_THE_WAY_ITEMS.map((item) => (
-          <li key={item.id}>
-            <button
-              type="button"
-              onClick={() => onAdd(item.id)}
-              className="focus-visible:ring-ring active:bg-accent flex min-h-14 w-full items-center justify-between px-4 text-left first:rounded-t-2xl last:rounded-b-2xl focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none"
-            >
-              <span className="text-[15px] font-medium tracking-tight">
-                {item.label}
-              </span>
-              <span className="text-muted-foreground text-sm tabular-nums">
-                +{formatMoney(item.priceCents)}
-              </span>
-            </button>
-          </li>
+          <ChoiceRow key={item.id} onClick={() => onAdd(item.id)}>
+            <ChoiceCopy title={item.label} />
+            <span className="text-muted-foreground shrink-0 text-sm tabular-nums">
+              +{formatMoney(item.priceCents)}
+            </span>
+          </ChoiceRow>
         ))}
-      </ul>
+      </ChoiceList>
       <Button
         variant="ghost"
         className="text-muted-foreground h-11 w-full rounded-xl text-sm font-normal"

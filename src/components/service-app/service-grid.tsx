@@ -1,5 +1,6 @@
 "use client";
 
+import { ChoiceCopy, ChoiceGlyph, ChoiceList, ChoiceRow } from "@/components/service-app/choice-list";
 import type { ServiceDefinition } from "@/lib/service-app/services";
 import { cn } from "@/lib/utils";
 
@@ -39,57 +40,43 @@ export function ServiceGrid({
 }) {
   if (variant === "list") {
     return (
-      <ul className={cn("divide-border ring-border divide-y rounded-2xl ring-1", className)}>
+      <ChoiceList className={className}>
         {services.map((service) => {
           const available = service.status === "available";
           const selected = selectedId === service.id;
           return (
-            <li key={service.id}>
-              <button
-                type="button"
-                onClick={() => onSelect(service)}
-                aria-pressed={selected}
-                aria-label={describe(service, unavailableLabel)}
-                className={cn(
-                  "flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left",
-                  "focus-visible:ring-ring focus-visible:ring-2 focus-visible:-outline-offset-2 focus-visible:outline-none",
-                  "first:rounded-t-2xl last:rounded-b-2xl",
-                  selected ? "bg-accent" : "active:bg-accent",
-                  available ? "" : "text-muted-foreground",
-                )}
-              >
-                {service.icon ? (
-                  <span aria-hidden="true" className="shrink-0 [&_svg]:size-5">
-                    {service.icon}
-                  </span>
-                ) : null}
-                <span className="min-w-0 flex-1">
-                  <span className="text-foreground block truncate text-[15px] font-medium tracking-tight">
-                    {service.title}
-                  </span>
-                  <span className="text-muted-foreground block truncate text-sm leading-snug">
-                    {available ? service.description : unavailableLabel}
-                  </span>
+            <ChoiceRow
+              key={service.id}
+              onClick={() => onSelect(service)}
+              selected={selected}
+              aria-label={describe(service, unavailableLabel)}
+              className={available ? undefined : "text-muted-foreground"}
+            >
+              {service.icon ? (
+                <ChoiceGlyph selected={selected}>{service.icon}</ChoiceGlyph>
+              ) : null}
+              <ChoiceCopy
+                title={service.title}
+                detail={available ? service.description : unavailableLabel}
+              />
+              {available && service.meta ? (
+                <span className="shrink-0 text-right">
+                  {service.meta.value ? (
+                    <span className="text-foreground block text-[17px] font-semibold tabular-nums">
+                      {service.meta.value}
+                    </span>
+                  ) : null}
+                  {service.meta.note ? (
+                    <span className="text-muted-foreground block text-xs tabular-nums">
+                      {service.meta.note}
+                    </span>
+                  ) : null}
                 </span>
-                {available && service.meta ? (
-                  <span className="shrink-0 text-right">
-                    {service.meta.value ? (
-                      <span className="text-foreground block text-[15px] font-medium tabular-nums">
-                        {service.meta.value}
-                      </span>
-                    ) : null}
-                    {service.meta.note ? (
-                      <span className="text-muted-foreground block text-xs tabular-nums">
-                        {service.meta.note}
-                      </span>
-                    ) : null}
-                  </span>
-                ) : null}
-              </button>
-            </li>
+              ) : null}
+            </ChoiceRow>
           );
         })}
-      </ul>
+      </ChoiceList>
     );
   }
 

@@ -42,11 +42,15 @@ export function LocationTrigger({
       className={cn(
         "bg-card border-border flex w-full items-center rounded-full border",
         "shadow-[0_4px_16px_rgba(26,24,20,0.12)]",
-        large ? "h-14 pl-5" : "h-12 pl-4",
+        large ? "h-14" : "h-12",
+        start ? (large ? "pl-1.5" : "pl-1") : large ? "pl-5" : "pl-4",
         end ? "pr-1.5" : large ? "pr-5" : "pr-4",
         className,
       )}
     >
+      {/* Custom start (Assist +) is a sibling so it can open a sheet without
+          also firing the search tap. The default search glyph stays inside. */}
+      {start}
       <button
         type="button"
         onClick={onPress}
@@ -57,7 +61,7 @@ export function LocationTrigger({
           "touch-manipulation",
         )}
       >
-        {start ?? (
+        {start ? null : (
           <Icon
             icon={Search01Icon}
             size={large ? 20 : 16}
