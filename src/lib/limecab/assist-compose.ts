@@ -229,7 +229,7 @@ export function composeAssistQuery(
     ? assistQueryFromPhoto(draft.photoClassification)
     : "";
   const body = typed.trim();
-  const hasPhoto = Boolean(draft.photoName || draft.photoUrl);
+  const hasPhoto = Boolean(draft.photoName) || Boolean(draft.photoUrl);
   let shop = "";
 
   if (classified) {

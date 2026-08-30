@@ -160,6 +160,6 @@ async function classifyWithGateway(
 }
 
 function stripFence(text: string): string {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text);
   return (fenced?.[1] ?? text).trim();
 }

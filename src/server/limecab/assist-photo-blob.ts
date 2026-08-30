@@ -32,9 +32,9 @@ export async function storeAssistPhotoBlob(input: {
 }
 
 function sanitizeFilename(name: string): string {
-  const base = name.trim().split(/[/\\]/).pop() || "photo.jpg";
+  const base = name.trim().split(/[/\\]/).pop() ?? "photo.jpg";
   const cleaned = base.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 80);
-  return cleaned || "photo.jpg";
+  return cleaned.length > 0 ? cleaned : "photo.jpg";
 }
 
 function randomId(): string {

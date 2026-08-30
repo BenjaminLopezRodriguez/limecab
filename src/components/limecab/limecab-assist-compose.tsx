@@ -119,7 +119,7 @@ export function AssistComposeSurface({
       });
       if (classification) {
         onQuerySeed?.(
-          result.preparedPrompt || assistQueryFromPhoto(classification),
+          result.preparedPrompt ?? assistQueryFromPhoto(classification),
         );
         close();
         return;
@@ -174,11 +174,9 @@ export function AssistComposeSurface({
             secondary={
               photoNote === "looking"
                 ? "Uploading and looking…"
-                : draft.photoClassification?.items[0]?.label
-                  ? draft.photoClassification.items[0].label
-                  : draft.photoName
-                    ? draft.photoName
-                    : "Reference for shop or help"
+                : (draft.photoClassification?.items[0]?.label ??
+                  draft.photoName ??
+                  "Reference for shop or help")
             }
             onClick={() => {
               if (photoNote === "looking") return;
@@ -391,7 +389,7 @@ export function AssistComposeChips({
     return null;
   }
   const photoLabel =
-    draft.photoClassification?.items[0]?.label?.trim() || "Photo";
+    draft.photoClassification?.items[0]?.label?.trim() ?? "Photo";
   return (
     <ul className="mt-2 flex flex-wrap gap-2 px-1" aria-label="Request extras">
       {draft.photoName ? (
