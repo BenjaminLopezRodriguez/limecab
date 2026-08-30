@@ -43,7 +43,11 @@ import { offerHeadsToward } from "@/lib/limecab/heading";
 import { rankOpenOffers } from "@/lib/limecab/pool-match";
 import { splitAddress } from "@/lib/service-app/services";
 import { civilDateInZone, mondayCivilDateInZone } from "@/lib/limecab/week";
-import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+import {
+  createTRPCRouter,
+  driverProcedure,
+  protectedProcedure,
+} from "@/server/api/trpc";
 import { drivers, trips } from "@/server/db/schema";
 import {
   canTransition,
@@ -502,7 +506,7 @@ export const driverRouter = createTRPCRouter({
    * "trends fill in as you complete trips" rather than drawing a flat week
    * and calling it data.
    */
-  trends: protectedProcedure
+  trends: driverProcedure
     .input(
       z
         .object({
@@ -512,10 +516,7 @@ export const driverRouter = createTRPCRouter({
         .nullish(),
     )
     .query(async ({ ctx, input }) => {
-      const driver = await ctx.db.query.drivers.findFirst({
-        where: eq(drivers.userId, ctx.session.user.id),
-      });
-      if (!driver) throw new TRPCError({ code: "NOT_FOUND" });
+      const { driver } = ctx;
 
       const rows = await ctx.db.query.trips.findMany({
         where: and(
@@ -730,11 +731,8 @@ export const driverRouter = createTRPCRouter({
       return driver;
     }),
 
-  earnings: protectedProcedure.query(async ({ ctx }) => {
-    const driver = await ctx.db.query.drivers.findFirst({
-      where: eq(drivers.userId, ctx.session.user.id),
-    });
-    if (!driver) throw new TRPCError({ code: "NOT_FOUND" });
+  earnings: driverProcedure.query(async ({ ctx }) => {
+      const { driver } = ctx;
     const completed = await completedForDriver(ctx.db, driver.id);
     const take = takeFromCompleted(completed);
     return {
@@ -743,11 +741,8 @@ export const driverRouter = createTRPCRouter({
     };
   }),
 
-  get: protectedProcedure.input(tripIdInput).query(async ({ ctx, input }) => {
-    const driver = await ctx.db.query.drivers.findFirst({
-      where: eq(drivers.userId, ctx.session.user.id),
-    });
-    if (!driver) throw new TRPCError({ code: "NOT_FOUND" });
+  get: driverProcedure.input(tripIdInput).query(async ({ ctx, input }) => {
+      const { driver } = ctx;
 
     const trip = await ctx.db.query.trips.findFirst({
       where: eq(trips.id, input.tripId),
@@ -766,13 +761,10 @@ export const driverRouter = createTRPCRouter({
     return redactTripPins(trip, isAssigned, RIDER_SAFETY.pickupPin);
   }),
 
-  accept: protectedProcedure
+  accept: driverProcedure
     .input(tripIdInput)
     .mutation(async ({ ctx, input }) => {
-      const driver = await ctx.db.query.drivers.findFirst({
-        where: eq(drivers.userId, ctx.session.user.id),
-      });
-      if (!driver) throw new TRPCError({ code: "NOT_FOUND" });
+      const { driver } = ctx;
       if (!driver.available) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
@@ -803,13 +795,10 @@ export const driverRouter = createTRPCRouter({
       return accepted;
     }),
 
-  advance: protectedProcedure
+  advance: driverProcedure
     .input(advanceInput)
     .mutation(async ({ ctx, input }) => {
-      const driver = await ctx.db.query.drivers.findFirst({
-        where: eq(drivers.userId, ctx.session.user.id),
-      });
-      if (!driver) throw new TRPCError({ code: "NOT_FOUND" });
+      const { driver } = ctx;
 
       // Scoped to the assigned driver in the query itself.
       const trip = await ctx.db.query.trips.findFirst({

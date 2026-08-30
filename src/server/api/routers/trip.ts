@@ -15,9 +15,13 @@ import { HELP_VISIT_MINUTES, isHelpProduct } from "@/lib/limecab/help";
 import { toDriverCell } from "@/lib/limecab/h3";
 import { shopListSchema } from "@/lib/limecab/shop-list";
 import { RIDE_PRODUCTS } from "@/lib/limecab/mock";
+import { tripIsSimulated } from "@/lib/limecab/simulate";
 import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
 import { trips, supportTickets } from "@/server/db/schema";
-import { maybeSimulateTrip } from "@/server/limecab/simulate-driver";
+import {
+  maybeSimulateTrip,
+  simulationEnabled,
+} from "@/server/limecab/simulate-driver";
 import {
   riderMay,
   TERMINAL_TRIP_STATUSES,
@@ -192,6 +196,12 @@ export const tripRouter = createTRPCRouter({
             ? JSON.stringify(input.courier.itemList)
             : null,
           requestIdempotencyKey: input.idempotencyKey,
+          // Decided here and nowhere else. Auto-advance can claim any unmatched
+          // row, so a trip born while it is running is demo money regardless of
+          // who ends up driving.
+          simulated: tripIsSimulated({
+            simulationEnabled: simulationEnabled(),
+          }),
         })
         .returning();
 

@@ -105,6 +105,10 @@ async function assignSimulatedDriver<T extends TripRow>(
     .set({
       driverId,
       status: "matched",
+      // Belt and braces. Creation already stamped this; setting it again means
+      // a row cannot come out of here looking payable even if the flag was
+      // added to the table after the trip was written.
+      simulated: true,
       updatedAt: new Date(),
     })
     .where(

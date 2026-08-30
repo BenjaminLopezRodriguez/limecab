@@ -8,11 +8,13 @@
  */
 
 import { initTRPC, TRPCError } from "@trpc/server";
+import { eq } from "drizzle-orm";
 import superjson from "superjson";
 import { ZodError } from "zod";
 
 import { auth } from "@/server/auth";
 import { db } from "@/server/db";
+import { drivers } from "@/server/db/schema";
 
 /**
  * 1. CONTEXT
@@ -131,3 +133,24 @@ export const protectedProcedure = t.procedure
       },
     });
   });
+
+/**
+ * Driver procedure
+ *
+ * Resolves the caller's driver row once and hands it to the procedure. Being a
+ * driver was previously re-derived by an identical `findFirst` copied into
+ * every driver endpoint; this is that lookup, in one place, so that "is this
+ * caller a driver" has a single answer and a single place to harden when
+ * payouts make the question worth money.
+ *
+ * NOT_FOUND, deliberately: `driver.me` and `driver.inbox` want a null driver so
+ * the UI can offer registration, so they keep the explicit lookup and stay on
+ * `protectedProcedure`. Everything that requires a driver uses this.
+ */
+export const driverProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  const driver = await ctx.db.query.drivers.findFirst({
+    where: eq(drivers.userId, ctx.session.user.id),
+  });
+  if (!driver) throw new TRPCError({ code: "NOT_FOUND" });
+  return next({ ctx: { driver } });
+});

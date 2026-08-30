@@ -40,6 +40,23 @@ export const env = createEnv({
     SPATIAL_API_KEY: z.string().optional(),
     /** Mint fake drivers and auto-advance trips. Defaults on outside production. */
     SIMULATE_DRIVERS: z.enum(["true", "false"]).optional(),
+    /**
+     * Payments rollout gates. All three default OFF and are read as
+     * `=== "true"`, so a missing, empty, or misspelled value is off — the
+     * failure mode of a typo should be "no money moves", never the reverse.
+     *
+     * Ratchet, in order: PAYMENTS_ENABLED creates payment objects in Stripe
+     * TEST mode. REAL_CHARGES_ENABLED permits live-mode keys and is blocked on
+     * the merchant-of-record and fund-holding questions. PROVIDER_PAYOUTS_ENABLED
+     * lets money reach a provider and is blocked on those plus provider
+     * classification. See docs/payments/ARCHITECTURE.md §3.
+     *
+     * Nothing reads these yet. They land now so that no later phase has to
+     * invent a gate while it is also writing the code the gate restrains.
+     */
+    PAYMENTS_ENABLED: z.enum(["true", "false"]).optional(),
+    REAL_CHARGES_ENABLED: z.enum(["true", "false"]).optional(),
+    PROVIDER_PAYOUTS_ENABLED: z.enum(["true", "false"]).optional(),
     NODE_ENV: z
       .enum(["development", "test", "production"])
       .default("development"),
@@ -77,6 +94,9 @@ export const env = createEnv({
     SPATIAL_API_KEY: process.env.SPATIAL_API_KEY,
     NEXT_PUBLIC_MAPBOX_TOKEN: process.env.NEXT_PUBLIC_MAPBOX_TOKEN,
     SIMULATE_DRIVERS: process.env.SIMULATE_DRIVERS,
+    PAYMENTS_ENABLED: process.env.PAYMENTS_ENABLED,
+    REAL_CHARGES_ENABLED: process.env.REAL_CHARGES_ENABLED,
+    PROVIDER_PAYOUTS_ENABLED: process.env.PROVIDER_PAYOUTS_ENABLED,
     NODE_ENV: process.env.NODE_ENV,
   },
   /**

@@ -1,4 +1,4 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import { index, pgTableCreator, primaryKey, unique } from "drizzle-orm/pg-core";
 
 import type { TripStatus } from "@/server/limecab/state";
@@ -198,6 +198,16 @@ export const trips = createTable(
 
     requestIdempotencyKey: d.varchar({ length: 255 }),
 
+    /**
+     * Play money. Decided once, at creation, from whether auto-advance was
+     * running — never re-derived from a driver id later, because a trip that
+     * was demo when it started is demo forever.
+     *
+     * Nothing financial may reference a row where this is true. It is the gate,
+     * and it is a column precisely so that renaming a driver id cannot move it.
+     */
+    simulated: d.boolean().default(false).notNull(),
+
     requestedAt: d
       .timestamp({ withTimezone: true })
       .$defaultFn(() => /* @__PURE__ */ new Date())
@@ -216,6 +226,8 @@ export const trips = createTable(
     index("limecab_trip_requested_at_idx").on(t.requestedAt),
     index("limecab_trip_pickup_h3_idx").on(t.pickupH3),
     unique("limecab_trip_request_idempotency_unique").on(t.requestIdempotencyKey),
+    // Partial: the interesting set is the small one, and money queries read it.
+    index("limecab_trip_simulated_idx").on(t.simulated).where(sql`${t.simulated}`),
   ],
 );
 

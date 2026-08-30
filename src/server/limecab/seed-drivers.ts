@@ -4,12 +4,13 @@
  * by a stable id derived from the pool entry.
  */
 import { DRIVER_POOL } from "@/lib/limecab/mock";
+import { SEED_DRIVER_PREFIX } from "@/lib/limecab/simulate";
 import { db } from "@/server/db";
 import { drivers, users } from "@/server/db/schema";
 
 async function main() {
   for (const d of DRIVER_POOL) {
-    const userId = `seed-driver-${d.id}`;
+    const userId = `${SEED_DRIVER_PREFIX}${d.id}`;
     await db
       .insert(users)
       .values({ id: userId, name: d.name, email: `${d.id}@drivers.limecab.test` })
@@ -18,7 +19,7 @@ async function main() {
     await db
       .insert(drivers)
       .values({
-        id: `seed-driver-${d.id}`,
+        id: `${SEED_DRIVER_PREFIX}${d.id}`,
         userId,
         name: d.name,
         ratingHundredths: Math.round(d.rating * 100),

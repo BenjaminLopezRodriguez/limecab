@@ -13,9 +13,40 @@ export const SIM_PHASE_MS = {
 } as const;
 
 export const SIM_DRIVER_PREFIX = "sim-driver-";
+/** `seed-drivers.ts` mints these so the driver app has an account to sign in as. */
+export const SEED_DRIVER_PREFIX = "seed-driver-";
 
+/**
+ * Auto-advance only ever drives its *own* drivers. A seeded driver is a person
+ * signing in and tapping buttons, so their trips must not move underneath them.
+ */
 export function isSimulatedDriverId(id: string | null | undefined): boolean {
   return Boolean(id?.startsWith(SIM_DRIVER_PREFIX));
+}
+
+/**
+ * The money question, which is a wider net than the dispatch question: seeded
+ * drivers are fake too, and a fare they "completed" is not a fare anyone owes.
+ * Anything financial asks this, never `isSimulatedDriverId`.
+ */
+export function isSyntheticDriverId(id: string | null | undefined): boolean {
+  return isSimulatedDriverId(id) || Boolean(id?.startsWith(SEED_DRIVER_PREFIX));
+}
+
+/**
+ * Whether a trip is play money, decided once at creation and never inferred
+ * again. Auto-advance running at all is enough to taint a trip: it can claim
+ * any unmatched row, so a trip born into a simulating environment can never be
+ * trusted as real, whoever ends up driving it.
+ *
+ * A string prefix decided this before, which meant a renamed id would have
+ * silently turned demo rides into payable ones.
+ */
+export function tripIsSimulated(input: {
+  simulationEnabled: boolean;
+  driverId?: string | null;
+}): boolean {
+  return input.simulationEnabled || isSyntheticDriverId(input.driverId);
 }
 
 type SimulatableStatus = keyof typeof SIM_PHASE_MS;
