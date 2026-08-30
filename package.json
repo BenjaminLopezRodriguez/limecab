@@ -19,7 +19,8 @@
     "start": "next start",
     "test": "node --experimental-strip-types --test src/**/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "db:seed": "esbuild src/server/limecab/seed-drivers.ts --bundle --platform=node --format=esm --packages=external --outfile=node_modules/.cache/limecab-seed.mjs && node --env-file=.env node_modules/.cache/limecab-seed.mjs"
+    "db:seed": "esbuild src/server/limecab/seed-drivers.ts --bundle --platform=node --format=esm --packages=external --outfile=node_modules/.cache/limecab-seed.mjs && node --env-file=.env node_modules/.cache/limecab-seed.mjs",
+    "db:seed:freight": "esbuild src/server/freight/seed.ts --bundle --platform=node --format=esm --packages=external --outfile=node_modules/.cache/limecab-seed-freight.mjs && node --env-file=.env node_modules/.cache/limecab-seed-freight.mjs"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.7.2",

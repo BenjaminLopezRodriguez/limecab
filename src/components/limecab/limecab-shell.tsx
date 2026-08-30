@@ -54,8 +54,10 @@ export function LimeCabShell({
     setInTask(next);
   }, []);
 
-  // The driver app is its own product with its own chrome.
+  // Driver, Freight, and Partner are their own products with their own chrome.
   if (pathname.startsWith("/driver")) return <>{children}</>;
+  if (pathname.startsWith("/freight")) return <>{children}</>;
+  if (pathname.startsWith("/partner")) return <>{children}</>;
 
   if (pathname.startsWith("/signin")) {
     return (

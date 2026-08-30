@@ -1,6 +1,7 @@
 import {
   Calendar03Icon,
   Car01Icon,
+  DeliveryTruck01Icon,
   Home01Icon,
   Package01Icon,
   ShoppingBasket01Icon,
@@ -21,6 +22,7 @@ const ICONS: Record<string, IconSvgElement> = {
   shop: ShoppingBasket01Icon,
   help: Home01Icon,
   assist: SparklesIcon,
+  freight: DeliveryTruck01Icon,
 };
 
 export default function ServicesPage() {
@@ -54,7 +56,14 @@ export default function ServicesPage() {
       <p className="text-muted-foreground mt-5 text-sm leading-relaxed">
         Rides, Courier, Reserve, Shop, Help, and Assist are live. Assist is
         the launcher — say what you want, and LimeCab stages the ride, shop,
-        send, or help quote. You always confirm before anything is requested.
+        send, or help quote. You always confirm before anything is requested.{" "}
+        <Link
+          href="/partner"
+          className="text-foreground font-medium underline-offset-2 hover:underline"
+        >
+          Partner with Lime
+        </Link>{" "}
+        for fleets, freight, and merchants.
       </p>
     </TabPage>
   );
@@ -117,7 +126,9 @@ function Tile({
             ? "/?service=help"
             : service.id === "assist"
               ? "/?service=assist"
-              : "/";
+              : service.id === "freight"
+                ? "/freight"
+                : "/";
 
   return (
     <Link

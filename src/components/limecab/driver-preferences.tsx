@@ -214,11 +214,28 @@ function DriverPreferencesBody({
           note={prefs.helpJobs ? undefined : "Enable Help first"}
           onToggle={toggleCare}
         />
+        {/* TODO: wire freight.driverCurrent into /driver inbox when
+            freightCarrierMembers (or invite accept) unlocks freightJobs. */}
+        <ServiceCard
+          label="Freight"
+          icon={DeliveryTruck01Icon}
+          selected={false}
+          locked
+          note="Join a fleet to unlock"
+          onToggle={() => undefined}
+        />
       </div>
       <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
         Help is a scheduled visit to someone’s home — light household tasks,
         not a ride. Care is companionship and daily living, and has its own
-        rules. Courier covers Shop jobs too.
+        rules. Courier covers Shop jobs too.{" "}
+        <a
+          href="/partner/fleets/join"
+          className="text-foreground font-medium underline-offset-2 hover:underline"
+        >
+          Join a fleet
+        </a>{" "}
+        to qualify for freight loads in this same Drive app.
       </p>
 
       <HelpExplainSurface

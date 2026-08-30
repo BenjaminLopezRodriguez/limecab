@@ -85,6 +85,20 @@
       "when": 1788092435151,
       "tag": "0011_slimy_jack_power",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788106248289,
+      "tag": "0012_clean_terror",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788106583084,
+      "tag": "0013_freight_settlements",
+      "breakpoints": true
     }
   ]
 }

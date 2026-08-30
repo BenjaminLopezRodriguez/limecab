@@ -1,4 +1,5 @@
 import { driverRouter } from "@/server/api/routers/driver";
+import { freightRouter } from "@/server/api/routers/freight";
 import { loginRouter } from "@/server/api/routers/login";
 import { placesRouter } from "@/server/api/routers/places";
 import { postRouter } from "@/server/api/routers/post";
@@ -15,6 +16,7 @@ import { createCallerFactory, createTRPCRouter } from "@/server/api/trpc";
 export const appRouter = createTRPCRouter({
   post: postRouter,
   driver: driverRouter,
+  freight: freightRouter,
   login: loginRouter,
   places: placesRouter,
   rider: riderRouter,

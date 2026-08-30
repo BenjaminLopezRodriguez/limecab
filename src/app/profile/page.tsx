@@ -85,6 +85,14 @@ export default async function ProfilePage() {
         />
       </ProfileSection>
 
+      <ProfileSection title="Partners">
+        <ProfileLinkRow
+          href="/partner"
+          label="Partner with Lime"
+          value="Fleets, freight, merchants"
+        />
+      </ProfileSection>
+
       <ProfileSection>
         <ProfileLinkRow href="/profile/help" label="Help" />
       </ProfileSection>

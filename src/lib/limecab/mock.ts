@@ -231,6 +231,12 @@ export const LIMECAB_SERVICES = [
     description: "Say what you need",
     status: "available" as const,
   },
+  {
+    id: "freight",
+    title: "Freight",
+    description: "Move a full truckload",
+    status: "available" as const,
+  },
 ];
 
 /** Static LA fixtures the geocoder, voice parser, and Travel Mode share. */
