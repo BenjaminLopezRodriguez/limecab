@@ -141,6 +141,9 @@ function serviceHref(id: string) {
   if (id === "shop") return "/?service=shop";
   if (id === "help") return "/?service=help";
   if (id === "assist") return "/?service=assist";
+  if (id === "freight") return "/freight";
+  if (id === "spaces") return "/?service=spaces";
+  if (id === "station") return "/?service=station";
   return "/";
 }
 
@@ -170,7 +173,9 @@ function ServiceRibbon() {
           current === "reserve" ||
           current === "shop" ||
           current === "help" ||
-          current === "assist"
+          current === "assist" ||
+          current === "spaces" ||
+          current === "station"
         ? current
         : "ride";
 
