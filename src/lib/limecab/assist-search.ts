@@ -3,7 +3,6 @@ import {
   type AssistPlan,
   type AssistResponse,
 } from "@/lib/limecab/assist";
-import { CURRENT_LOCATION } from "@/lib/limecab/mock";
 import type { ShopItem } from "@/lib/limecab/shop-list";
 import type {
   GeocodeAdapter,
@@ -61,16 +60,24 @@ export function createAssistSearchAdapter({
       plans.clear();
       const point = origin();
       const photo = photoContext?.() ?? {};
+      const bodyPayload: Record<string, unknown> = {
+        query,
+        ...photo,
+      };
+      if (
+        typeof point.latitude === "number" &&
+        Number.isFinite(point.latitude) &&
+        typeof point.longitude === "number" &&
+        Number.isFinite(point.longitude)
+      ) {
+        bodyPayload.lat = point.latitude;
+        bodyPayload.lng = point.longitude;
+      }
       const res = await fetch("/api/assist", {
         method: "POST",
         signal,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query,
-          lat: point.latitude ?? CURRENT_LOCATION.latitude,
-          lng: point.longitude ?? CURRENT_LOCATION.longitude,
-          ...photo,
-        }),
+        body: JSON.stringify(bodyPayload),
       });
       if (signal?.aborted) return [];
       if (!res.ok) {

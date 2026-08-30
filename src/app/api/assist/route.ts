@@ -40,9 +40,13 @@ export async function POST(request: Request) {
   }
 
   const latitude =
-    typeof body.lat === "number" && Number.isFinite(body.lat) ? body.lat : 34.0505;
+    typeof body.lat === "number" && Number.isFinite(body.lat)
+      ? body.lat
+      : undefined;
   const longitude =
-    typeof body.lng === "number" && Number.isFinite(body.lng) ? body.lng : -118.2551;
+    typeof body.lng === "number" && Number.isFinite(body.lng)
+      ? body.lng
+      : undefined;
 
   const result = await planAssist({
     query,

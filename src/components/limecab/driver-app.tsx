@@ -93,7 +93,6 @@ import {
 } from "@/lib/limecab/driver-state";
 import { ridePinBlocksStart } from "@/lib/limecab/pickup-pin";
 import { cellCenter, cellPolygon, toDriverCell } from "@/lib/limecab/h3";
-import { CURRENT_LOCATION } from "@/lib/limecab/mock";
 import {
   createPlacesAdapter,
   fetchNearbyRestStops,
@@ -145,9 +144,10 @@ const mapAdapter = env.NEXT_PUBLIC_MAPBOX_TOKEN
   ? createMapboxAdapter(env.NEXT_PUBLIC_MAPBOX_TOKEN)
   : undefined;
 
+/** Camera only until geolocation answers — never a submitted address. */
 const FALLBACK_POINT: MapPoint = {
-  latitude: CURRENT_LOCATION.latitude!,
-  longitude: CURRENT_LOCATION.longitude!,
+  latitude: 34.05,
+  longitude: -118.25,
 };
 
 /** How often a driver on duty reports where they are. Matches the resting inbox. */

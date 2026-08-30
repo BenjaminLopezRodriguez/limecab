@@ -56,12 +56,14 @@ export function dedupePlaceCandidates(
 export function rankPlaceCandidates(
   candidates: readonly PlaceCandidate[],
   intent: PlaceIntent,
-  origin: { latitude: number; longitude: number },
+  origin: { latitude: number; longitude: number } | null,
   landmarks: readonly PlaceCandidate[] = [],
 ): RankedPlace[] {
   const unique = dedupePlaceCandidates(candidates);
   const scored = unique.map((candidate) => {
-    const meters = metersBetween(origin, candidate);
+    const meters = origin
+      ? metersBetween(origin, candidate)
+      : Number.POSITIVE_INFINITY;
     return {
       ...candidate,
       meters,
@@ -83,7 +85,7 @@ export function rankPlaceCandidates(
         : scored;
 
   pool.sort((a, b) => {
-    if (intent.closest && Math.abs(a.meters - b.meters) > 40) {
+    if (origin && intent.closest && Math.abs(a.meters - b.meters) > 40) {
       return a.meters - b.meters;
     }
     return b.score - a.score || a.meters - b.meters;

@@ -43,8 +43,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Mapbox is not configured" }, { status: 503 });
   }
 
-  const proximityLat = Number.isFinite(latitude) ? latitude : 34.0505;
-  const proximityLng = Number.isFinite(longitude) ? longitude : -118.2551;
+  const proximityLat = Number.isFinite(latitude) ? latitude : undefined;
+  const proximityLng = Number.isFinite(longitude) ? longitude : undefined;
 
   const suggestions = await searchNaturalPlaces({
     query,

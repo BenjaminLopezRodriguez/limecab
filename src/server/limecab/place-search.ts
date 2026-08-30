@@ -44,11 +44,17 @@ Expand shorthand (711→7-Eleven, mcdonalds→McDonald's). street is a road cons
  */
 export async function searchNaturalPlaces(input: {
   query: string;
-  latitude: number;
-  longitude: number;
+  latitude?: number;
+  longitude?: number;
   request: Request;
 }): Promise<LocationSuggestion[]> {
-  const origin = { latitude: input.latitude, longitude: input.longitude };
+  const origin =
+    typeof input.latitude === "number" &&
+    Number.isFinite(input.latitude) &&
+    typeof input.longitude === "number" &&
+    Number.isFinite(input.longitude)
+      ? { latitude: input.latitude, longitude: input.longitude }
+      : null;
   const heuristic = parsePlaceIntent(input.query);
   const intent = await resolveIntent(input.query, heuristic);
   const vendorQuery = vendorQueryFor(intent, input.query);
@@ -79,20 +85,20 @@ export async function searchNaturalPlaces(input: {
     lookupVendors({
       ...vendorInput,
       query: vendorQuery,
-      preferDistance: intent.closest || intent.nearby,
+      preferDistance: Boolean(origin && (intent.closest || intent.nearby)),
     }),
     landmarkQuery
       ? lookupVendors({
           ...vendorInput,
           query: landmarkQuery,
-          preferDistance: true,
+          preferDistance: Boolean(origin),
         })
       : Promise.resolve([] as PlaceCandidate[]),
     landmarkQuery && intent.poi
       ? lookupVendors({
           ...vendorInput,
           query: `${intent.poi} near ${landmarkQuery}`,
-          preferDistance: true,
+          preferDistance: Boolean(origin),
         })
       : Promise.resolve([] as PlaceCandidate[]),
   ]);
@@ -180,7 +186,7 @@ async function parseWithDeepSeek(
 
 async function lookupVendors(input: {
   query: string;
-  origin: { latitude: number; longitude: number };
+  origin: { latitude: number; longitude: number } | null;
   request: Request;
   token: string | undefined;
   googleKey: string | undefined;
@@ -211,7 +217,7 @@ async function lookupVendors(input: {
 
 async function mapboxGeocode(
   query: string,
-  origin: { latitude: number; longitude: number },
+  origin: { latitude: number; longitude: number } | null,
   token: string,
   request: Request,
 ): Promise<PlaceCandidate[]> {
@@ -222,7 +228,12 @@ async function mapboxGeocode(
   endpoint.searchParams.set("autocomplete", "true");
   endpoint.searchParams.set("limit", "6");
   endpoint.searchParams.set("types", "address,poi,place,locality,neighborhood");
-  endpoint.searchParams.set("proximity", `${origin.longitude},${origin.latitude}`);
+  if (origin) {
+    endpoint.searchParams.set(
+      "proximity",
+      `${origin.longitude},${origin.latitude}`,
+    );
+  }
   endpoint.searchParams.set("country", "US");
 
   const res = await vendorFetch(endpoint, request);
@@ -247,7 +258,7 @@ async function mapboxGeocode(
 
 async function mapboxSearchBox(
   query: string,
-  origin: { latitude: number; longitude: number },
+  origin: { latitude: number; longitude: number } | null,
   token: string,
   request: Request,
 ): Promise<PlaceCandidate[]> {
@@ -256,7 +267,12 @@ async function mapboxSearchBox(
   endpoint.searchParams.set("q", query.slice(0, 256));
   endpoint.searchParams.set("language", "en");
   endpoint.searchParams.set("limit", "8");
-  endpoint.searchParams.set("proximity", `${origin.longitude},${origin.latitude}`);
+  if (origin) {
+    endpoint.searchParams.set(
+      "proximity",
+      `${origin.longitude},${origin.latitude}`,
+    );
+  }
   endpoint.searchParams.set("country", "US");
 
   const res = await vendorFetch(endpoint, request);
@@ -289,7 +305,7 @@ async function mapboxSearchBox(
 
 async function googleTextSearch(
   query: string,
-  origin: { latitude: number; longitude: number },
+  origin: { latitude: number; longitude: number } | null,
   key: string,
   preferDistance: boolean,
 ): Promise<PlaceCandidate[]> {
@@ -309,16 +325,20 @@ async function googleTextSearch(
         languageCode: "en",
         regionCode: "US",
         pageSize: 8,
-        rankPreference: preferDistance ? "DISTANCE" : "RELEVANCE",
-        locationBias: {
-          circle: {
-            center: {
-              latitude: origin.latitude,
-              longitude: origin.longitude,
-            },
-            radius: BIAS_M,
-          },
-        },
+        rankPreference: preferDistance && origin ? "DISTANCE" : "RELEVANCE",
+        ...(origin
+          ? {
+              locationBias: {
+                circle: {
+                  center: {
+                    latitude: origin.latitude,
+                    longitude: origin.longitude,
+                  },
+                  radius: BIAS_M,
+                },
+              },
+            }
+          : {}),
       }),
     });
     if (!res.ok) {

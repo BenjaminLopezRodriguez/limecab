@@ -103,8 +103,15 @@ export function LocationSearch({
 
   const listId = React.useId();
   const customListRef = React.useRef<CustomList | null>(null);
-  const [text, setText] = React.useState(value);
-  const [lastValue, setLastValue] = React.useState(value);
+  /**
+   * Controlled when the parent mirrors keystrokes via `onTextChange` (Assist).
+   * Ride/delivery only pass the *committed* address as `value` and remount on
+   * field switch (`key={route.active}`) — treating that as controlled wipes
+   * every character against the still-empty committed prop.
+   */
+  const controlled = onTextChange != null;
+  const [draft, setDraft] = React.useState(value);
+  const text = controlled ? value : draft;
   const [suggestions, setSuggestions] = React.useState<LocationSuggestion[]>(
     [],
   );
@@ -112,18 +119,12 @@ export function LocationSearch({
   const [open, setOpen] = React.useState(false);
   const [active, setActive] = React.useState(-1);
 
-  // Adopt an externally-changed `value` without an effect. When the parent
-  // echoes our own onTextChange, `value === text` — only bump lastValue so we
-  // do not collapse the open suggestion / @-mention list. An external seed
-  // (Assist inserting `@`) opens the results slot so the picker can appear.
-  if (value !== lastValue) {
-    setLastValue(value);
-    if (value !== text) {
-      setText(value);
-      setSuggestions([]);
-      setOpen(true);
-    }
-  }
+  // Assist seeds (@ insert, photo query) write `value` without a keystroke —
+  // open the list so suggest / mention picker can run.
+  React.useEffect(() => {
+    if (!controlled) return;
+    if (value.trim()) setOpen(true);
+  }, [controlled, value]);
 
   const query = open ? text.trim() : "";
   const lookup = normalizeQuery ? normalizeQuery(query) : query;
@@ -163,9 +164,8 @@ export function LocationSearch({
   };
 
   const choose = async (suggestion: LocationSuggestion) => {
-    setText(suggestion.address);
-    setLastValue(suggestion.address);
-    onTextChange?.(suggestion.address);
+    if (controlled) onTextChange(suggestion.address);
+    else setDraft(suggestion.address);
     setOpen(false);
     setSuggestions([]);
     try {
@@ -249,11 +249,10 @@ export function LocationSearch({
             value={text}
             onChange={(event) => {
               const next = event.target.value;
-              setText(next);
-              setLastValue(next);
+              if (controlled) onTextChange(next);
+              else setDraft(next);
               setOpen(true);
               setActive(-1);
-              onTextChange?.(next);
             }}
             onFocus={() => setOpen(true)}
             onBlur={() => {

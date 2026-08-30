@@ -27,7 +27,7 @@ import {
   type RideProduct,
 } from "@/lib/limecab/domain";
 
-/** Rider's device fix. Pickup starts here but is not pinned to it. */
+/** Fixture coords for tests / static reverse only — never a rider default. */
 export const CURRENT_LOCATION: Pickup = {
   address: "S Grand Ave & W 5th St, Los Angeles",
   latitude: 34.0505,
@@ -465,7 +465,6 @@ export const geocodeAdapter: GeocodeAdapter = {
       longitude,
     };
     const candidates: Location[] = [
-      CURRENT_LOCATION,
       ...FALLBACK_ADDRESSES.map((entry) => ({
         address: entry.address,
         latitude: entry.latitude,

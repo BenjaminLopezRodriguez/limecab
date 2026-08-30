@@ -206,8 +206,8 @@ type ToolCall = {
 
 type ToolContext = {
   query: string;
-  latitude: number;
-  longitude: number;
+  latitude?: number;
+  longitude?: number;
   request: Request;
 };
 
@@ -220,8 +220,8 @@ type ToolContext = {
  */
 export async function planAssist(input: {
   query: string;
-  latitude: number;
-  longitude: number;
+  latitude?: number;
+  longitude?: number;
   request: Request;
   items?: ShopItem[];
   storeHints?: string[];
@@ -234,7 +234,11 @@ export async function planAssist(input: {
     storeHints: input.storeHints,
     category: input.category,
     hasPhoto: input.hasPhoto,
-    origin: { latitude: input.latitude, longitude: input.longitude },
+    origin:
+      typeof input.latitude === "number" &&
+      typeof input.longitude === "number"
+        ? { latitude: input.latitude, longitude: input.longitude }
+        : undefined,
   };
   const fallback = applyAssistPhotoContext(
     query,
@@ -283,8 +287,8 @@ async function enrichHeuristic(
   fallback: AssistResponse,
   input: {
     query: string;
-    latitude: number;
-    longitude: number;
+    latitude?: number;
+    longitude?: number;
     request: Request;
     items?: ShopItem[];
     storeHints?: string[];
@@ -609,18 +613,23 @@ function findStores(query: string, ctx: ToolContext): AssistPlace[] {
   if (named) return [named];
   const hardware = /\b(home depot|lowe'?s|hardware)\b/i.test(query);
   const pool = hardware ? HARDWARE_PLACES : SHOP_PLACES;
-  const nearby = nearbyRestStops(
-    { address: "", latitude: ctx.latitude, longitude: ctx.longitude },
-    pool,
-    { limit: 5, maxMiles: 40 },
-  );
-  if (nearby.length > 0) {
-    return nearby.map((stop) => ({
-      address: stop.address,
-      latitude: stop.latitude,
-      longitude: stop.longitude,
-      label: stop.shortName,
-    }));
+  if (
+    typeof ctx.latitude === "number" &&
+    typeof ctx.longitude === "number"
+  ) {
+    const nearby = nearbyRestStops(
+      { address: "", latitude: ctx.latitude, longitude: ctx.longitude },
+      pool,
+      { limit: 5, maxMiles: 40 },
+    );
+    if (nearby.length > 0) {
+      return nearby.map((stop) => ({
+        address: stop.address,
+        latitude: stop.latitude,
+        longitude: stop.longitude,
+        label: stop.shortName,
+      }));
+    }
   }
   const fallback = hardware ? hardwareStore() : nearestShop();
   return fallback ? [fallback] : [];

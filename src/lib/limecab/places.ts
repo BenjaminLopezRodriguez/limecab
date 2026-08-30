@@ -4,7 +4,6 @@ import {
   type GeocodeAdapter,
 } from "@/lib/service-app/geocode-adapter";
 import {
-  CURRENT_LOCATION,
   HARDWARE_PLACES,
   REST_STOPS,
   SHOP_PLACES,
@@ -20,22 +19,21 @@ import type { Location } from "@/lib/service-app/services";
 
 /**
  * Where to bias address search. The rider's pickup or device fix when there is
- * one; downtown LA as the last-ditch default, because a geocoder with no
- * proximity at all ranks a Springfield in every state above the one next door.
+ * one — never a hardcoded downtown. Untouched until `setSearchProximity` runs.
  *
  * Module-scoped because the adapter is a singleton and the bias is not a
  * question any scene asks — it is ambient, and prop-drilling it through the
  * ride flow would put a geocoder detail in five component signatures.
  */
-let proximity = {
-  latitude: CURRENT_LOCATION.latitude!,
-  longitude: CURRENT_LOCATION.longitude!,
-};
+let proximity: { latitude: number; longitude: number } | null = null;
 
 export function setSearchProximity(
   point: { latitude?: number; longitude?: number } | null,
 ) {
-  if (point?.latitude === undefined || point.longitude === undefined) return;
+  if (point?.latitude === undefined || point.longitude === undefined) {
+    proximity = null;
+    return;
+  }
   proximity = { latitude: point.latitude, longitude: point.longitude };
 }
 
@@ -54,8 +52,12 @@ export function createPlacesAdapter(): GeocodeAdapter {
   return {
     async suggest(query, signal) {
       try {
+        const bias =
+          proximity != null
+            ? `&lat=${proximity.latitude}&lng=${proximity.longitude}`
+            : "";
         const res = await fetch(
-          `/api/map/places?q=${encodeURIComponent(query)}&lat=${proximity.latitude}&lng=${proximity.longitude}`,
+          `/api/map/places?q=${encodeURIComponent(query)}${bias}`,
           { signal },
         );
         if (res.ok) {
