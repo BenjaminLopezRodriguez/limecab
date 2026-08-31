@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import {
   CreditCardIcon,
+  Location01Icon,
+  Message01Icon,
   Share05Icon,
+  StarIcon,
   Tick02Icon,
 } from "@hugeicons/core-free-icons";
 
@@ -15,6 +18,11 @@ import {
   ChoiceRow,
 } from "@/components/service-app/choice-list";
 import { ConfirmActionSurface } from "@/components/service-app/confirm-action-surface";
+import {
+  RideDetailDivider,
+  RideDetailPill,
+  RideDetailRow,
+} from "@/components/service-app/ride-detail-rows";
 import { PrimaryAction } from "@/components/service-app/task-scene";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
@@ -28,6 +36,7 @@ import {
 } from "@/lib/limecab/domain";
 import { AVAILABLE_PROMO, PAYMENT_METHODS } from "@/lib/limecab/mock";
 import { FOR_THE_WAY_ITEMS } from "@/lib/limecab/for-the-way";
+import { shareTripDetails } from "@/lib/limecab/share-trip";
 import { formatMoney } from "@/lib/service-app/services";
 
 /**
@@ -38,6 +47,7 @@ import { formatMoney } from "@/lib/service-app/services";
 export type DetailKind =
   | "fare"
   | "trip"
+  | "driver"
   | "receipt"
   | "payment"
   | "promo"
@@ -48,7 +58,8 @@ export type DetailKind =
 
 const DETAIL_TITLE: Record<DetailKind, string> = {
   fare: "Fare details",
-  trip: "Trip details",
+  trip: "Ride details",
+  driver: "Driver details",
   receipt: "Receipt",
   payment: "Payment method",
   promo: "Promo code",
@@ -116,6 +127,7 @@ export function LimeCabDetailSurface({
   canAddStop,
   onShareTrip,
   shareLabel = "Share trip",
+  onEditDestination,
   onOpen,
   onCancel,
   cancelLabel = "Cancel ride",
@@ -142,6 +154,7 @@ export function LimeCabDetailSurface({
   canAddStop?: boolean;
   onShareTrip?: () => void;
   shareLabel?: string;
+  onEditDestination?: () => void;
   onOpen?: (kind: DetailKind) => void;
   onCancel?: () => void;
   cancelLabel?: string;
@@ -166,27 +179,47 @@ export function LimeCabDetailSurface({
       ) : null}
 
       {detail === "trip" && trip ? (
-        <DetailLines
-          lines={[
-            { label: "Ride", value: product?.name ?? "Lime" },
-            { label: "Driver", value: trip.driver.name },
-            { label: "Vehicle", value: vehicleLabel(trip.driver.vehicle) },
-            { label: "Pickup", value: pickupLine },
-            { label: "Meet at", value: pickup.meetingPoint ?? pickupLine },
-            ...(stopLines ?? []).map((stop, index) => ({
-              label: `Stop ${index + 1}`,
-              value: stop,
-            })),
-            { label: "Destination", value: destinationLine },
-            { label: "Distance", value: `${trip.distanceMiles} mi` },
-            { label: "Trip time", value: `~${trip.tripMinutes} min` },
-            { label: "Payment", value: payment.detail },
-            {
-              label: "Estimated total",
-              value: formatMoney(trip.fare.totalCents - discountCents),
-              strong: true,
-            },
-          ]}
+        <RideDetailsPanel
+          destinationLine={destinationLine}
+          arrivalLabel={
+            trip.tripMinutes ? `About ${trip.tripMinutes} min remaining` : undefined
+          }
+          fare={formatMoney(trip.fare.totalCents - discountCents)}
+          payment={payment}
+          onEditDestination={onEditDestination}
+          onAddStop={
+            onAddStop && canAddStop !== false
+              ? () => {
+                  onClose();
+                  onAddStop();
+                }
+              : undefined
+          }
+          onSwitchPayment={onOpen ? () => onOpen("payment") : undefined}
+          onShare={
+            onShareTrip ??
+            (() => {
+              shareTripDetails(trip, destinationLine);
+            })
+          }
+          onCancel={
+            onCancel
+              ? () => {
+                  onClose();
+                  onCancel();
+                }
+              : undefined
+          }
+          cancelLabel={cancelLabel}
+        />
+      ) : null}
+
+      {detail === "driver" && trip ? (
+        <DriverDetailsPanel
+          trip={trip}
+          tipCents={tipCents}
+          onTip={onTip}
+          onMessage={onOpen ? () => onOpen("contact") : undefined}
         />
       ) : null}
 
@@ -303,6 +336,144 @@ export function LimeCabDetailSurface({
         Close
       </Button>
     </AdaptiveSurface.Interrupt>
+  );
+}
+
+function RideDetailsPanel({
+  destinationLine,
+  arrivalLabel,
+  fare,
+  payment,
+  onEditDestination,
+  onAddStop,
+  onSwitchPayment,
+  onShare,
+  onCancel,
+  cancelLabel = "Cancel ride",
+}: {
+  destinationLine: string;
+  arrivalLabel?: string;
+  fare: string;
+  payment: PaymentMethod;
+  onEditDestination?: () => void;
+  onAddStop?: () => void;
+  onSwitchPayment?: () => void;
+  onShare?: () => void;
+  onCancel?: () => void;
+  cancelLabel?: string;
+}) {
+  return (
+    <div className="flex flex-col">
+      <RideDetailRow
+        icon={<Icon icon={Location01Icon} size={18} />}
+        title={destinationLine || "Destination"}
+        subtitle={arrivalLabel}
+        trailing={
+          <span className="flex shrink-0 gap-2">
+            {onEditDestination ? (
+              <RideDetailPill label="Edit" onPress={onEditDestination} />
+            ) : null}
+            {onAddStop ? (
+              <RideDetailPill label="Add stop" onPress={onAddStop} />
+            ) : null}
+          </span>
+        }
+      />
+      <RideDetailDivider />
+      <RideDetailRow
+        icon={<Icon icon={CreditCardIcon} size={18} />}
+        title={fare}
+        subtitle={payment.detail}
+        trailing={
+          onSwitchPayment ? (
+            <RideDetailPill label="Switch" onPress={onSwitchPayment} />
+          ) : null
+        }
+      />
+      <RideDetailDivider />
+      <RideDetailRow
+        icon={<Icon icon={Share05Icon} size={18} />}
+        title="Share trip status"
+        trailing={
+          onShare ? <RideDetailPill label="Share" onPress={onShare} /> : null
+        }
+      />
+      {onCancel ? (
+        <Button
+          variant="ghost"
+          className="text-destructive mt-4 h-12 w-full rounded-xl"
+          onClick={onCancel}
+        >
+          {cancelLabel}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+function DriverDetailsPanel({
+  trip,
+  tipCents,
+  onTip,
+  onMessage,
+}: {
+  trip: Trip;
+  tipCents: number | null;
+  onTip?: (next: number | null) => void;
+  onMessage?: () => void;
+}) {
+  const initial = trip.driver.name.trim().charAt(0).toUpperCase();
+  const vehicleLine = vehicleLabel(trip.driver.vehicle);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-start gap-4">
+        <div className="shrink-0 text-center">
+          <span
+            aria-hidden="true"
+            className="bg-accent text-accent-foreground flex size-[72px] items-center justify-center rounded-full text-[28px] font-semibold"
+          >
+            {initial}
+          </span>
+          <p className="text-muted-foreground mt-1 flex items-center justify-center gap-0.5 text-xs">
+            <Icon icon={StarIcon} size={10} className="text-lime" />
+            {trip.driver.rating.toFixed(2)}
+          </p>
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[32px] leading-none font-semibold tracking-[0.06em] tabular-nums">
+            {trip.driver.vehicle.plate}
+          </p>
+          <p className="text-muted-foreground mt-2 text-sm">
+            {trip.driver.name} · {vehicleLine}
+          </p>
+        </div>
+      </div>
+
+      {onMessage ? (
+        <Button
+          type="button"
+          variant="secondary"
+          className="h-12 w-full rounded-full"
+          onClick={onMessage}
+        >
+          <Icon icon={Message01Icon} size={18} aria-hidden="true" />
+          Message {trip.driver.name.split(" ")[0]}
+        </Button>
+      ) : null}
+
+      {onTip ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-[15px] font-semibold tracking-tight">
+            Tip {trip.driver.name.split(" ")[0]}?
+          </p>
+          <TipPanel value={tipCents} onTip={onTip} />
+          <p className="text-muted-foreground text-xs leading-relaxed">
+            We&apos;ll deliver your tip after the ride.
+          </p>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -458,25 +629,12 @@ function ShareTripButton({
   trip: Trip | null;
   destinationLine: string;
 }) {
-  const [supported, setSupported] = useState(false);
   const [attempted, setAttempted] = useState(false);
-  useEffect(() => {
-    setSupported(typeof navigator !== "undefined" && "share" in navigator);
-  }, []);
 
   const share = () => {
-    if (!supported || !trip) {
+    if (!trip || !shareTripDetails(trip, destinationLine)) {
       setAttempted(true);
-      return;
     }
-    void navigator
-      .share({
-        title: "My LimeCab ride",
-        text: `I'm riding with ${trip.driver.name} in a ${vehicleLabel(
-          trip.driver.vehicle,
-        )}${destinationLine ? `, heading to ${destinationLine}` : ""}.`,
-      })
-      .catch(() => undefined);
   };
 
   return (
@@ -489,7 +647,7 @@ function ShareTripButton({
         <Icon icon={Share05Icon} size={16} aria-hidden="true" />
         Share trip details
       </Button>
-      {attempted && (!supported || !trip) ? (
+      {attempted ? (
         <p className="text-muted-foreground text-sm leading-relaxed">
           Sharing uses your phone’s share sheet. This browser doesn’t have one,
           and nothing was sent from here.

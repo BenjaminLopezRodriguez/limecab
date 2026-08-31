@@ -126,6 +126,7 @@ import {
   RIDE_PRODUCTS,
   quoteFor,
 } from "@/lib/limecab/mock";
+import { shareTripDetails } from "@/lib/limecab/share-trip";
 import {
   FOR_THE_WAY_CAFE,
   forTheWayEligible,
@@ -3503,10 +3504,10 @@ function LimeCabSurfaces({
                 }
                 onOpenDetail={openDetail}
                 onShareTrip={
-                  showDriver
+                  showDriver && trip
                     ? () => {
                         surfaces.perform("openTravelShare");
-                        setDetail("safety");
+                        shareTripDetails(trip, destinationLine);
                       }
                     : undefined
                 }
@@ -3529,13 +3530,13 @@ function LimeCabSurfaces({
                     : undefined
                 }
                 canAddStop={stops.length < MAX_INTERMEDIATE_STOPS}
-                onTip={
+                onTipChange={
                   status.state === "active" &&
                   showDriver &&
                   !courier &&
                   !help &&
                   !shop
-                    ? () => openDetail("tip")
+                    ? setTipCents
                     : undefined
                 }
                 tipCents={tipCents}
@@ -3900,14 +3901,27 @@ function LimeCabSurfaces({
         }
         canAddStop={stops.length < MAX_INTERMEDIATE_STOPS}
         onShareTrip={
-          showDriver
+          showDriver && trip
             ? () => {
                 surfaces.perform("openTravelShare");
-                setDetail("safety");
+                shareTripDetails(trip, destinationLine);
               }
             : undefined
         }
         shareLabel={traveling ? "Share with someone at home" : "Share trip"}
+        onEditDestination={
+          showDriver &&
+          trip &&
+          status.state === "active" &&
+          !courier &&
+          !help &&
+          !shop
+            ? () => {
+                closeInterrupt(() => setDetail(null));
+                openSearch("destination");
+              }
+            : undefined
+        }
         onOpen={(kind) => setDetail(kind)}
         onCancel={
           cancellable
