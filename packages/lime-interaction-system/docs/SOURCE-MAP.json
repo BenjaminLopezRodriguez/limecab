@@ -1,0 +1,43 @@
+{
+  "$comment": "Provenance for copied modules. Run 'npm run drift' to classify divergence.",
+  "extractedAt": "2026-08-31",
+  "modules": {
+    "src/core/surface-manager.ts": {
+      "source": "src/lib/service-app/surface-manager.ts",
+      "sourceCommit": "d8cb147c581c2df7365e8f65f1aa3ad1b5e8f062",
+      "class": "COPY",
+      "status": "UNCHANGED"
+    },
+    "src/core/surface-progress.ts": {
+      "source": "src/lib/service-app/surface-progress.ts",
+      "sourceCommit": "67e7b5c092f41698c0d79cb607fe444110d94ff4",
+      "class": "COPY",
+      "status": "UNCHANGED"
+    },
+    "src/web/primitives.tsx": {
+      "source": "src/components/service-app/{choice-list,location-trigger,map-route-bar,quote-panel,provider-card,completion-panel,live-sheet,surface-skeleton,confirm-action-surface}.tsx",
+      "class": "ADAPT",
+      "status": "LAB_PROJECTION"
+    },
+    "src/web/ui.tsx": {
+      "source": "src/components/ui/{button,input,dialog,drawer,progress,separator,icon}.tsx",
+      "class": "ADAPT",
+      "status": "LAB_PROJECTION"
+    },
+    "src/web/scenes/rider-scenes.tsx": {
+      "source": "src/components/limecab/limecab-*-scene.tsx",
+      "class": "ADAPT",
+      "status": "LAB_PROJECTION"
+    },
+    "src/web/scenes/driver-scenes.tsx": {
+      "source": "src/components/limecab/driver-scenes.tsx",
+      "class": "ADAPT",
+      "status": "LAB_PROJECTION"
+    },
+    "src/web/freight.tsx": {
+      "source": "src/components/freight/{freight-parts,freight-portal-*}.tsx",
+      "class": "ADAPT",
+      "status": "LAB_PROJECTION"
+    }
+  }
+}

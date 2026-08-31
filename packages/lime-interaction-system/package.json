@@ -1,0 +1,27 @@
+{
+  "name": "@lime/interaction-system",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Executable specification of Lime's interaction system. Extraction fork \u2014 production is authoritative.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "drift": "node --experimental-strip-types scripts/drift.ts",
+    "coverage": "node --experimental-strip-types scripts/coverage.ts",
+    "preview": "node --experimental-strip-types scripts/preview.ts",
+    "storybook": "storybook dev -p 6006 --no-open",
+    "build-storybook": "storybook build"
+  },
+  "devDependencies": {
+    "@storybook/react-vite": "^9.1.20",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "storybook": "^9.1.20",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.2"
+  }
+}
