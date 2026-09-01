@@ -22,7 +22,7 @@ import {
   type RideProduct,
 } from "@/lib/limecab/domain";
 import { AVAILABLE_PROMO } from "@/lib/limecab/mock";
-import { formatMoney, formatMoneyMetric } from "@/lib/service-app/services";
+import { formatMoney } from "@/lib/service-app/services";
 import { cn } from "@/lib/utils";
 
 /** The fare, everything that changes it, and the one button that commits. */
@@ -92,8 +92,14 @@ export function LimeCabQuoteScene({
           etaLine ??
           `${clockTime(product.etaMinutes + quoteMinutes)} dropoff · ${ridePickupCopy(product)}`
         }
-        metric={formatMoneyMetric(payableCents)}
-        metricAriaLabel={`Total ${formatMoney(payableCents)}`}
+        trailing={
+          <p
+            aria-label={`Total ${formatMoney(payableCents)}`}
+            className="text-foreground shrink-0 text-right text-[22px] leading-none font-semibold tracking-tight tabular-nums"
+          >
+            {formatMoney(payableCents)}
+          </p>
+        }
       />
 
       <Itinerary

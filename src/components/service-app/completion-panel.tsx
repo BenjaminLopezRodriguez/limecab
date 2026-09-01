@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 
 import { LiveSheetHeader } from "@/components/service-app/live-sheet";
-import { formatMoney, formatMoneyMetric } from "@/lib/service-app/services";
+import { formatMoney } from "@/lib/service-app/services";
 import { cn } from "@/lib/utils";
 
 /**
@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils";
  * because the user's question on arrival is what they got, not what to do
  * next. Rebook, rate, and support live in `actions`, below the fold of
  * attention.
+ *
+ * The live tile is a timer — never a price. Fare totals sit in the copy.
  */
 export function CompletionPanel({
   headline,
@@ -37,18 +39,26 @@ export function CompletionPanel({
   actions?: ReactNode;
   className?: string;
 }) {
+  const total =
+    typeof totalCents === "number"
+      ? formatMoney(totalCents, currency)
+      : null;
+
   return (
     <section className={cn("flex flex-col", className)}>
       <LiveSheetHeader
         instruction={headline}
-        secondary={summary}
-        metric={
-          typeof totalCents === "number" ? formatMoneyMetric(totalCents, currency) : null
-        }
-        metricAriaLabel={
-          typeof totalCents === "number"
-            ? `${totalLabel} ${formatMoney(totalCents, currency)}`
-            : undefined
+        secondary={
+          total ? (
+            <span>
+              {summary ? `${summary} · ` : null}
+              <span className="text-foreground font-medium tabular-nums">
+                {totalLabel} {total}
+              </span>
+            </span>
+          ) : (
+            summary
+          )
         }
       />
 

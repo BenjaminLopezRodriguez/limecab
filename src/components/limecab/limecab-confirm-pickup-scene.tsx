@@ -51,18 +51,15 @@ export function LimeCabConfirmPickupScene({
             type="button"
             onClick={onSearch}
             aria-label="Search pickup location"
-            className="bg-muted text-foreground focus-visible:ring-ring flex size-[4.25rem] shrink-0 flex-col items-center justify-center rounded-2xl text-center touch-manipulation hover:bg-accent active:bg-accent/80 focus-visible:ring-2 focus-visible:outline-none"
+            className="text-foreground focus-visible:ring-ring -mr-1 flex size-10 shrink-0 items-center justify-center rounded-full touch-manipulation focus-visible:ring-2 focus-visible:outline-none"
           >
             <Icon icon={Search01Icon} size={22} aria-hidden="true" />
-            <span className="mt-0.5 text-[11px] leading-none font-medium tracking-wide">
-              Search
-            </span>
           </button>
         }
       />
 
       {rows.length > 0 ? (
-        <ul className="-mx-5 mt-4 md:-mx-6" aria-label="Pickup spots">
+        <ul className="-mx-5 mt-3 md:-mx-6" aria-label="Pickup spots">
           {rows.map((spot) => {
             const selected = spot.id === selectedId;
             return (
@@ -73,7 +70,7 @@ export function LimeCabConfirmPickupScene({
                   aria-label={spot.label}
                   onClick={() => onSelectSpot?.(spot.id)}
                   className={cn(
-                    "relative flex w-full items-center gap-3 overflow-hidden px-5 py-3 text-left md:px-6",
+                    "relative flex w-full items-center gap-3 overflow-hidden px-5 py-2.5 text-left md:px-6",
                     "focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset",
                     selected
                       ? "bg-accent before:bg-foreground before:absolute before:inset-y-0 before:left-0 before:w-1 before:content-['']"

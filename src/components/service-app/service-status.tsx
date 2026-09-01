@@ -180,23 +180,23 @@ export function ServiceStatusPanel({
       </div>
 
       {subtitle ? (
-        <p className="text-muted-foreground mt-4 truncate text-sm">{subtitle}</p>
+        <p className="text-muted-foreground mt-3 truncate text-sm">{subtitle}</p>
       ) : null}
 
       <ServiceMilestones
-        className="mt-5"
+        className="mt-3"
         milestones={view.milestones}
         index={view.milestoneIndex}
         live={view.live}
       />
 
       {error ? (
-        <p role="alert" className="text-muted-foreground mt-4 text-sm">
+        <p role="alert" className="text-muted-foreground mt-3 text-sm">
           {error}
         </p>
       ) : null}
 
-      {actions ? <div className="mt-5 flex flex-col gap-3">{actions}</div> : null}
+      {actions ? <div className="mt-3 flex flex-col gap-2">{actions}</div> : null}
     </div>
   );
 }

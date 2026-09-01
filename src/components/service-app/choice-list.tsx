@@ -37,7 +37,9 @@ export function ChoiceRow({
         {...props}
         aria-pressed={radio || selected === undefined ? undefined : selected}
         className={cn(
-          "relative flex w-full items-center gap-3 overflow-hidden px-5 py-3 text-left md:px-6",
+          "relative flex w-full items-center gap-3 overflow-hidden px-5 text-left md:px-6",
+          "transition-[padding,background-color] duration-300 ease-[cubic-bezier(0.45,1.005,0,1.005)]",
+          selected ? "py-6" : "py-3",
           "focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset",
           selected
             ? "bg-accent before:bg-foreground before:absolute before:inset-y-0 before:left-0 before:w-1 before:content-['']"

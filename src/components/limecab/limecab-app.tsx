@@ -41,6 +41,7 @@ import {
   LimeCabDetailSurface,
   LimeCabForTheWaySurface,
   LimeCabPaymentSurface,
+  LimeCabNoDriversSurface,
   LimeCabUnavailableSurface,
   type DetailKind,
 } from "@/components/limecab/limecab-interrupts";
@@ -220,6 +221,7 @@ import {
   type ServiceAppState,
 } from "@/lib/service-app/state";
 import {
+  isTimeCounterOverflow,
   serviceStatusView,
   type ServiceStatus,
 } from "@/lib/service-app/status";
@@ -275,10 +277,20 @@ const PHASE_HINT_MS: Partial<Record<ServiceAppState, number>> = {
   active: SIM_PHASE_MS.in_progress,
 };
 
-/** Whole seconds left in this scene. Floor, never round. */
-function phaseSecondsLeft(phaseMs: number, t: number) {
-  return Math.max(0, Math.floor((phaseMs / 1000) * (1 - t)));
+/** Whole seconds left in this scene — ticks on second boundaries, never rounded. */
+function phaseSecondsLeft(phaseMs: number, now: number, phaseStart: number) {
+  const remainingMs = Math.max(0, phaseStart + phaseMs - now);
+  if (remainingMs === 0) return 0;
+  return Math.floor((remainingMs - 1) / 1000) + 1;
 }
+
+/** Whole seconds elapsed in this scene. Floor, never round. */
+function phaseSecondsElapsed(phaseMs: number, now: number, phaseStart: number) {
+  const elapsedMs = Math.min(phaseMs, Math.max(0, now - phaseStart));
+  return Math.floor(elapsedMs / 1000);
+}
+
+const NO_DRIVERS_REASON = "No drivers available";
 
 const placesAdapter = createPlacesAdapter();
 
@@ -937,7 +949,7 @@ function LimeCabFlow({
 
   const status = useMemo<ServiceStatus>(() => {
     if (failure) return { state: "failed", reason: failure };
-    const secondsLeft = phaseSecondsLeft(duration, t);
+    const secondsLeft = phaseSecondsLeft(duration, now, phaseStart);
     switch (state) {
       case "matching":
         return { state: "matching", typicalSeconds: secondsLeft };
@@ -985,6 +997,16 @@ function LimeCabFlow({
         return { state: "pending" };
     }
   }, [courier, destination, duration, failure, shop, shopStore, state, t, trip]);
+
+  // Timer tile is 0–99 minutes. Past that bound the request has taken too long.
+  useEffect(() => {
+    if (state !== "matching" || failure) return;
+    if (!isTimeCounterOverflow(phaseSecondsElapsed(duration, now, phaseStart))) return;
+    setFailure(NO_DRIVERS_REASON);
+    void cancelTrip().catch(() => {
+      /* Local failure sheet still stands; the request may already be gone. */
+    });
+  }, [cancelTrip, duration, failure, now, phaseStart, state]);
 
   const mapPosture = surfaces.layout.map?.presentation ?? "bounded";
   const pinning = state === "location_pin";
@@ -3001,6 +3023,12 @@ function LimeCabSurfaces({
     setAssistComposeOpen(false);
   }, [standby]);
 
+  // Matching past the two-digit bound: interrupt with the no-drivers sheet.
+  useEffect(() => {
+    if (failure !== NO_DRIVERS_REASON) return;
+    surfaces.perform("interruptCancel");
+  }, [failure, surfaces]);
+
   const live = isCommitted(visible) && visible !== "complete" && !failure;
   const cancellable =
     live &&
@@ -3095,10 +3123,8 @@ function LimeCabSurfaces({
             presentation={sheetPresentation(
               surfaces.layout.primary?.presentation ?? "sheet",
             )}
-            // Pin confirm stays a short strip; the top snap is search, not a
-            // taller copy of "Where on the map?" — same gesture → scene swap
-            // as Trends → charts on the driver sheet.
-            overlaySnap={visible === "location_pin"}
+            // Pin confirm stays a short strip; the top snap hands off to
+            // search — same gesture → scene swap as Trends → charts.
             onSnapChange={
               visible === "location_pin"
                 ? (snap) => {
@@ -3817,6 +3843,15 @@ function LimeCabSurfaces({
       <LimeCabUnavailableSurface
         product={unavailable}
         onDismiss={() => closeInterrupt(() => setUnavailable(null))}
+      />
+
+      <LimeCabNoDriversSurface
+        open={failure === NO_DRIVERS_REASON}
+        onDismiss={() => {
+          closeInterrupt(() => {
+            backToQuote();
+          });
+        }}
       />
 
       {/* Confirm, without claiming a booking. Lime is the concierge here and

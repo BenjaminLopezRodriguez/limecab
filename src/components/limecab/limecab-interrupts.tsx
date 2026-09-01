@@ -105,6 +105,30 @@ export function LimeCabUnavailableSurface({
   );
 }
 
+/** Matching wait past the two-digit timer bound — nobody took the request. */
+export function LimeCabNoDriversSurface({
+  open,
+  onDismiss,
+}: {
+  open: boolean;
+  onDismiss: () => void;
+}) {
+  return (
+    <ConfirmActionSurface
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onDismiss();
+      }}
+      id="no-drivers"
+      title="No drivers available"
+      description="This request is taking too long. Try again in a bit, or pick another ride."
+      confirmLabel="Back to rides"
+      cancelLabel={null}
+      onConfirm={onDismiss}
+    />
+  );
+}
+
 /* Disclosure, not a step: the ride surface is suspended behind this and
    restored untouched when it closes. */
 export function LimeCabDetailSurface({

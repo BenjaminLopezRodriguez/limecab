@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils";
  *   peek       — a status strip; canvas is the subject
  *   sheet      — 40%
  *   expanded   — 60%
+ *   overlay    — 100% (default top snap; pull any sheet up to fill)
  * `overlay` snaps the same drawer to the viewport. `TaskScene` (`fullscreen`)
  * is a different chrome — a dialog, not a snap.
  *
@@ -60,8 +61,10 @@ const SNAP_FOR: Record<SheetPresentation, number> = {
 };
 
 const DISMISS = 0;
-const SNAP_POINTS = [PEEK, SHEET, EXPANDED];
-const LISTED_SNAP_POINTS = [PEEK, SHEET, EXPANDED, OVERLAY];
+/** Default ladder — every sheet can be pulled up to overlay. */
+const SNAP_POINTS = [PEEK, SHEET, EXPANDED, OVERLAY];
+/** Opt-out ladder when a sheet must stay below the viewport. */
+const CAPPED_SNAP_POINTS = [PEEK, SHEET, EXPANDED];
 const OVERLAY_POINTS = [OVERLAY];
 
 export { EXPANDED as SHEET_EXPANDED_SNAP, OVERLAY as SHEET_OVERLAY_SNAP };
@@ -112,7 +115,7 @@ export function ServiceSheet({
   label = "Your request",
   description = "Drag to resize.",
   presentation = "sheet",
-  overlaySnap = false,
+  overlaySnap = true,
   onSnapChange,
   onDismiss,
 }: {
@@ -123,10 +126,9 @@ export function ServiceSheet({
   description?: string;
   presentation?: SheetPresentation;
   /**
-   * Opt in to a top snap of overlay (1). Used for listed sheets that grow
-   * into the same drawer, and for peeks whose top snap hands off to another
-   * scene (pin → search). The 6rem default cap would make that snap
-   * unreachable, so this also lifts max-height to 100dvh.
+   * Include overlay (1) as the top snap. Default on — any bottom sheet
+   * pulls up to fill the viewport. Pass `false` to cap at expanded.
+   * Also lifts max-height to 100dvh so the top snap is reachable.
    */
   overlaySnap?: boolean;
   /**
@@ -165,11 +167,12 @@ export function ServiceSheet({
    * fraction is exact, and needs no geometry from the translating popup.
    */
   const fraction = typeof snap === "number" ? snap : rung;
-  const points = overlaySnap
-    ? LISTED_SNAP_POINTS
-    : presentation === "overlay"
+  const points =
+    presentation === "overlay"
       ? OVERLAY_POINTS
-      : SNAP_POINTS;
+      : overlaySnap
+        ? SNAP_POINTS
+        : CAPPED_SNAP_POINTS;
   // Peek is already a thin strip — a 0 snap would make a short flick leave
   // the task. Dismiss lives on sheet/expanded/overlay, where "all the way
   // down" is a real gesture.
@@ -193,7 +196,7 @@ export function ServiceSheet({
         data-sheet-scroll=""
         className={cn(
           "flex min-h-0 flex-1 flex-col overflow-y-auto",
-          isMobile ? "px-5 pt-1" : "px-6 pt-6",
+          isMobile ? "px-5 pt-0.5" : "px-6 pt-6",
         )}
         aria-busy={busy}
       >

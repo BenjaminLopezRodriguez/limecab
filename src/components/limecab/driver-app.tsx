@@ -1947,9 +1947,6 @@ function DriverSurfaces({
                       : "Your duty session"
             }
             presentation={posture}
-            overlaySnap={
-              panel === "trends" || panel === "recommended" || pinOverlay
-            }
             /* Swipe the load away. Twelve hours is too long to be held in one
                sheet — and this ends the sheet, never the job. */
             onDismiss={

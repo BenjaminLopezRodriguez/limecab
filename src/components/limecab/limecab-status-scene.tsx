@@ -125,12 +125,12 @@ export function LimeCabStatusScene({
         <div aria-live="polite">
           <InRideHeadline>{headline}</InRideHeadline>
           {secondary ? (
-            <p className="text-muted-foreground mt-1.5 text-center text-sm leading-relaxed">
+            <p className="text-muted-foreground mt-1 text-center text-sm leading-snug">
               {secondary}
             </p>
           ) : null}
           {pin ? (
-            <div className="mt-3 flex justify-center">
+            <div className="mt-2 flex justify-center">
               <PinChip
                 pin={pin.pickupPin}
                 label={
@@ -155,7 +155,7 @@ export function LimeCabStatusScene({
         {courierLive ? (
           courierLive.proof === "hand" && courierLive.deliveryPin ? (
             <PickupPin
-              className="mt-4"
+              className="mt-3"
               compact
               pin={courierLive.deliveryPin}
               title={`${courierOrderLabel(trip.id)} · Recipient PIN`}
@@ -163,7 +163,7 @@ export function LimeCabStatusScene({
               provider="recipient"
             />
           ) : (
-            <p className="bg-muted/60 mt-4 rounded-2xl px-4 py-3 text-sm leading-relaxed">
+            <p className="bg-muted/60 mt-3 rounded-2xl px-3 py-2.5 text-sm leading-snug">
               In transit to {courierLive.recipientName}
               {courierLive.proof === "door"
                 ? " · leave at door"
@@ -174,7 +174,7 @@ export function LimeCabStatusScene({
           )
         ) : null}
 
-        <div className="mt-4 flex flex-col gap-3">
+        <div className="mt-3 flex flex-col gap-2">
           {onShareTrip ? (
             <ShareLocationBanner label={shareLabel} onShare={onShareTrip} />
           ) : null}

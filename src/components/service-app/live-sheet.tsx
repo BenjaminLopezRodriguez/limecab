@@ -13,10 +13,12 @@ import { cn } from "@/lib/utils";
  * this file does not name a vertical.
  */
 
-/** Stacked numeral + unit. Callers pass a short number, never a sentence. */
+/**
+ * Two-digit ETA countdown only (0–99). Never a price, never a sentence,
+ * never a unit inside the tile — minutes live in the aria label.
+ */
 export type LiveMetricValue = {
   value: string;
-  unit?: string;
 };
 
 /** Band 1 — what to do, and the number that answers when. */
@@ -33,7 +35,7 @@ export function LiveSheetHeader({
   secondary?: ReactNode;
   /** Compact identifier that sits with the secondary line — a PIN, a code. */
   chip?: ReactNode;
-  /** Compact tile: a short number and optional unit. Omit when there is none. */
+  /** Compact tile: one or two digits. Omit when there is none. */
   metric?: LiveMetricValue | null;
   metricAriaLabel?: string;
   /** Replaces the metric — a search control, a chip, anything glanceable. */
@@ -43,13 +45,13 @@ export function LiveSheetHeader({
   return (
     <div className={cn("flex items-start justify-between gap-3", className)}>
       <div className="min-w-0 flex-1">
-        <h2 className="text-[17px] leading-snug font-semibold tracking-tight text-balance">
+        <h2 className="text-[15px] leading-snug font-semibold tracking-tight text-balance">
           {instruction}
         </h2>
         {secondary || chip ? (
-          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+          <div className="mt-1 flex flex-wrap items-center gap-2">
             {secondary ? (
-              <div className="text-muted-foreground min-w-0 text-sm leading-relaxed">
+              <div className="text-muted-foreground min-w-0 text-sm leading-snug">
                 {secondary}
               </div>
             ) : null}
@@ -59,50 +61,32 @@ export function LiveSheetHeader({
       </div>
       {trailing ??
         (metric?.value ? (
-          <LiveMetric
-            value={metric.value}
-            unit={metric.unit}
-            ariaLabel={metricAriaLabel}
-          />
+          <LiveMetric value={metric.value} ariaLabel={metricAriaLabel} />
         ) : null)}
     </div>
   );
 }
 
-/** Highest-contrast object on the sheet: the answer, not a caption. */
+/** Lime square ETA countdown: at most two digits, black on brand lime. */
 export function LiveMetric({
   value,
-  unit,
   ariaLabel,
   className,
 }: {
   value: string;
-  unit?: string;
   ariaLabel?: string;
   className?: string;
 }) {
-  const spoken = ariaLabel ?? (unit ? `${value} ${unit}` : value);
+  const digits = value.replace(/\D/g, "").slice(0, 2) || value.slice(0, 2);
   return (
     <p
-      aria-label={spoken}
+      aria-label={ariaLabel ?? digits}
       className={cn(
-        "bg-foreground text-background flex size-20 shrink-0 flex-col items-center justify-center rounded-2xl text-center font-semibold tracking-tight tabular-nums",
+        "bg-lime text-lime-foreground flex size-12 shrink-0 items-center justify-center rounded-xl text-center text-[22px] leading-none font-semibold tracking-tight tabular-nums",
         className,
       )}
     >
-      <span
-        className={cn(
-          "leading-none",
-          value.length <= 2 ? "text-[32px]" : "text-[26px]",
-        )}
-      >
-        {value}
-      </span>
-      {unit ? (
-        <span className="mt-0.5 text-[11px] leading-none font-medium tracking-wide">
-          {unit}
-        </span>
-      ) : null}
+      {digits}
     </p>
   );
 }

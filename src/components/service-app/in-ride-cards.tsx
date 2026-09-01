@@ -26,7 +26,7 @@ export function InRideCard({
   return (
     <div
       className={cn(
-        "rounded-2xl p-4",
+        "rounded-2xl p-3",
         variant === "banner"
           ? "bg-accent/80 text-accent-foreground"
           : "bg-muted/60",
@@ -48,7 +48,7 @@ export function InRideHeadline({
   return (
     <h2
       className={cn(
-        "text-center text-[17px] leading-snug font-semibold tracking-tight text-balance",
+        "text-center text-[15px] leading-snug font-semibold tracking-tight text-balance",
         className,
       )}
     >
@@ -100,7 +100,7 @@ export function TripSummaryCard({
         <p className="text-muted-foreground text-xs tracking-tight">
           {productLabel}
         </p>
-        <p className="mt-0.5 truncate text-[17px] font-semibold tracking-tight">
+        <p className="mt-0.5 truncate text-[15px] font-semibold tracking-tight">
           {title}
         </p>
       </div>
@@ -108,7 +108,7 @@ export function TripSummaryCard({
         type="button"
         onClick={onOptions}
         aria-label="Ride options"
-        className="bg-background text-muted-foreground focus-visible:ring-ring inline-flex size-10 shrink-0 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:outline-none"
+        className="bg-background text-muted-foreground focus-visible:ring-ring inline-flex size-9 shrink-0 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:outline-none"
       >
         <Icon icon={MoreHorizontalIcon} size={18} />
       </button>
@@ -142,13 +142,13 @@ export function DriverTipCard({
 }) {
   const initial = name.trim().charAt(0).toUpperCase();
   return (
-    <InRideCard className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
+    <InRideCard className="flex flex-col gap-3">
+      <div className="flex items-start justify-between gap-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
           <span className="relative shrink-0">
             <span
               aria-hidden="true"
-              className="bg-accent text-accent-foreground flex size-14 items-center justify-center rounded-full text-[19px] font-semibold"
+              className="bg-accent text-accent-foreground flex size-12 items-center justify-center rounded-full text-[17px] font-semibold"
             >
               {initial}
             </span>
@@ -158,13 +158,13 @@ export function DriverTipCard({
             </span>
           </span>
           <div className="min-w-0">
-            <p className="text-[17px] font-semibold tracking-tight">
+            <p className="text-[15px] font-semibold tracking-tight">
               {showTip ? `Tip ${name}?` : name}
             </p>
             <p className="text-muted-foreground mt-0.5 truncate text-sm">
               {vehicleLine}
             </p>
-            <p className="mt-1 text-[22px] leading-none font-semibold tracking-[0.12em] tabular-nums">
+            <p className="mt-0.5 text-[20px] leading-none font-semibold tracking-[0.12em] tabular-nums">
               {plate}
             </p>
           </div>
@@ -173,7 +173,7 @@ export function DriverTipCard({
           type="button"
           onClick={onOptions}
           aria-label="Driver options"
-          className="bg-background text-muted-foreground inline-flex size-10 shrink-0 items-center justify-center rounded-full"
+          className="bg-background text-muted-foreground inline-flex size-9 shrink-0 items-center justify-center rounded-full"
         >
           <Icon icon={MoreHorizontalIcon} size={18} />
         </button>
@@ -197,7 +197,7 @@ export function DriverTipCard({
         <Button
           type="button"
           variant="secondary"
-          className="h-12 w-full rounded-full"
+          className="h-11 w-full rounded-full"
           onClick={onMessage}
         >
           <Icon icon={Message01Icon} size={18} aria-hidden="true" />
