@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "Lime Driver",
+    "slug": "lime-driver",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "lime-driver",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": { "supportsTablet": true, "bundleIdentifier": "cab.lime.driver" },
+    "android": { "package": "cab.lime.driver" },
+    "web": { "bundler": "metro", "output": "single" },
+    "plugins": ["expo-router"]
+  }
+}
