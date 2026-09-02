@@ -1,5 +1,8 @@
 # Parity work queue
 
+Statuses follow the ladder in `ACCEPTANCE.md`: CODEX IMPLEMENTED -> CLAUDE STATIC REVIEWED ->
+READY FOR IOS -> IOS VISUALLY VERIFIED -> DONE. Static review is not acceptance.
+
 Two independent lanes. A fresh session should read this file first to see where capacity is.
 Product truth lives in the packets; architecture doctrine lives in
 `docs/specs/lime-web-to-native-parity-spec.md`; this file is scheduling only.
@@ -13,8 +16,8 @@ Provenance tags used in packets: `[OBSERVED]` · `[SOURCE-DERIVED]` · `[FIXTURE
 
 | cluster | states | status | packets |
 |---|---|---|---|
-| A | home · search · destination | **REVIEWED + MERGED** (`967e650`) | `rider/home.md` `rider/search.md` `rider/destination.md` |
-| B | ride options · upsell · confirm pickup | **READY** | `rider/ride-options.md` `rider/upsell.md` `rider/confirm-pickup.md` |
+| A | home · search · destination | **READY FOR IOS REFINEMENT** — visual pass FAILED, see `tasks/rider-visual-refinement.md` | `rider/home.md` `rider/search.md` `rider/destination.md` |
+| B | ride options · upsell · confirm pickup | **CODEX IMPLEMENTING** | `rider/ride-options.md` `rider/upsell.md` `rider/confirm-pickup.md` |
 | C | request · matching · assigned | CAPTURING — `matching` observed, `assigned` not | `reference/web/rider/matching.png` |
 | D | arrival · PIN · in-ride | BLOCKED — needs a dispatched driver | — |
 | E | complete · rating · tip · receipt | BLOCKED — needs a completed trip | — |
@@ -26,7 +29,7 @@ Dispatch file: `tasks/rider-cluster-b.md`
 | cluster | states | status | packets |
 |---|---|---|---|
 | A | offline · online · duty posture | **DONE** (device-verified; gaps listed in packets) | `driver/offline.md` `driver/online.md` `driver/duty-posture.md` |
-| B | offer · decline · accept · into accepted work | **READY** | `driver/offer.md` |
+| B | offer · decline · accept · into accepted work | **CODEX IMPLEMENTING** | `driver/offer.md` |
 | C | en route · arrived · PIN/start | BLOCKED — needs an accepted job | — |
 | D | active trip · minimize/restore · complete | BLOCKED | — |
 | E | earnings / result | BLOCKED | — |
@@ -57,7 +60,17 @@ Dispatch file: `tasks/driver-cluster-b.md`
   Rider D–E) is blocked on that. Unblocking it needs a seeded trip near the driver rather than
   more Playwright driving.
 
+## QUEUED WORK
+
+- `tasks/rider-visual-refinement.md` — combined Rider A+B pass. Dispatch to the Rider worker the
+  moment Rider B returns; do not dispatch sooner and do not touch that worktree meanwhile.
+
 ## OPEN ARCHITECTURAL QUESTIONS
 
-None blocking. The upsell interrupt discovered on 2026-09-01 is expressible with the existing
+- **`hidden` surfaces are mounted.** `NativeSceneRenderer` gives `hidden` depth 0 but never
+  filters it, so a hidden surface's `autoFocus` fires and the keyboard opens on Rider Home.
+  Decided: `hidden` must not mount, `suspended` must. Not a contract change — the renderer is
+  collapsing a distinction the contract already makes. Queued in the refinement pass.
+
+Otherwise none blocking. The upsell interrupt discovered on 2026-09-01 is expressible with the existing
 contract (`suspended` primary + `interrupt` surface); architecture stays frozen.

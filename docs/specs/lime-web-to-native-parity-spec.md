@@ -270,9 +270,14 @@ cannot express four coexisting surfaces, `suspended`, or `launcher`. The native 
 platform-native mechanics; **SurfaceManager stays authoritative.**
 
 **`expo-dom` — not the migration architecture.** Its own skill rules it out: avoid when native
-performance matters, and `_layout` files cannot be DOM components. A WebView renderer would
-defeat the point. Possible narrow future exception: a web-only visualisation such as driver
-earnings charts.
+performance matters, and `_layout` files cannot be DOM components. **Registering WebView as a
+renderer inside `NativeSceneRenderer` / `SurfaceManager` would defeat the point** — that would
+make the interaction system a host for embedded web rather than a native execution path. This
+does *not* forbid an app-level `LegacyWebSurface` migration adapter (see §27): a temporary
+composition path outside the renderer, mapped only to states not yet implemented natively.
+Prefer plain `WebView` over `expo-dom` / `use dom` for Lime migration fallbacks; production
+web remains the reference corpus, `@lime/ui` + `@lime/interaction-system` are the native system.
+Possible narrow future exception: a web-only visualisation such as driver earnings charts.
 
 **`react-native-keyboard-controller` — not needed yet.** `useNativeEnvironment` already projects
 keyboard height into the extent and occlusion policy. Revisit if a docked CTA must track the
@@ -735,3 +740,84 @@ Do not add backend integration merely because fixture parity is working.
 
 **And one earned the hard way:** verify by running, on a device. A clean typecheck and a clean
 Expo Web pass proved nothing about any of the seven native-only bugs in §5.
+
+---
+
+## 27. LegacyWebSurface migration adapter
+
+Approved doctrine for bridging unimplemented native states to production web during parity burn-down.
+**Not yet scaffolded** — hold all implementation until Tier-3 iOS validation passes on Rider A/B.
+
+### Scope and boundaries
+
+`LegacyWebSurface` is an **app-level migration adapter only** — disposable, outside the
+interaction architecture. It is composition glue at the application root, not a reusable renderer
+concern.
+
+It is **not**:
+
+- `SurfacePresentation`, `SurfaceRole`, or any surface contract field
+- A renderer backend inside `NativeSceneRenderer`
+- A `SurfaceManager` concern
+- A `NativeSceneRenderer` registry entry
+
+A state becomes native by **removing its fallback mapping** and routing through
+`ExperienceFrame` / `NativeSceneRenderer` like any other implemented step. The migration adapter
+shrinks as native clusters land; it is not a permanent third renderer.
+
+### WebView doctrine
+
+WebView is a **migration adapter**, never a renderer implementation. Production web stays the
+reference corpus for behavioural comparison; `@lime/ui` + `@lime/interaction-system` are the
+native system. Prefer plain `react-native-webview` over `expo-dom` / `use dom` for Lime —
+DOM-in-Expo does not participate in surface choreography, extent policy, or the native mounting
+model below.
+
+The `postMessage` bridge stays **tiny**: navigation, `ride.requested`, `driver.offerAccepted`,
+`close`. It is not a full domain protocol — no bidirectional state sync, no surface-emphasis
+projection through the bridge.
+
+### Native mounting invariants
+
+These apply to the native renderer path (`NativeSceneRenderer` / `NativeSurface`). Web fallback
+is a separate app-composition branch, not a surface emphasis.
+
+| Contract | Native behaviour |
+|---|---|
+| `hidden` | **Unmounted** — no focus, no keyboard side-effects, presentation cleared (see §19) |
+| `suspended` | **Mounted**, state preserved — interrupt restoration, draft/scroll survival |
+| Web fallback | **App composition** — `LegacyWebSurface` at the route/scenario level, not `emphasis: "web"` |
+
+### Burn-down pattern (recommended, not yet implemented)
+
+Keep a compile-time-obvious burn-down list at the app composition layer. Delete entries from
+`WEB_FALLBACKS` as native clusters ship; when a key disappears, that step is native-only.
+
+```typescript
+export const RIDER_WEB_FALLBACKS = {
+  matching: "/ride/matching",
+  assigned: "/ride/assigned",
+  arriving: "/ride/arriving",
+  inRide: "/ride/active",
+  receipt: "/ride/receipt",
+} satisfies Partial<Record<RiderStep, string>>;
+
+export const RIDER_NATIVE_STEPS = new Set<RiderStep>([
+  "home", "search", "destination", "rideOptions", "upsell", "confirmPickup",
+]);
+```
+
+`RIDER_NATIVE_STEPS` documents what is already native; `RIDER_WEB_FALLBACKS` documents what still
+delegates to web. The set difference is the remaining migration surface — visible in code review
+without grepping scenario files.
+
+### Sequencing
+
+1. Cherry-pick `codex/rider` commits `bd77c90` + `68fd316` into the integration branch.
+2. **Tier-3 iOS validation** — Rider A/B on device (interaction first, then composition, then
+   cosmetics; see §21).
+3. **Then** scaffold `packages/lime-web-bridge`, `apps/lime-rider`, `apps/lime-driver`; keep
+   `apps/lime-native` as the parity harness.
+4. Map **only Cluster C+ unimplemented states** to `LegacyWebSurface` — everything in
+   `RIDER_NATIVE_STEPS` (and equivalent driver clusters) routes natively from day one of the
+   scaffold.
