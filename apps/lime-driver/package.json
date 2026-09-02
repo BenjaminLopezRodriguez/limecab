@@ -28,7 +28,10 @@
   },
   "scripts": {
     "start": "expo start",
+    "start:device": "bash ../../scripts/start-expo-device.sh",
+    "setup:device": "bash ../../scripts/setup-ios-device-env.sh",
     "ios": "expo run:ios",
+    "ios:device": "bash ../../scripts/setup-ios-device-env.sh && EXPO_PUBLIC_LIME_WEB_BASE_URL=http://$(bash ../../scripts/get-metro-host.sh):3100 expo run:ios --device",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit"
   },
