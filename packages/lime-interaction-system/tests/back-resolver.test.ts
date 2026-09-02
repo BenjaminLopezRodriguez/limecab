@@ -51,3 +51,31 @@ test("package imports no production infrastructure", () => {
     assert.ok(!banned.test(src), `${f} imports forbidden production dependency`);
   }
 });
+
+/**
+ * A live driver job must survive a generic back gesture. This is the regression the native
+ * client exposed: without the live branch, back mid-job resolved to `delegate-to-host` and the
+ * host popped the route out from under an accepted trip.
+ */
+test("driver back minimizes a live job instead of delegating to the host", () => {
+  const context: BackContext = {
+    frame: { scene: { id: sceneId("driver.enRoute"), surfaces: {} } },
+    hasInterrupt: false,
+    surfaceHistoryDepth: 0,
+    workflowCanRegress: false,
+    liveWorkActive: true,
+  };
+  assert.deepEqual(resolveBack("driver", "live", context), { type: "minimize-live-work" });
+  assert.notDeepEqual(resolveBack("driver", "live", context), { type: "delegate-to-host" });
+});
+
+test("driver back still hands off to the host when no job is live", () => {
+  const context: BackContext = {
+    frame: { scene: { id: sceneId("driver.online"), surfaces: {} } },
+    hasInterrupt: false,
+    surfaceHistoryDepth: 0,
+    workflowCanRegress: false,
+    liveWorkActive: false,
+  };
+  assert.deepEqual(resolveBack("driver", "draft", context), { type: "delegate-to-host" });
+});

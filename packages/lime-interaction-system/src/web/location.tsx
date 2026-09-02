@@ -22,7 +22,7 @@ export function LocationSearch({
   return (
     <div style={{ display: "grid", gap: spacing.md }}>
       <LimeInput search value={query} placeholder={placeholder} error={error}
-        onChange={onQueryChange} aria-label="Search location" />
+        onChangeText={onQueryChange} aria-label="Search location" />
       {loading ? (
         <div role="status" aria-label="Loading results" style={{ ...t(typography.metadata),
           color: color.mutedForeground.light }}>Searching…</div>

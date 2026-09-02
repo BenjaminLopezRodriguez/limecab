@@ -110,7 +110,7 @@ export function DriverJobScene({
         { label: offer.pickup, detail: meetingPoint ?? "Pickup" },
         { label: offer.destination, detail: "Drop-off" },
       ]} />
-      <ProviderCard name={riderName} vehicle="Rider" plate="" rating={undefined} />
+      <ProviderCard name={riderName} detail="Rider" />
       {pinRequired ? (
         <div role="status" style={{ ...t(typography.metadata), padding: spacing.md,
           borderRadius: radius.card, background: color.accent.light }}>

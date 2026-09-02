@@ -121,7 +121,7 @@ export function SupportForm({ topics, onSubmit }: { topics: string[]; onSubmit?:
         ))}
       </ChoiceList>
       <LimeInput placeholder="Describe the issue" aria-label="Issue description" />
-      <Button onClick={onSubmit}>Submit</Button>
+      <Button onPress={onSubmit}>Submit</Button>
     </div>
   );
 }

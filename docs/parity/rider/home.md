@@ -32,7 +32,7 @@ chip top-left, Mapbox attribution and info control bottom. Tapping the card adju
 ## Visible content, top to bottom
 1. `Hello, (424) 242-4242` — greeting; phone number in **accent**
 2. Vertical tab row — `Ride` (active, underlined) · Reserve · Courier · Help · Shop · Assist ·
-   Freight; horizontally scrollable. **Only `Ride` is in scope** — render the row, do not
+   Freight · Spaces · Station — **nine**, re-observed 2026-09-01; horizontally scrollable. **Only `Ride` is in scope** — render the row, do not
    implement the other verticals.
 3. Map card (above)
 4. Search pill — `Where to?`, `h-14`, muted fill, magnifier leading, **mic trailing**

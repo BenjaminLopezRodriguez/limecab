@@ -4,6 +4,11 @@ import assert from "node:assert/strict";
 import { createScenario } from "../src/harness/flow-machine.ts";
 import { freightHappyPath, type FreightStep } from "../src/scenarios/freight/happy-path.ts";
 import { resolveOcclusion } from "../src/policy/occlusion.ts";
+import {
+  createSurfaceManager,
+  initialSurfaceManagerState,
+  reduceSurfaceManager,
+} from "../src/core/surface-manager.ts";
 import type { PresentationEnvironment } from "../src/policy/environment.ts";
 
 /**
@@ -136,4 +141,70 @@ test("every live step is genuinely long-running work", () => {
   assert.ok(freightHappyPath.live!.includes("linehaul"));
   assert.ok(!freightHappyPath.live!.includes("complete"));
   assert.ok(!freightHappyPath.live!.includes("assigned"));
+});
+
+/**
+ * Suspension must preserve the surface's identity, not merely its pixels.
+ *
+ * Production is explicit that an interruption suspends the task rather than tearing it down —
+ * "the parent is never unmounted, so drafts, scroll, and map state survive". The reducer is
+ * what makes that possible: suspending keeps the presentation, so returning restores the same
+ * surface at the same posture instead of rebuilding one that looks similar.
+ */
+test("suspending a surface keeps its posture, so return restores the same surface", () => {
+  const config = createSurfaceManager({
+    surfaces: {
+      primary: {
+        role: "primary",
+        initial: { emphasis: "primary", presentation: "expanded", interaction: "active" },
+      },
+      interrupt: {
+        role: "interrupt",
+        initial: { emphasis: "hidden", presentation: null, interaction: "inert" },
+      },
+    },
+    actions: {
+      ask: {
+        intent: "interrupt",
+        surfaces: {
+          primary: { emphasis: "suspended" },
+          interrupt: { emphasis: "interrupt", presentation: "compact-interrupt", interaction: "active" },
+        },
+      },
+      answer: { intent: "return", surfaces: { interrupt: { emphasis: "hidden" } } },
+    },
+  });
+
+  const start = initialSurfaceManagerState(config);
+  const asked = reduceSurfaceManager(start, { type: "perform", action: "ask" }, config);
+
+  // Held, not hidden: the posture survives so there is something to come back to.
+  assert.equal(asked.layout.primary?.emphasis, "suspended");
+  assert.equal(asked.layout.primary?.presentation, "expanded");
+  // A held surface must not keep taking input from behind the question.
+  assert.equal(asked.layout.primary?.interaction, "inert");
+
+  const answered = reduceSurfaceManager(asked, { type: "perform", action: "answer" }, config);
+  assert.deepEqual(answered.layout.primary, start.layout.primary);
+  assert.equal(answered.layout.interrupt?.emphasis, "hidden");
+});
+
+/** Hiding is the opposite: a surface off screen has no posture to remember. */
+test("hiding a surface clears its posture", () => {
+  const config = createSurfaceManager({
+    surfaces: {
+      primary: {
+        role: "primary",
+        initial: { emphasis: "primary", presentation: "sheet", interaction: "active" },
+      },
+    },
+    actions: { leave: { intent: "collapse", surfaces: { primary: { emphasis: "hidden" } } } },
+  });
+  const gone = reduceSurfaceManager(
+    initialSurfaceManagerState(config),
+    { type: "perform", action: "leave" },
+    config,
+  );
+  assert.equal(gone.layout.primary?.presentation, null);
+  assert.equal(gone.layout.primary?.interaction, "inert");
 });

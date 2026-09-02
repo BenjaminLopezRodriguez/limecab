@@ -1,91 +1,63 @@
 # Parity work queue
 
-Working document. Read this and the current cluster's packets at session start — **not** the
-whole repo. The master architecture doc is `docs/specs/lime-web-to-native-parity-spec.md`; read
-it once, not every turn.
+Two independent lanes. A fresh session should read this file first to see where capacity is.
+Product truth lives in the packets; architecture doctrine lives in
+`docs/specs/lime-web-to-native-parity-spec.md`; this file is scheduling only.
 
-**Objective:** converge a finite list of observable Rider and Driver behaviours to zero
-discrepancies. Not "port 23,400 lines". The unit of work is observable behaviour.
-
-**Architecture is frozen by default.** It changes only when an observed production behaviour
-cannot be represented by the existing contracts — never because something would be cleaner, more
-idiomatic, or recommended elsewhere.
-
-**Statuses:** `READY` (packet exists) · `BLOCKED` · `IN CODEX` · `IN CLAUDE` · `READY FOR IOS` ·
-`VERIFIED` · `DONE`
-
-A `READY` item must already have a parity packet. Nothing is delegated without one.
+Provenance tags used in packets: `[OBSERVED]` · `[SOURCE-DERIVED]` · `[FIXTURE NEEDED]` ·
+`[BLOCKED]`.
 
 ---
 
-## Driver — Cluster A · offline / online / availability
+## RIDER
 
-| State | Status | Packet | Notes |
+| cluster | states | status | packets |
 |---|---|---|---|
-| `offline` | VERIFIED | `driver/offline.md` | launcher; map-as-card; device-checked |
-| `online` | VERIFIED | `driver/online.md` | full-bleed canvas; peek has **no** CTA |
-| availability toggle | READY | — | production has no separate state; folded into the two above |
+| A | home · search · destination | **CODEX — REVIEW PENDING** | `rider/home.md` `rider/search.md` `rider/destination.md` |
+| B | ride options · upsell · confirm pickup | **READY** | `rider/ride-options.md` `rider/upsell.md` `rider/confirm-pickup.md` |
+| C | request · matching · assigned | CAPTURING — `matching` observed, `assigned` not | `reference/web/rider/matching.png` |
+| D | arrival · PIN · in-ride | BLOCKED — needs a dispatched driver | — |
+| E | complete · rating · tip · receipt | BLOCKED — needs a completed trip | — |
 
-Remaining gaps, both **DATA/RENDERER**, neither blocking:
-- production's map card is a dark H3 hexagon demand grid; ours is the light graticule placeholder
-- production has floating shield / preferences / `$0.00 ›` earnings pill, plus a 4-tab bottom bar
-  (`ShellIntent` territory, deliberately deferred)
+Dispatch file: `tasks/rider-cluster-b.md`
 
-## Driver — Cluster B · offer / decline / accept
+## DRIVER
 
-| State | Status | Packet | Notes |
+| cluster | states | status | packets |
 |---|---|---|---|
-| `offer` | READY FOR IOS | — | renders as `interrupt` + `sheet` over suspended duty; needs a web capture |
-| decline | VERIFIED | — | `return` restores the held surface exactly |
-| accept | VERIFIED | — | |
+| A | offline · online · duty posture | **DONE** (device-verified; gaps listed in packets) | `driver/offline.md` `driver/online.md` `driver/duty-posture.md` |
+| B | offer · decline · accept · into accepted work | **READY** | `driver/offer.md` |
+| C | en route · arrived · PIN/start | BLOCKED — needs an accepted job | — |
+| D | active trip · minimize/restore · complete | BLOCKED | — |
+| E | earnings / result | BLOCKED | — |
 
-## Driver — Clusters C–E
-
-`en route` · `arrived` · `PIN/start` · `active trip` · `minimize/restore` · `complete` ·
-`earnings` — all **BLOCKED on capture**. Reaching them in production web needs a real dispatch,
-which needs a rider requesting in a second session. Native versions exist but are unverified
-against production.
-
-## Rider — Clusters A–E
-
-All states have a written reference in `docs/specs/rider-ride-production-reference.md` (12 states,
-exact type/spacing values with `file:line`), but **no screenshots yet** — production web is
-reachable signed-out at `/`, so these are capturable.
-
-| Cluster | States | Status |
-|---|---|---|
-| A | home · search · destination · configure | READY (configure out of scope — see spec §9) |
-| B | ride options · quote · confirm pickup | READY |
-| C | request · interstitial · matching · assigned | READY |
-| D | arrival · PIN · in ride · minimize/restore | BLOCKED on capture |
-| E | complete · rating · tip · receipt | BLOCKED on capture |
+Dispatch file: `tasks/driver-cluster-b.md`
 
 ---
 
-## Session log
+## SHARED INFRASTRUCTURE
 
-**2026-09-02** — adopted the lead/orchestrator operating model. Built the parity gallery
-(`/parity` + `?step=` deep links, reusing `machine.jump()` rather than a second renderer path).
-Wrote the first two packets from already-captured production references. Watchman verified.
-iOS validated: deep link to `rider?step=assigned` and the gallery itself. Static only for the
-gallery gutter fix — a cosmetic change does not earn a device pass.
+- worktree baseline: **WAITING FOR RIDER A REVIEW**
+- Rider worktree (`../limecab-codex-rider`): NOT CREATED
+- Driver worktree (`../limecab-codex-driver`): NOT CREATED
+- Watchman: VERIFIED
+- parity gallery: VERIFIED
+- docs checkpoint commit: `5b35b1e` on `native/parity`
+- production web: `localhost:3100`, signed in as (424) 242-4242, driver session online
 
-Tests run: `@lime/ui` typecheck + contract (34 files / 6 adapter exports), interaction-system
-typecheck + 64 tests, app typecheck. iOS: yes, one batched pass.
+## CAPTURE NOTES
 
-## Next READY item
+- **Geocoding is unconfigured** — typing an address returns no result rows. The whole rider
+  flow is still reachable via `Set location with pin` → `Set destination`, which lands on the
+  identical states with a `Pinned location` label. Use that path.
+- **Mapbox is live** and the production map ground is **dark**. Native's light graticule is a
+  standing gap in every map-bearing packet.
+- **Driver offers could not be triggered** from a rider request on this machine — the driver
+  stayed idle through a full rider `matching`. Everything downstream of the offer (Driver C–E,
+  Rider D–E) is blocked on that. Unblocking it needs a seeded trip near the driver rather than
+  more Playwright driving.
 
-**Rider Cluster A** — capture `home`, `search` and `destination` from production web at 390px,
-write the three packets, then implement as one cluster and take a single batched iOS pass.
+## OPEN ARCHITECTURAL QUESTIONS
 
-## Tooling state
-
-- **Watchman installed and verified** — package edits hot-reload; no Metro restart ritual.
-  `--clear` only on evidence of stale resolution.
-- **Parity gallery**: `/parity` in the native app, or deep-link `lime://rider?step=assigned`.
-  Never replay a flow to reach a state.
-- **Simulator is owned by the lead process only.** Subagents deliver statically validated work.
-- Production web: `npx next dev -p 3100`. Sign in with any phone; the dev build prints the OTP
-  on screen. `/driver` needs a driver row — register once per fresh database.
-- `pkill -f "expo start"` does **not** reliably kill Metro. Use `lsof -nP -iTCP:8099 -sTCP:LISTEN`
-  then `kill -9`.
+None blocking. The upsell interrupt discovered on 2026-09-01 is expressible with the existing
+contract (`suspended` primary + `interrupt` surface); architecture stays frozen.

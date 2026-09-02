@@ -76,7 +76,14 @@ export function ServiceStatusPanel({
           <ServiceMilestones milestones={milestones} index={milestoneIndex ?? 0} />
         </div>
       ) : null}
-      {provider ? <ProviderCard {...provider} /> : null}
+      {provider ? (
+        <ProviderCard
+          name={provider.name}
+          detail={provider.vehicle}
+          badge={provider.plate}
+          meta={provider.rating ? `${provider.rating}★` : undefined}
+        />
+      ) : null}
     </div>
   );
 }

@@ -72,6 +72,21 @@ export function toScreen(
   };
 }
 
+/** Screen point back to a coordinate — the inverse of `toScreen`, for taps on the canvas. */
+export function fromScreen(
+  point: ScreenPoint, view: Viewport, insets: EdgeInsets, env: PresentationEnvironment,
+): { latitude: number; longitude: number } {
+  const scale = TILE * Math.pow(2, view.zoom);
+  const c = project(view.centerLat, view.centerLng);
+  const rect = visibleMapRect(insets, env);
+  const x = c.x + (point.x - rect.x - rect.width / 2) / scale;
+  const y = c.y + (point.y - rect.y - rect.height / 2) / scale;
+  return {
+    longitude: x * 360 - 180,
+    latitude: (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI,
+  };
+}
+
 /** Resolve camera intent to a viewport. `preserve` keeps the previous frame. */
 export function resolveCamera(
   scene: MapSceneState,

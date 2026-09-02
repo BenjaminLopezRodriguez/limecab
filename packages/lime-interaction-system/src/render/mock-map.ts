@@ -3,7 +3,7 @@ import type { PresentationEnvironment } from "../policy/environment.ts";
 import type { MapRenderer } from "./map-renderer.ts";
 import { resolveCamera, toScreen } from "./camera.ts";
 import { visibleMapRect } from "../policy/occlusion.ts";
-import { color } from "../tokens/color.ts";
+import { color } from "../tokens/index.ts";
 
 /**
  * Offline map renderer. Emits an SVG string — no React, no DOM, no Mapbox token, no network.

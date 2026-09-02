@@ -70,7 +70,7 @@ export const Status: StoryObj = {
     <Sheet>
       <LiveSheetHeader eyebrow="Driver assigned" headline="Arriving in 4 min"
         supporting="Silver Prius · 2 stops" />
-      <ProviderCard name="Rosa Alvarez" vehicle="Silver Toyota Prius" plate="8KJT402" rating="4.9" />
+      <ProviderCard name="Rosa Alvarez" detail="Silver Toyota Prius" badge="8KJT402" meta="4.9★" />
     </Sheet>
   ),
 };

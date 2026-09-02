@@ -94,8 +94,21 @@ export const COMPLETION = {
 
 export const PAYMENT = { label: "Visa", detail: "•••• 4242" };
 
-export const PICKUP_SPOTS = [
-  { id: "curb", label: "Curbside", detail: "Ontario St & 4th" },
-  { id: "lot", label: "Parking lot", detail: "Behind the station" },
-  { id: "door", label: "Main entrance", detail: "Use side door" },
+export type PickupSpot = {
+  id: string;
+  label: string;
+  detail?: string;
+  latitude: number;
+  longitude: number;
+};
+
+/**
+ * Curb options for one address. Production calls these pickup candidates and derives them from
+ * the place; here they are deterministic, because the interaction being reproduced is choosing
+ * between them and revising the address — not how a server ranks them.
+ */
+export const PICKUP_SPOTS: PickupSpot[] = [
+  { id: "curb", label: "Curbside", detail: "Ontario St & 4th", latitude: 34.0605, longitude: -117.6005 },
+  { id: "lot", label: "Parking lot", detail: "Behind the station", latitude: 34.0612, longitude: -117.5992 },
+  { id: "door", label: "Main entrance", detail: "Use side door", latitude: 34.0598, longitude: -117.6018 },
 ];

@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "Lime",
+    "slug": "lime-native",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "lime",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.limecab.native" },
+    "android": { "package": "com.limecab.native" },
+    "web": { "bundler": "metro", "output": "single" },
+    "plugins": ["expo-router"]
+  }
+}

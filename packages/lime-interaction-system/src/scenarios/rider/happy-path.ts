@@ -1,5 +1,5 @@
 import { sceneId, surfaceId } from "../../core/index.ts";
-import type { MapPoint } from "../../core/map.ts";
+import type { MapMode, MapPoint } from "../../core/map.ts";
 import type { SurfaceLayout } from "../../core/surface.ts";
 import type { ScenarioDefinition } from "../../harness/flow-machine.ts";
 
@@ -16,7 +16,8 @@ const sheet = (): SurfaceLayout => ({
   [PRIMARY]: { emphasis: "primary", presentation: "sheet", interaction: "active" },
 });
 
-export type RiderStep = "home" | "rideSelect" | "quote" | "matching" | "assigned" | "complete";
+export type RiderStep =
+  | "home" | "rideSelect" | "confirmPickup" | "quote" | "matching" | "assigned" | "complete";
 
 export interface RiderSceneData {
   eyebrow?: string;
@@ -28,6 +29,8 @@ export interface RiderSceneData {
 export const riderCopy: Record<RiderStep, RiderSceneData> = {
   home: { headline: "Where to?", supporting: "Ontario, CA" },
   rideSelect: { headline: "Choose a ride", supporting: "38 mi · 52 min", primaryAction: "Request Comfort" },
+  /** Pricing already happened on ride select; this scene only answers where the car stops. */
+  confirmPickup: { headline: "Confirm pickup", supporting: "Ontario, CA", primaryAction: "Confirm pickup" },
   quote: { headline: "Your ride", supporting: "Confirm pickup", primaryAction: "Confirm pickup" },
   matching: { eyebrow: "Finding a driver", headline: "Matching your ride" },
   assigned: { eyebrow: "Driver assigned", headline: "Arriving in 4 min", supporting: "Rosa · Silver Prius", primaryAction: "Contact driver" },
@@ -38,7 +41,7 @@ const step = (
   id: RiderStep,
   surfaces: SurfaceLayout,
   points: MapPoint[],
-  mode: "home" | "route_preview" | "active_route",
+  mode: MapMode,
   announcement?: string,
 ) => ({
   frame: {
@@ -46,7 +49,14 @@ const step = (
       id: sceneId(`rider.${id}`),
       surfaces,
       map: { mode, points, route: points.length >= 2 ? { originId: "o", destinationId: "d" } : undefined,
-        camera: mode === "active_route" ? { intent: "follow" as const } : undefined },
+        // Choosing a curb is a question about one point, so the camera goes to it rather than
+        // fitting the whole route — at route zoom, moving between spots 100m apart is invisible.
+        camera:
+          mode === "active_route"
+            ? { intent: "follow" as const }
+            : mode === "select_location"
+              ? { intent: "center" as const }
+              : undefined },
       metadata: { product: "rider", state: id },
     },
   },
@@ -56,11 +66,13 @@ const step = (
 export const riderHappyPath: ScenarioDefinition<RiderStep> = {
   id: "rider-happy-path",
   initial: "home",
-  order: ["home", "rideSelect", "quote", "matching", "assigned", "complete"],
+  order: ["home", "rideSelect", "confirmPickup", "quote", "matching", "assigned", "complete"],
   live: ["matching", "assigned"],
   steps: {
     home: step("home", peek(), [ONT], "home"),
     rideSelect: { ...step("rideSelect", sheet(), [ONT, LA], "route_preview"), intent: "progress" as const },
+    /** The map is the subject here: the sheet names the curb, the canvas chooses it. */
+    confirmPickup: { ...step("confirmPickup", sheet(), [ONT, LA], "select_location"), intent: "progress" as const },
     quote: { ...step("quote", sheet(), [ONT, LA], "route_preview"), intent: "progress" as const },
     matching: step("matching", sheet(), [ONT, LA], "active_route", "Matching your ride."),
     assigned: step("assigned", sheet(), [ONT, LA, CAR], "active_route", "Driver assigned. Arriving in 4 minutes."),

@@ -15,7 +15,14 @@ export type SurfaceInteraction = "active" | "passive" | "inert";
  * "sheet" and "compact-interrupt" especially may render very differently natively.
  */
 export type SurfacePresentation =
-  | "peek" | "sheet" | "expanded" | "overlay" | "fullscreen" | "compact-interrupt";
+  | "peek" | "sheet" | "expanded" | "overlay" | "fullscreen" | "compact-interrupt"
+  /**
+   * The surface *is* the page, with the canvas reduced to a card inside it.
+   * Production's driver home: "the driver is reading a document with a live map card
+   * in it, so `primary` is the page itself" (driver-surfaces.ts). Distinct from
+   * `fullscreen`, which covers a canvas that is still conceptually behind it.
+   */
+  | "launcher";
 
 /** Branded — stops arbitrary string keys becoming a horizontal god-object. */
 export type SurfaceId = string & { readonly __surfaceId: unique symbol };
