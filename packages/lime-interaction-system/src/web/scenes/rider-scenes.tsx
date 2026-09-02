@@ -58,7 +58,9 @@ export function RiderRideSelectScene({
   onOpenPayment?: () => void;
 }) {
   const selected = tiers.find((t) => t.id === selectedId);
-  const ready = Boolean(selected);
+  const confirmLabel = selected
+    ? `Confirm ${selected.title} · ${formatFare(selected.fareCents)}`
+    : undefined;
   return (
     <div style={{ display: "grid", gap: spacing.lg }}>
       <h2 style={headline}>Choose a ride</h2>
@@ -70,7 +72,7 @@ export function RiderRideSelectScene({
             onSelect={() => onSelect?.(row.id)} />
         ))}
       </ChoiceList>
-      {ready ? (
+      {confirmLabel ? (
         <>
           <button type="button" onClick={onOpenPayment} aria-label={`Payment: ${payment.detail}. Change`}
             style={{ display: "flex", alignItems: "center", gap: spacing.md, border: "none",
@@ -84,7 +86,7 @@ export function RiderRideSelectScene({
             </span>
             <span style={t(typography.metadata)}>Change</span>
           </button>
-          <PrimaryAction label={`Confirm ${selected.title} · ${formatFare(selected.fareCents)}`} onPress={onConfirm} />
+          <PrimaryAction label={confirmLabel} onPress={onConfirm} />
         </>
       ) : null}
     </div>
