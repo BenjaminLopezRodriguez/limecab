@@ -1,0 +1,8 @@
+{
+  "name": "@lime/expo-plugins",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@expo/config-plugins": "~57.0.9"
+  }
+}

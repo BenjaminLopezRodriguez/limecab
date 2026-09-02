@@ -10,6 +10,6 @@
     "ios": { "supportsTablet": true, "bundleIdentifier": "cab.lime.rider" },
     "android": { "package": "cab.lime.rider" },
     "web": { "bundler": "metro", "output": "single" },
-    "plugins": ["expo-router", "../../scripts/withIosSceneLifecycle.js"]
+    "plugins": ["expo-router", "../../packages/expo-plugins/withIosSceneLifecycle.js"]
   }
 }

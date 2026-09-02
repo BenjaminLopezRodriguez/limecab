@@ -4,11 +4,15 @@
  */
 const fs = require("fs");
 const path = require("path");
-const {
-  withInfoPlist,
-  withDangerousMod,
-  IOSConfig,
-} = require("@expo/config-plugins");
+
+/** Resolve @expo/config-plugins from the Expo app root (not this package). */
+function getConfigPlugins(config) {
+  const projectRoot =
+    config?.modRequest?.projectRoot ??
+    config?._internal?.projectRoot ??
+    process.cwd();
+  return require(require.resolve("@expo/config-plugins", { paths: [projectRoot] }));
+}
 
 const SCENE_DELEGATE = `internal import Expo
 internal import ExpoModulesCore
@@ -181,13 +185,31 @@ class AppDelegate: ExpoAppDelegate, ExpoReactNativeFactoryProvider {
 }
 
 class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
+  private let virtualMetroEntry = ".expo/.virtual-metro-entry"
+
   override func sourceURL(for bridge: RCTBridge) -> URL? {
     bridge.bundleURL ?? bundleURL()
   }
 
   override func bundleURL() -> URL? {
 #if DEBUG
-    return RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: ".expo/.virtual-metro-entry")
+    // Use ip.txt from the Xcode build instead of RCTBundleURLProvider's
+    // packager reachability probe, which returns nil on physical devices when
+    // Metro is up but the probe times out or the baked IP is stale.
+    if let ipPath = Bundle.main.path(forResource: "ip", ofType: "txt"),
+       let ip = try? String(contentsOfFile: ipPath, encoding: .utf8)?
+         .trimmingCharacters(in: .whitespacesAndNewlines),
+       !ip.isEmpty {
+      let host = ip.contains(":") ? ip : "\\(ip):8081"
+      return RCTBundleURLProvider.jsBundleURL(
+        forBundleRoot: virtualMetroEntry,
+        packagerHost: host,
+        enableDev: true,
+        enableMinification: false,
+        inlineSourceMap: false
+      )
+    }
+    return RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: virtualMetroEntry)
 #else
     return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
 #endif
@@ -195,7 +217,65 @@ class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
 }
 `;
 
-function withSceneInfoPlist(config) {
+const METRO_IP_HOOK = `# Limecab: write Metro host IP for physical device debug builds.
+if [[ -f "$PODS_ROOT/../scripts/write-metro-ip.sh" ]]; then
+  source "$PODS_ROOT/../scripts/write-metro-ip.sh"
+  export SKIP_BUNDLING_METRO_IP=1
+fi
+
+`;
+
+const XCODE_ENV_METRO_NOTE = `
+# Physical device Metro host (optional — override in .xcode.env.local):
+# export REACT_NATIVE_PACKAGER_HOSTNAME=$(../../scripts/get-metro-host.sh)
+# See scripts/ios-xcode.env.local.example
+`;
+
+function withMetroDeviceSupport(config, { withDangerousMod, IOSConfig }) {
+  return withDangerousMod(config, [
+    "ios",
+    async (config) => {
+      const projectRoot = config.modRequest.projectRoot;
+      const repoRoot = path.resolve(projectRoot, "../..");
+      const iosRoot = path.join(projectRoot, "ios");
+      const iosScriptsDir = path.join(iosRoot, "scripts");
+
+      fs.mkdirSync(iosScriptsDir, { recursive: true });
+      for (const script of ["get-metro-host.sh", "write-metro-ip.sh"]) {
+        fs.copyFileSync(
+          path.join(repoRoot, "scripts", script),
+          path.join(iosScriptsDir, script),
+        );
+        fs.chmodSync(path.join(iosScriptsDir, script), 0o755);
+      }
+
+      const xcodeEnvPath = path.join(iosRoot, ".xcode.env");
+      if (fs.existsSync(xcodeEnvPath)) {
+        const current = fs.readFileSync(xcodeEnvPath, "utf8");
+        if (!current.includes("REACT_NATIVE_PACKAGER_HOSTNAME")) {
+          fs.appendFileSync(xcodeEnvPath, XCODE_ENV_METRO_NOTE);
+        }
+      }
+
+      const pbxprojPath = IOSConfig.Paths.getPBXProjectPath(projectRoot);
+      let pbxproj = fs.readFileSync(pbxprojPath, "utf8");
+      const hookMarker = "write-metro-ip.sh";
+      if (!pbxproj.includes(hookMarker)) {
+        pbxproj = pbxproj.replace(
+          'if [[ -f "$PODS_ROOT/../.xcode.env.local" ]]; then\\n  source "$PODS_ROOT/../.xcode.env.local"\\nfi\\n\\n# The project root',
+          'if [[ -f "$PODS_ROOT/../.xcode.env.local" ]]; then\\n  source "$PODS_ROOT/../.xcode.env.local"\\nfi\\n\\n' +
+            METRO_IP_HOOK.replace(/\n/g, "\\n") +
+            "# The project root",
+        );
+        fs.writeFileSync(pbxprojPath, pbxproj);
+      }
+
+      return config;
+    },
+  ]);
+}
+
+function withSceneInfoPlist(config, { withInfoPlist }) {
   return withInfoPlist(config, (config) => {
     config.modResults.UIApplicationSceneManifest = {
       UIApplicationSupportsMultipleScenes: false,
@@ -212,7 +292,7 @@ function withSceneInfoPlist(config) {
   });
 }
 
-function withSceneNativeFiles(config) {
+function withSceneNativeFiles(config, { withDangerousMod, IOSConfig }) {
   return withDangerousMod(config, [
     "ios",
     async (config) => {
@@ -242,8 +322,10 @@ function withSceneNativeFiles(config) {
 }
 
 function withIosSceneLifecycle(config) {
-  config = withSceneInfoPlist(config);
-  config = withSceneNativeFiles(config);
+  const cp = getConfigPlugins(config);
+  config = withSceneInfoPlist(config, cp);
+  config = withSceneNativeFiles(config, cp);
+  config = withMetroDeviceSupport(config, cp);
   return config;
 }
 
