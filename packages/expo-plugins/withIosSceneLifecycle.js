@@ -197,9 +197,9 @@ class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
     // packager reachability probe, which returns nil on physical devices when
     // Metro is up but the probe times out or the baked IP is stale.
     if let ipPath = Bundle.main.path(forResource: "ip", ofType: "txt"),
-       let ip = try? String(contentsOfFile: ipPath, encoding: .utf8)?
-         .trimmingCharacters(in: .whitespacesAndNewlines),
-       !ip.isEmpty {
+       let contents = try? String(contentsOfFile: ipPath, encoding: .utf8) {
+      let ip = contents.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !ip.isEmpty {
       let host = ip.contains(":") ? ip : "\\(ip):8081"
       return RCTBundleURLProvider.jsBundleURL(
         forBundleRoot: virtualMetroEntry,
@@ -208,6 +208,7 @@ class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
         enableMinification: false,
         inlineSourceMap: false
       )
+      }
     }
     return RCTBundleURLProvider.sharedSettings().jsBundleURL(forBundleRoot: virtualMetroEntry)
 #else

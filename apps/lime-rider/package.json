@@ -7,6 +7,7 @@
     "@lime/ui": "file:../../packages/lime-ui",
     "@lime/web-bridge": "file:../../packages/lime-web-bridge",
     "expo": "~57.0.18",
+    "expo-blur": "~57.0.2",
     "expo-constants": "~57.0.16",
     "expo-linking": "~57.0.8",
     "expo-router": "~57.0.17",
@@ -32,6 +33,7 @@
     "setup:device": "bash ../../scripts/setup-ios-device-env.sh",
     "ios": "expo run:ios",
     "ios:device": "bash ../../scripts/setup-ios-device-env.sh && EXPO_PUBLIC_LIME_WEB_BASE_URL=http://$(bash ../../scripts/get-metro-host.sh):3100 expo run:ios --device",
+    "ios:release": "EXPO_PUBLIC_LIME_WEB_BASE_URL=https://lime.cab expo run:ios --device --configuration Release",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit"
   },

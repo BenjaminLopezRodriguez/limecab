@@ -22,6 +22,7 @@ const SINGLETONS = new Set([
   "react-native-safe-area-context",
   "react-native-svg",
   "react-native-webview",
+  "expo-blur",
 ]);
 
 const appModules = path.resolve(projectRoot, "node_modules");
