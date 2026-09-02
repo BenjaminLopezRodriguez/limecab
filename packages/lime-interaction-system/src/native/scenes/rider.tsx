@@ -8,9 +8,7 @@ import {
   LocationTrigger,
   ProgressBar,
   ProviderCard,
-  QuotePanel,
   radius,
-  RouteRail,
   SurfaceSkeleton,
   spacing,
   Switch,
@@ -22,14 +20,13 @@ import type { MapSceneState } from "../../core/map.ts";
 import type { PresentationEnvironment } from "../../policy/environment.ts";
 import {
   PICKUP_SPOTS,
-  RIDER_DESTINATION,
-  RIDER_PICKUP,
-  RIDER_ROUTE,
   RIDE_TIERS,
 } from "../../fixtures/rider.ts";
 import type { RiderStep } from "../../scenarios/rider/happy-path.ts";
 import { riderCopy } from "../../scenarios/rider/happy-path.ts";
 import { NativeMap } from "../NativeMapRenderer.tsx";
+import { Icon } from "../Icon.tsx";
+import type { IconName } from "../icons.ts";
 import { MagnifierGlyph, MicrophoneGlyph } from "./scene-icons.tsx";
 
 /**
@@ -58,7 +55,7 @@ export interface RiderSceneProps {
   onSearchPickup?: () => void;
 }
 
-const RIDER_VERTICALS = ["Ride", "Reserve", "Courier", "Help", "Shop", "Assist", "Freight"] as const;
+const RIDER_VERTICALS = ["Ride", "Reserve", "Courier", "Help", "Shop", "Assist", "Freight", "Spaces", "Station"] as const;
 const noop = () => {};
 
 function RiderHome({
@@ -80,7 +77,7 @@ function RiderHome({
   | "onTravelingChange"
 >) {
   const c = useLimeColors();
-  const mapHeight = env ? Math.min(env.viewport.height * 0.34, 320) : 250;
+  const mapHeight = env ? Math.min(env.viewport.height * 0.3, 280) : 250;
 
   return (
     <View style={{ gap: spacing.lg, paddingTop: spacing.sm, paddingBottom: 92 }}>
@@ -196,7 +193,7 @@ function RiderHome({
           end={
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Book with voice"
+              accessibilityLabel="Book by voice"
               onPress={onPressVoice}
               style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
             >
@@ -215,7 +212,7 @@ function RiderHome({
         </Text>
       </Pressable>
 
-      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 44 }}>
         <Text style={{ ...typeStyle(typography.body), color: c.mutedForeground }}>I'm traveling</Text>
         <Switch checked={traveling} onChange={onTravelingChange} aria-label="I'm traveling" />
       </View>
@@ -258,21 +255,20 @@ export function RiderScene({ data }: { data: RiderSceneProps }) {
     case "rideSelect":
       return (
         <View style={{ gap: spacing.sm }}>
-          <LiveSheetHeader
-            headline={copy.headline}
-            supporting={`${RIDER_ROUTE.miles} mi · ${RIDER_ROUTE.minutes} min`}
-          />
-          <ChoiceList label="Ride class">
+          <LiveSheetHeader headline={copy.headline} />
+          <ChoiceList label="Ride options" role="list">
             {RIDE_TIERS.map((t) => (
               <ChoiceRow
                 key={t.id}
-                glyph={t.glyph}
+                role="button"
+                aria-label={`${t.title}. ${t.description}. ${t.seats} seats. ${t.detail}. ${formatFare(t.fareCents)}`}
+                glyph={<RideTierGlyph kind={t.glyph} selected={tier === t.id} />}
                 title={t.title}
+                titleAffix={<SeatCount count={t.seats} />}
+                badge={t.badge}
                 detail={t.detail}
-                trailing={t.price}
+                trailing={formatFare(t.fareCents)}
                 selected={tier === t.id}
-                disabled={t.disabled}
-                disabledReason={t.disabledReason}
                 onSelect={() => onSelectTier?.(t.id)}
               />
             ))}
@@ -294,7 +290,7 @@ export function RiderScene({ data }: { data: RiderSceneProps }) {
             trailing={
               onSearchPickup ? (
                 <Button size="icon" variant="ghost" aria-label="Search pickup location" onPress={onSearchPickup}>
-                  ⌕
+                  <MagnifierGlyph />
                 </Button>
               ) : undefined
             }
@@ -303,6 +299,7 @@ export function RiderScene({ data }: { data: RiderSceneProps }) {
             {PICKUP_SPOTS.map((spot) => (
               <ChoiceRow
                 key={spot.id}
+                density="small-ring"
                 title={spot.label}
                 detail={spot.detail}
                 selected={pickupSpot === spot.id}
@@ -312,29 +309,6 @@ export function RiderScene({ data }: { data: RiderSceneProps }) {
           </ChoiceList>
         </View>
       );
-
-    case "quote": {
-      const chosen = RIDE_TIERS.find((t) => t.id === tier) ?? RIDE_TIERS[0]!;
-      return (
-        <View style={{ gap: spacing.md }}>
-          <LiveSheetHeader eyebrow="Confirm" headline={copy.headline} supporting={chosen.title} />
-          <RouteRail
-            stops={[
-              { label: RIDER_PICKUP, detail: "Pickup" },
-              { label: RIDER_DESTINATION, detail: "Dropoff" },
-            ]}
-          />
-          <QuotePanel
-            lines={[
-              { label: chosen.title, value: chosen.price },
-              { label: "Booking fee", value: "$2.50" },
-            ]}
-            total={chosen.price}
-            note="Price is fixed for this route."
-          />
-        </View>
-      );
-    }
 
     case "matching":
       return (
@@ -366,3 +340,27 @@ export function RiderScene({ data }: { data: RiderSceneProps }) {
       );
   }
 }
+
+const RIDE_TIER_ICONS: Record<(typeof RIDE_TIERS)[number]["glyph"], IconName> = {
+  car: "Car01",
+  clock: "Clock01",
+  people: "UserMultiple02",
+  sparkle: "Sparkles",
+};
+
+function RideTierGlyph({ kind, selected }: { kind: (typeof RIDE_TIERS)[number]["glyph"]; selected: boolean }) {
+  const c = useLimeColors();
+  return <Icon name={RIDE_TIER_ICONS[kind]} size={22} color={selected ? c.accentForeground : c.foreground} />;
+}
+
+function SeatCount({ count }: { count: number }) {
+  const c = useLimeColors();
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+      <Icon name="UserMultiple02" size={13} color={c.mutedForeground} />
+      <Text style={{ ...typeStyle(typography.metadata), color: c.mutedForeground }}>{count}</Text>
+    </View>
+  );
+}
+
+const formatFare = (cents: number) => `$${(cents / 100).toFixed(2)}`;

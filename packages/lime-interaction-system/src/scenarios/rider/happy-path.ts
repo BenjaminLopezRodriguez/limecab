@@ -5,8 +5,8 @@ import type { ScenarioDefinition } from "../../harness/flow-machine.ts";
 
 const PRIMARY = surfaceId("primary");
 
-const ONT: MapPoint = { id: "o", role: "origin", latitude: 34.06, longitude: -117.6, label: "Ontario, CA" };
-const LA: MapPoint = { id: "d", role: "destination", latitude: 34.05, longitude: -118.25, label: "Downtown LA" };
+const ONT: MapPoint = { id: "o", role: "origin", latitude: 34.06, longitude: -117.6, label: "Current location" };
+const LA: MapPoint = { id: "d", role: "destination", latitude: 34.05, longitude: -118.25, label: "Pinned location" };
 const CAR: MapPoint = { id: "c", role: "subject", latitude: 34.0, longitude: -117.9, label: "Driver" };
 
 const peek = (): SurfaceLayout => ({
@@ -17,7 +17,9 @@ const sheet = (): SurfaceLayout => ({
 });
 
 export type RiderStep =
-  | "home" | "rideSelect" | "confirmPickup" | "quote" | "matching" | "assigned" | "complete";
+  | "home" | "rideSelect" | "confirmPickup" | "matching" | "assigned" | "complete";
+
+export type RiderInterrupt = "rideExtras" | "cancel" | "payment";
 
 export interface RiderSceneData {
   eyebrow?: string;
@@ -28,10 +30,9 @@ export interface RiderSceneData {
 
 export const riderCopy: Record<RiderStep, RiderSceneData> = {
   home: { headline: "Where to?", supporting: "Ontario, CA" },
-  rideSelect: { headline: "Choose a ride", supporting: "38 mi · 52 min", primaryAction: "Request Comfort" },
+  rideSelect: { headline: "Choose a ride" },
   /** Pricing already happened on ride select; this scene only answers where the car stops. */
-  confirmPickup: { headline: "Confirm pickup", supporting: "Ontario, CA", primaryAction: "Confirm pickup" },
-  quote: { headline: "Your ride", supporting: "Confirm pickup", primaryAction: "Confirm pickup" },
+  confirmPickup: { headline: "Confirm pickup", supporting: "Current location", primaryAction: "Confirm pickup" },
   matching: { eyebrow: "Finding a driver", headline: "Matching your ride" },
   assigned: { eyebrow: "Driver assigned", headline: "Arriving in 4 min", supporting: "Rosa · Silver Prius", primaryAction: "Contact driver" },
   complete: { headline: "You arrived", supporting: "$22.90", primaryAction: "Done" },
@@ -66,21 +67,21 @@ const step = (
 export const riderHappyPath: ScenarioDefinition<RiderStep> = {
   id: "rider-happy-path",
   initial: "home",
-  order: ["home", "rideSelect", "confirmPickup", "quote", "matching", "assigned", "complete"],
+  order: ["home", "rideSelect", "confirmPickup", "matching", "assigned", "complete"],
   live: ["matching", "assigned"],
   steps: {
     home: step("home", peek(), [ONT], "home"),
     rideSelect: { ...step("rideSelect", sheet(), [ONT, LA], "route_preview"), intent: "progress" as const },
     /** The map is the subject here: the sheet names the curb, the canvas chooses it. */
     confirmPickup: { ...step("confirmPickup", sheet(), [ONT, LA], "select_location"), intent: "progress" as const },
-    quote: { ...step("quote", sheet(), [ONT, LA], "route_preview"), intent: "progress" as const },
     matching: step("matching", sheet(), [ONT, LA], "active_route", "Matching your ride."),
     assigned: step("assigned", sheet(), [ONT, LA, CAR], "active_route", "Driver assigned. Arriving in 4 minutes."),
     complete: step("complete", sheet(), [ONT, LA], "route_preview", "Trip complete."),
   },
 };
 
-export const riderInterrupts = [
+export const riderInterrupts: readonly { id: RiderInterrupt; label: string }[] = [
+  { id: "rideExtras", label: "Add something for the ride?" },
   { id: "cancel", label: "Cancel ride?" },
   { id: "payment", label: "Change payment" },
 ] as const;

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { BlurView } from "expo-blur";
 import { AccessibilityInfo, StyleSheet, View } from "react-native";
 import type { ExperienceFrame } from "../core/frame.ts";
 import type { SurfaceId, SurfaceState } from "../core/surface.ts";
@@ -9,6 +10,7 @@ import { resolveCamera, type Viewport } from "../render/camera.ts";
 import { nativeExtents } from "./extents.ts";
 import { NativeMapSurface } from "./NativeMapSurface.tsx";
 import { NativeSurface, type DragIntent } from "./NativeSurface.tsx";
+import { shouldMountSurface } from "./mount-policy.ts";
 import { chromeOf, renderSurface, type NativeSceneRegistry } from "./registry.tsx";
 import type { SnapDestination } from "./snap.ts";
 
@@ -103,6 +105,8 @@ export function NativeSceneRenderer({
   return (
     <View style={StyleSheet.absoluteFill}>
       {ordered.map(([id, state]) => {
+        if (!shouldMountSurface(state)) return null;
+
         // A canvas surface draws the world the scene is carrying; there is no second map.
         if (chromeOf(registry, id) === "canvas") {
           if (!scene.map) return null;
@@ -120,18 +124,26 @@ export function NativeSceneRenderer({
           );
         }
         return (
-          <NativeSurface
-            key={id}
-            state={state}
-            env={env}
-            intent={transition?.intent}
-            dragIntent={dragIntent[id] ?? "none"}
-            progress={progress[id]}
-            onSnapTo={(destination) => onSnapTo?.(id, destination)}
-            actions={actions[id]}
-          >
-            {renderSurface(registry, id, data[id])}
-          </NativeSurface>
+          <Fragment key={id}>
+            {state.emphasis === "interrupt" ? (
+              <BlurView
+                intensity={28}
+                tint="regular"
+                style={[StyleSheet.absoluteFill, { pointerEvents: "none", zIndex: 25 }]}
+              />
+            ) : null}
+            <NativeSurface
+              state={state}
+              env={env}
+              intent={transition?.intent}
+              dragIntent={dragIntent[id] ?? "none"}
+              progress={progress[id]}
+              onSnapTo={(destination) => onSnapTo?.(id, destination)}
+              actions={actions[id]}
+            >
+              {renderSurface(registry, id, data[id])}
+            </NativeSurface>
+          </Fragment>
         );
       })}
     </View>

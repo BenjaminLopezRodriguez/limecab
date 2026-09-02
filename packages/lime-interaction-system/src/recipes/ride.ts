@@ -61,6 +61,8 @@ export const rideSurfaces = createSurfaceManager({
     expandRide: { intent: "expand", surfaces: recipe.expandTask },
     /** A look away from the task: details, receipt, share. Never a new step. */
     askQuestion: { intent: "interrupt", surfaces: recipe.askQuestion },
+    /** Optional ride extras arrive as a full sheet over a held pickup task. */
+    offerExtras: { intent: "interrupt", surfaces: recipe.offerArriving },
     /** A list plus "add a method" is a prepared environment, not a drawer. */
     openPayment: { intent: "interrupt", surfaces: recipe.interruptFullscreen },
     /** Keyboard plus a thread. */

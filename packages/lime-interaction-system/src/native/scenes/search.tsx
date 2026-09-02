@@ -147,7 +147,7 @@ export function SearchScene({ data }: { data: SearchSceneProps }) {
         <Button
           variant="secondary"
           size="xs"
-          aria-label="Add a stop"
+          aria-label="Add stop"
           onPress={noop}
           style={{ position: "absolute", right: spacing.sm, top: 32, width: 32, paddingHorizontal: 0 }}
         >
@@ -155,7 +155,7 @@ export function SearchScene({ data }: { data: SearchSceneProps }) {
         </Button>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Search with voice"
+          accessibilityLabel="Book by voice"
           onPress={onVoice}
           style={{ position: "absolute", right: spacing.sm, top: 52, width: 32, height: 40, alignItems: "center", justifyContent: "center" }}
         >

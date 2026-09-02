@@ -34,7 +34,8 @@
     "react-native-gesture-handler": "*",
     "react-native-reanimated": "*",
     "react-native-safe-area-context": "*",
-    "react-native-svg": "*"
+    "react-native-svg": "*",
+    "expo-blur": "*"
   },
   "peerDependenciesMeta": {
     "react-native": {
@@ -49,6 +50,9 @@
     "react-native-safe-area-context": {
       "optional": true
     },
+    "expo-blur": {
+      "optional": true
+    },
     "react-native-svg": {
       "optional": true
     }
@@ -58,6 +62,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
     "@vitejs/plugin-react": "^6.1.1",
+    "expo-blur": "~57.0.2",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-native": "0.86.3",

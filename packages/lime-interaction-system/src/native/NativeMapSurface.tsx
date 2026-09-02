@@ -84,10 +84,11 @@ export function NativeMapSurface({
           env={env}
           previous={previous}
           debugOcclusion={debugOcclusion}
+          showMode={false}
         />
         {/* The reticle promises that a tap places a point, so it appears only where one does.
             A subject map that merely accepts panning must not claim otherwise. */}
-        {active && onPick ? <Reticle env={env} insets={insets} /> : null}
+        {active && onPick && scene.mode !== "select_location" ? <Reticle env={env} insets={insets} /> : null}
       </View>
     </GestureDetector>
   );

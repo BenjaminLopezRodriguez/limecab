@@ -15,7 +15,8 @@ export function MapRouteBar({
   onEdit,
 }: {
   origin: string;
-  destination: string;
+  /** Omit for a single centred location label. */
+  destination?: string;
   onBack?: () => void;
   onEdit?: () => void;
 }) {
@@ -50,28 +51,48 @@ export function MapRouteBar({
             borderRadius: radius.pill,
           }}
         >
-          <Text style={{ fontSize: 18, color: c.foreground }}>←</Text>
+          <Text style={{ fontSize: 22, color: c.foreground }}>‹</Text>
         </Pressable>
       ) : null}
       <Pressable
         role="button"
-        aria-label={`${origin} to ${destination}`}
+        aria-label={destination ? `${origin} to ${destination}` : origin}
         disabled={!onEdit}
         onPress={onEdit}
-        style={{ flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: spacing.sm }}
+        style={{
+          flex: 1,
+          minWidth: 0,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: destination ? "flex-start" : "center",
+          gap: spacing.sm,
+          paddingRight: destination || !onBack ? 0 : bar,
+        }}
       >
-        <Text numberOfLines={1} style={{ ...typeStyle(typography.metadata), color: c.mutedForeground, flexShrink: 1 }}>
-          {origin}
-        </Text>
-        <Text aria-hidden style={{ color: c.mutedForeground, flexShrink: 0 }}>
-          →
-        </Text>
         <Text
           numberOfLines={1}
-          style={{ ...typeStyle(typography.metadata), fontWeight: "600", color: c.foreground, flexShrink: 1 }}
+          style={{
+            ...typeStyle(typography.metadata),
+            color: destination ? c.mutedForeground : c.foreground,
+            fontWeight: destination ? "500" : "600",
+            flexShrink: 1,
+          }}
         >
-          {destination}
+          {origin}
         </Text>
+        {destination ? (
+          <>
+            <Text aria-hidden style={{ color: c.mutedForeground, flexShrink: 0 }}>
+              ›
+            </Text>
+            <Text
+              numberOfLines={1}
+              style={{ ...typeStyle(typography.metadata), fontWeight: "600", color: c.foreground, flexShrink: 1 }}
+            >
+              {destination}
+            </Text>
+          </>
+        ) : null}
       </Pressable>
     </View>
   );

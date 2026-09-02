@@ -58,16 +58,16 @@ export function RiderRideSelectScene({
   onOpenPayment?: () => void;
 }) {
   const selected = tiers.find((t) => t.id === selectedId);
-  const ready = selected && !selected.disabled;
+  const ready = Boolean(selected);
   return (
     <div style={{ display: "grid", gap: spacing.lg }}>
       <h2 style={headline}>Choose a ride</h2>
-      <ChoiceList label="Ride class">
+      <ChoiceList label="Ride options" role="list">
         {tiers.map((row) => (
-          <ChoiceRow key={row.id} glyph={row.glyph} title={row.title} detail={row.detail}
-            trailing={row.disabled ? undefined : row.price}
-            selected={selectedId === row.id} disabled={row.disabled}
-            disabledReason={row.disabledReason} onSelect={() => onSelect?.(row.id)} />
+          <ChoiceRow key={row.id} role="button" glyph={rowGlyph[row.glyph]} title={row.title}
+            titleAffix={`${row.seats} seats`} badge={row.badge} detail={row.detail}
+            trailing={formatFare(row.fareCents)} selected={selectedId === row.id}
+            onSelect={() => onSelect?.(row.id)} />
         ))}
       </ChoiceList>
       {ready ? (
@@ -84,12 +84,21 @@ export function RiderRideSelectScene({
             </span>
             <span style={t(typography.metadata)}>Change</span>
           </button>
-          <PrimaryAction label={`Request ${selected.title}`} onPress={onConfirm} />
+          <PrimaryAction label={`Confirm ${selected.title} · ${formatFare(selected.fareCents)}`} onPress={onConfirm} />
         </>
       ) : null}
     </div>
   );
 }
+
+const rowGlyph: Record<RideTier["glyph"], string> = {
+  car: "⌁",
+  clock: "◷",
+  people: "♙",
+  sparkle: "✧",
+};
+
+const formatFare = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export function RiderQuoteScene({
   pickup, destination, route, lines, total, payment, onConfirm,

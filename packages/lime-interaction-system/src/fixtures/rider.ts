@@ -3,12 +3,18 @@
 export type RideTier = {
   id: string;
   title: string;
+  description: string;
+  seats: number;
   detail: string;
-  price: string;
-  glyph: string;
-  badge?: string;
-  disabled?: boolean;
-  disabledReason?: string;
+  fareCents: number;
+  glyph: "car" | "clock" | "people" | "sparkle";
+  badge?: "Fastest" | "Cheapest";
+};
+
+export type RideAddOn = {
+  id: string;
+  label: string;
+  priceCents: number;
 };
 
 export type SavedPlace = {
@@ -27,16 +33,22 @@ export type ServiceTile = {
   meta?: { value?: string; note?: string };
 };
 
-export const RIDER_PICKUP = "Ontario, CA";
-export const RIDER_DESTINATION = "Downtown Los Angeles";
+export const RIDER_PICKUP = "Current location";
+export const RIDER_DESTINATION = "Pinned location";
 export const RIDER_ROUTE = { miles: 38, minutes: 52 };
 
 export const RIDE_TIERS: RideTier[] = [
-  { id: "lime", title: "LimeGo", detail: "3 min away", price: "$18.40", glyph: "🚗", badge: "Cheapest" },
-  { id: "comfort", title: "Comfort", detail: "5 min away", price: "$24.10", glyph: "🚙" },
-  { id: "xl", title: "XL", detail: "Six seats · 8 min", price: "$31.75", glyph: "🚐", badge: "Fastest" },
-  { id: "pickup", title: "Pickup", detail: "Unavailable in this area", price: "—", glyph: "🛻",
-    disabled: true, disabledReason: "Not available here" },
+  { id: "lime", title: "Lime", description: "Everyday ride", seats: 4, detail: "4 min away · 9:09 PM dropoff", fareCents: 501, glyph: "car", badge: "Fastest" },
+  { id: "wait-save", title: "Wait & Save", description: "Wait longer and save", seats: 4, detail: "Wait up to 12 min · 9:17 PM dropoff", fareCents: 470, glyph: "clock" },
+  { id: "xl", title: "Lime XL", description: "Room for more people", seats: 6, detail: "7 min away · 9:12 PM dropoff", fareCents: 607, glyph: "people" },
+  { id: "comfort", title: "Lime Comfort", description: "Newer cars, quiet ride", seats: 4, detail: "6 min away · 9:11 PM dropoff", fareCents: 571, glyph: "sparkle" },
+  { id: "pool", title: "Lime Pool", description: "Share the ride", seats: 2, detail: "9 min away · 9:14 PM dropoff", fareCents: 431, glyph: "people", badge: "Cheapest" },
+];
+
+export const RIDE_ADD_ONS: RideAddOn[] = [
+  { id: "coffee", label: "Coffee", priceCents: 500 },
+  { id: "tea", label: "Tea", priceCents: 500 },
+  { id: "sparkling-water", label: "Sparkling water", priceCents: 500 },
 ];
 
 export const SAVED_PLACES: SavedPlace[] = [
@@ -92,7 +104,7 @@ export const COMPLETION = {
   ],
 };
 
-export const PAYMENT = { label: "Visa", detail: "•••• 4242" };
+export const PAYMENT = { label: "Visa", detail: "···· 4412" };
 
 export type PickupSpot = {
   id: string;
@@ -108,7 +120,5 @@ export type PickupSpot = {
  * between them and revising the address — not how a server ranks them.
  */
 export const PICKUP_SPOTS: PickupSpot[] = [
-  { id: "curb", label: "Curbside", detail: "Ontario St & 4th", latitude: 34.0605, longitude: -117.6005 },
-  { id: "lot", label: "Parking lot", detail: "Behind the station", latitude: 34.0612, longitude: -117.5992 },
-  { id: "door", label: "Main entrance", detail: "Use side door", latitude: 34.0598, longitude: -117.6018 },
+  { id: "front", label: "Front entrance", detail: "Current location", latitude: 34.06, longitude: -117.6 },
 ];

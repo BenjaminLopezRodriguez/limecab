@@ -1,9 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
+  Button,
   boxShadow,
   elevation,
+  FieldList,
+  MapRouteBar,
   PrimaryAction,
   radius,
   SecondaryAction,
@@ -28,8 +31,14 @@ import {
 } from "@lime/interaction-system/native";
 import { riderCopy, riderHappyPath, type RiderStep } from "@lime/interaction-system/scenarios";
 import { launcher, rideSurfaces } from "@lime/interaction-system/recipes";
-import { fixturePlaceSearch, PICKUP_SPOTS, RIDE_TIERS } from "@lime/interaction-system/fixtures";
-import { MAP, PRIMARY, SECONDARY, useSurfaceRuntime } from "../src/useSurfaceRuntime";
+import {
+  fixturePlaceSearch,
+  PAYMENT,
+  PICKUP_SPOTS,
+  RIDE_ADD_ONS,
+  RIDE_TIERS,
+} from "@lime/interaction-system/fixtures";
+import { INTERRUPT, MAP, PRIMARY, SECONDARY, useSurfaceRuntime } from "../src/useSurfaceRuntime";
 import { DevBar } from "../src/DevBar";
 
 const riderSurfaces = createSurfaceManager({
@@ -42,6 +51,10 @@ const riderSurfaces = createSurfaceManager({
   },
 });
 
+/** Dev scaffolding is opt-in so parity screenshots stay clean. */
+const showDevControls =
+  process.env.NODE_ENV !== "production" && process.env.EXPO_PUBLIC_DEV_CONTROLS === "true";
+
 type RiderAction = keyof (typeof riderSurfaces)["actions"];
 
 
@@ -51,6 +64,7 @@ type RiderAction = keyof (typeof riderSurfaces)["actions"];
  */
 export default function Rider() {
   const env = useNativeEnvironment();
+  const c = useLimeColors();
   const router = useRouter();
   // `?step=` jumps directly to a canonical state — parity work should never replay a flow.
   const { step: jumpTo } = useLocalSearchParams<{ step?: string }>();
@@ -60,9 +74,10 @@ export default function Rider() {
     riderRecipe,
     jumpTo,
   );
-  const [tier, setTier] = useState("lime");
+  const [tier, setTier] = useState<string>();
   const [pickupSpot, setPickupSpot] = useState(PICKUP_SPOTS[0]!.id);
   const [traveling, setTraveling] = useState(false);
+  const [pendingUpsell, setPendingUpsell] = useState(false);
   // Ephemeral: the phase of an async transition. Nothing durable lives here.
   const progress = useSurfaceProgress({ reducedMotion: env.reducedMotion });
 
@@ -99,6 +114,7 @@ export default function Rider() {
         // Search is a peer surface, not a swap of the sheet's contents — which is why it can
         // be dismissed back to exactly the task it left.
         [SECONDARY, SearchScene as never],
+        [INTERRUPT, RiderUpsell as never],
       ]),
     [],
   );
@@ -109,6 +125,20 @@ export default function Rider() {
   };
 
   const restoreStepSurface = () => perform(riderRecipe(step, snapshot.minimized));
+  const dismissUpsell = () => {
+    perform("resume");
+    act((m) => m.closeInterrupt());
+  };
+
+  // The curb surface commits first; the interrupt opens only after that surface exists to be
+  // suspended. This also keeps the runtime's canonical step recipe from overwriting the
+  // interrupt layout during the rideSelect -> confirmPickup state change.
+  useEffect(() => {
+    if (!pendingUpsell || step !== "confirmPickup") return;
+    setPendingUpsell(false);
+    act((m) => m.openInterrupt("rideExtras"));
+    perform("offerExtras");
+  }, [act, pendingUpsell, perform, step]);
 
   const onBack = useInteractionBack({
     resolver: (ctx) =>
@@ -127,7 +157,7 @@ export default function Rider() {
       // Dismissing the search surface is not a step backwards: the rider is still on the same
       // step, they simply stopped asking the question.
       dismissTransient: restoreStepSurface,
-      returnInterrupt: () => act((m) => m.closeInterrupt()),
+      returnInterrupt: dismissUpsell,
       regressScene: () => act((m) => m.previous()),
       minimizeLiveWork: () => act((m) => m.minimize()),
       // Only this hands control to the navigator. Rider Home resolves to `consume`, so
@@ -139,7 +169,7 @@ export default function Rider() {
   /**
    * The perceived-performance path (spec §14).
    *
-   * The quote leaves immediately and the canvas takes over while dispatch runs — there is no
+   * The pickup sheet leaves immediately and the canvas takes over while dispatch runs — there is no
    * "Requesting…" pinned to a dead screen, and no driver exists until dispatch says so. The
    * step only moves when the choreography says the next content may arrive, and moves back if
    * dispatch fails, with the rider's selections untouched.
@@ -148,13 +178,13 @@ export default function Rider() {
     perform("requestRide");
     void progress
       .run({
-        from: "quote",
+        from: "confirmPickup",
         to: "matching",
         task: dispatchRide,
         onContent: (content) => {
           if (!content) return;
           act((m) => m.jump(content as RiderStep));
-          perform(content === "matching" ? "chooseRide" : "requestFailed");
+          perform(content === "matching" ? "chooseRide" : "confirmPickup");
         },
       })
       // Reversal already happened through `onContent`; the throw is the driver telling the
@@ -162,14 +192,42 @@ export default function Rider() {
       .catch(() => {});
   };
 
+  const chosenTier = RIDE_TIERS.find((candidate) => candidate.id === tier);
   const actions = step === "home" ? null : snapshot.minimized ? (
     <PrimaryAction label="Resume" onPress={() => act((m) => m.restore())} />
+  ) : step === "rideSelect" ? (
+    chosenTier ? (
+      <View style={{ gap: spacing.sm }}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Payment: ${PAYMENT.label} ${PAYMENT.detail}. Change`}
+          style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.md }}
+        >
+          <Icon name="CreditCard" size={17} />
+          <Text style={{ ...typeStyle(typography.body), flex: 1, color: c.foreground }}>
+            {PAYMENT.label} {PAYMENT.detail}
+          </Text>
+          <Text aria-hidden style={{ ...typeStyle(typography.body), color: c.mutedForeground }}>›</Text>
+        </Pressable>
+        <Button
+          label={`Confirm ${chosenTier.title} · ${formatFare(chosenTier.fareCents)}`}
+          variant="default"
+          onPress={() => {
+            setPendingUpsell(true);
+            act((m) => m.next());
+          }}
+          style={{ width: "100%" }}
+        />
+      </View>
+    ) : null
+  ) : step === "confirmPickup" ? (
+    <Button label="Confirm pickup" variant="default" onPress={requestRide} style={{ width: "100%" }} />
   ) : (
     <View style={{ gap: spacing.sm }}>
       {machine.canAdvance() ? (
         <PrimaryAction
           label={primaryLabel(step, tier, copy.primaryAction)}
-          onPress={step === "quote" ? requestRide : () => act((m) => m.next())}
+          onPress={() => act((m) => m.next())}
         />
       ) : (
         <PrimaryAction label="Done" onPress={() => router.back()} />
@@ -183,6 +241,14 @@ export default function Rider() {
       intent={frame.shell}
       bottom={step === "home" && !searching ? <RiderTabs safeBottom={env.safeArea.bottom} /> : undefined}
     >
+      {step === "rideSelect" || step === "confirmPickup" ? (
+        <RiderRouteBar
+          step={step}
+          top={env.safeArea.top}
+          onBack={onBack}
+          onEdit={() => perform("openSearch")}
+        />
+      ) : null}
       <NativeSceneRenderer
         frame={composed}
         env={env}
@@ -211,9 +277,17 @@ export default function Rider() {
             onChooseOnMap: () => perform("chooseOnMap"),
             onVoice: () => perform("openSearch"),
             onSelect: () => {
+              if (step === "confirmPickup") {
+                perform("confirmPickup");
+                return;
+              }
               perform("placeSelected");
               act((m) => m.next());
             },
+          },
+          [INTERRUPT]: {
+            interrupt: snapshot.interrupt,
+            onDismiss: dismissUpsell,
           },
         }}
         actions={{ [PRIMARY]: actions }}
@@ -231,7 +305,9 @@ export default function Rider() {
           setPickupSpot(nearest.id);
         }}
       />
-      <DevBar top={env.safeArea.top} onBack={onBack} />
+      {showDevControls && step !== "rideSelect" && step !== "confirmPickup" ? (
+        <DevBar top={env.safeArea.top} onBack={onBack} />
+      ) : null}
     </NativeShell>
   );
 }
@@ -301,11 +377,78 @@ function RiderTabs({ safeBottom }: { safeBottom: number }) {
   );
 }
 
-function primaryLabel(step: RiderStep, tier: string, fallback?: string): string {
+function primaryLabel(step: RiderStep, tier: string | undefined, fallback?: string): string {
   if (step === "home") return "Set destination";
   if (step === "rideSelect") {
     const chosen = RIDE_TIERS.find((t) => t.id === tier);
-    return chosen ? `Request ${chosen.title}` : "Request ride";
+    return chosen ? `Confirm ${chosen.title} · ${formatFare(chosen.fareCents)}` : "Choose a ride";
   }
   return fallback ?? "Continue";
 }
+
+function RiderUpsell({ data }: { data: { interrupt?: string | null; onDismiss?: () => void } }) {
+  const c = useLimeColors();
+  if (data.interrupt !== "rideExtras") return null;
+
+  return (
+    <View style={{ gap: spacing.lg }}>
+      <View>
+        <Text style={{ ...typeStyle(typography.subhead), color: c.foreground }}>
+          Add something for the ride?
+        </Text>
+        <Text style={{ ...typeStyle(typography.body), marginTop: spacing.xs, color: c.mutedForeground }}>
+          Coffee, tea, or sparkling water. One stop on the way. Skip to keep the ride as-is.
+        </Text>
+      </View>
+      <FieldList>
+        {RIDE_ADD_ONS.map((item) => (
+          <Pressable
+            key={item.id}
+            accessibilityRole="button"
+            accessibilityLabel={`${item.label}, add for ${formatFare(item.priceCents)}`}
+            style={{ minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.md }}
+          >
+            <Text style={{ ...typeStyle(typography.body), flex: 1, color: c.foreground }}>{item.label}</Text>
+            <Text style={{ ...typeStyle(typography.bodyStrong), color: c.foreground }}>
+              +{formatFare(item.priceCents)}
+            </Text>
+          </Pressable>
+        ))}
+      </FieldList>
+      <Button label="No thanks" variant="secondary" onPress={data.onDismiss} style={{ width: "100%" }} />
+    </View>
+  );
+}
+
+function RiderRouteBar({
+  step,
+  top,
+  onBack,
+  onEdit,
+}: {
+  step: RiderStep;
+  top: number;
+  onBack: () => void;
+  onEdit: () => void;
+}) {
+  return (
+    <View
+      style={{
+        position: "absolute",
+        top: top + spacing.sm,
+        left: spacing.md,
+        right: spacing.md,
+        zIndex: 15,
+      }}
+    >
+      <MapRouteBar
+        origin="Current location"
+        destination={step === "rideSelect" ? "Pinned location" : undefined}
+        onBack={onBack}
+        onEdit={step === "rideSelect" ? onEdit : undefined}
+      />
+    </View>
+  );
+}
+
+const formatFare = (cents: number) => `$${(cents / 100).toFixed(2)}`;

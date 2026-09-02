@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Pressable, Text, View } from "../platform/adapter";
+import { Pressable, tabularNums, Text, View } from "../platform/adapter";
 import { radius, spacing, surface, typography } from "../tokens/index.ts";
 import { typeStyle } from "../style/type-style.ts";
 import { continuousCorners } from "../style/corners.ts";
@@ -17,28 +17,32 @@ export function ChoiceList({
   children,
   label,
   gutter = spacing.xl,
+  role = "radiogroup",
 }: {
   children: ReactNode;
   label?: string;
   gutter?: number;
+  /** Use `list` when pressing a row commits an action rather than choosing a radio value. */
+  role?: "radiogroup" | "list";
 }) {
   return (
     // A run of radios is a radiogroup whether or not anyone named it. Downgrading an unlabelled
     // group to `list` strips the relationship the rows depend on to be announced as a choice.
-    <View role="radiogroup" aria-label={label} style={{ marginHorizontal: -gutter }}>
+    <View role={role} aria-label={label} style={{ marginHorizontal: -gutter }}>
       {children}
     </View>
   );
 }
 
 /**
- * Unselected rows are entirely monochrome. Selection is a neutral fill plus two small accent
- * marks — the rule at the leading edge and the glyph well — so a list of options never reads as
- * a list of green cards.
+ * Unselected rows are entirely monochrome. Selection is a pale accent fill plus a dark leading
+ * rule and solid accent glyph well, matching the portable selected-row grammar.
  */
 export function ChoiceRow({
   glyph,
   title,
+  titleAffix,
+  badge,
   detail,
   trailing,
   selected,
@@ -46,9 +50,15 @@ export function ChoiceRow({
   disabledReason,
   onSelect,
   density = "default",
+  role = "radio",
+  "aria-label": ariaLabel,
 }: {
   glyph?: ReactNode;
   title: string;
+  /** Compact metadata kept on the title line, such as a seat count. */
+  titleAffix?: ReactNode;
+  /** Optional status pill kept after the title metadata. */
+  badge?: ReactNode;
   detail?: string;
   /** Right-aligned node — a price, a time, a chevron. */
   trailing?: ReactNode;
@@ -57,16 +67,20 @@ export function ChoiceRow({
   /** Why the row can't be picked. Spoken with the row rather than shown on hover. */
   disabledReason?: string;
   onSelect?: () => void;
-  /** Tighter 56pt rhythm with a 40pt glyph well for compact lists. */
-  density?: "default" | "compact";
+  /** Compact rows use a 40pt well; small-ring rows use a 28pt location target. */
+  density?: "default" | "compact" | "small-ring";
+  /** Buttons fit commit-ish rows; radios remain the portable selection default. */
+  role?: "radio" | "button";
+  "aria-label"?: string;
 }) {
   const c = useLimeColors();
   const compact = density === "compact";
+  const smallRing = density === "small-ring";
   return (
     <Pressable
-      role="radio"
-      aria-label={disabled && disabledReason ? `${title}. ${disabledReason}` : undefined}
-      aria-checked={Boolean(selected)}
+      role={role}
+      aria-label={disabled && disabledReason ? `${ariaLabel ?? title}. ${disabledReason}` : ariaLabel}
+      aria-checked={role === "radio" ? Boolean(selected) : undefined}
       aria-disabled={disabled || undefined}
       disabled={disabled}
       onPress={onSelect}
@@ -75,26 +89,65 @@ export function ChoiceRow({
         alignItems: "center",
         gap: spacing.md,
         width: "100%",
-        minHeight: compact ? 56 : undefined,
-        paddingVertical: compact ? spacing.sm : spacing.md,
+        minHeight: compact ? 56 : smallRing ? 64 : undefined,
+        paddingVertical: compact ? spacing.sm : smallRing ? spacing.sm : spacing.md,
         paddingHorizontal: compact ? spacing.sm : spacing.xl,
         overflow: "hidden",
-        backgroundColor: selected ? c.muted : "transparent",
+        backgroundColor: "transparent",
         opacity: disabled ? 0.4 : 1,
       }}
     >
-      {/* Selection reads as a rule at the leading edge, not a checkmark. */}
+      {/* A translucent layer keeps the accent pale without assuming the theme uses hex. */}
       {selected ? (
         <View
           aria-hidden
-          style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: 3, backgroundColor: c.accent }}
+          style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: c.accent, opacity: 0.22 }}
         />
       ) : null}
-      {glyph ? <ChoiceGlyph selected={selected} size={compact ? 40 : 48}>{glyph}</ChoiceGlyph> : null}
+      {/* Selection reads as a dark rule at the leading edge, not a checkmark. */}
+      {selected ? (
+        <View
+          aria-hidden
+          style={{ position: "absolute", top: 0, bottom: 0, left: 0, width: 4, backgroundColor: c.accentForeground }}
+        />
+      ) : null}
+      {glyph || smallRing ? (
+        <ChoiceGlyph selected={selected} size={compact ? 40 : smallRing ? 28 : 48} variant={smallRing ? "ring" : "filled"}>
+          {glyph}
+        </ChoiceGlyph>
+      ) : null}
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text numberOfLines={1} style={{ ...typeStyle(typography.bodyStrong), color: c.foreground }}>
-          {title}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, minWidth: 0 }}>
+          <Text
+            numberOfLines={1}
+            style={{ ...typeStyle(typography.bodyStrong), flexShrink: 1, color: c.foreground }}
+          >
+            {title}
+          </Text>
+          {titleAffix ? (
+            <View style={{ flexShrink: 0 }}>
+              {typeof titleAffix === "string" || typeof titleAffix === "number" ? (
+                <Text style={{ ...typeStyle(typography.metadata), color: c.mutedForeground }}>{titleAffix}</Text>
+              ) : titleAffix}
+            </View>
+          ) : null}
+          {badge ? (
+            <View
+              style={{
+                flexShrink: 0,
+                minHeight: 20,
+                justifyContent: "center",
+                paddingHorizontal: spacing.sm,
+                borderRadius: radius.pill,
+                backgroundColor: c.accent,
+              }}
+            >
+              {typeof badge === "string" || typeof badge === "number" ? (
+                <Text style={{ fontSize: 11, fontWeight: "600", color: c.accentForeground }}>{badge}</Text>
+              ) : badge}
+            </View>
+          ) : null}
+        </View>
         {detail ? (
           <Text
             numberOfLines={1}
@@ -107,7 +160,7 @@ export function ChoiceRow({
       {trailing ? (
         <View style={{ flexShrink: 0 }}>
           {typeof trailing === "string" || typeof trailing === "number" ? (
-            <Text style={{ ...typeStyle(typography.bodyStrong), color: c.foreground }}>{trailing}</Text>
+            <Text style={{ ...typeStyle(typography.bodyStrong), ...tabularNums, color: c.foreground }}>{trailing}</Text>
           ) : (
             trailing
           )}
@@ -117,9 +170,20 @@ export function ChoiceRow({
   );
 }
 
-/** The rounded well carrying a row's leading glyph. Takes the accent when its row is chosen. */
-export function ChoiceGlyph({ children, selected, size = 48 }: { children?: ReactNode; selected?: boolean; size?: number }) {
+/** The circular well carrying a row's leading glyph. Takes the accent when its row is chosen. */
+export function ChoiceGlyph({
+  children,
+  selected,
+  size = 48,
+  variant = "filled",
+}: {
+  children?: ReactNode;
+  selected?: boolean;
+  size?: number;
+  variant?: "filled" | "ring";
+}) {
   const c = useLimeColors();
+  const ring = variant === "ring";
   return (
     <View
       aria-hidden
@@ -129,12 +193,33 @@ export function ChoiceGlyph({ children, selected, size = 48 }: { children?: Reac
         flexShrink: 0,
         alignItems: "center",
         justifyContent: "center",
-        borderRadius: radius.card,
-        ...continuousCorners,
+        borderRadius: radius.pill,
+        ...(ring ? {} : continuousCorners),
         backgroundColor: selected ? c.accent : c.muted,
       }}
     >
-      {typeof children === "string" || typeof children === "number" ? (
+      {ring ? (
+        <View
+          style={{
+            width: 14,
+            height: 14,
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: radius.pill,
+            borderWidth: 2,
+            borderColor: selected ? c.surface : c.mutedForeground,
+          }}
+        >
+          <View
+            style={{
+              width: 4,
+              height: 4,
+              borderRadius: radius.pill,
+              backgroundColor: selected ? c.surface : c.mutedForeground,
+            }}
+          />
+        </View>
+      ) : typeof children === "string" || typeof children === "number" ? (
         <Text style={{ fontSize: 20, color: selected ? c.accentForeground : c.foreground }}>{children}</Text>
       ) : (
         children

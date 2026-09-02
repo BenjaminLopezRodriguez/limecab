@@ -45,6 +45,7 @@ export interface NativeMapProps {
 
 export function NativeMap({ scene, insets, env, previous, debugOcclusion, showMode = true }: NativeMapProps) {
   const c = useLimeColors();
+  const darkGround = scene.mode === "route_preview" || scene.mode === "select_location";
 
   const view = useMemo(() => resolveCamera(scene, insets, env, previous), [scene, insets, env, previous]);
   const rect = useMemo(() => visibleMapRect(insets, env), [insets, env]);
@@ -56,7 +57,7 @@ export function NativeMap({ scene, insets, env, previous, debugOcclusion, showMo
   );
 
   const leg = useMemo(() => {
-    if (!scene.route) return null;
+    if (!scene.route || scene.mode === "select_location") return null;
     const from = placed.find((p) => p.point.id === scene.route!.originId);
     const to = placed.find((p) => p.point.id === scene.route!.destinationId);
     if (!from || !to) return null;
@@ -68,14 +69,14 @@ export function NativeMap({ scene, insets, env, previous, debugOcclusion, showMo
       width: Math.hypot(dx, dy),
       angle: `${Math.atan2(dy, dx)}rad`,
     };
-  }, [scene.route, placed]);
+  }, [scene.route, scene.mode, placed]);
 
   // Following implies motion, so the world reads tighter and more attentive than when fitting.
   const following = scene.camera?.intent === "follow";
 
   return (
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: c.background, pointerEvents: "none" }]}>
-      <Graticule color={c.border} spacing={following ? 48 : 72} />
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: darkGround ? "#252525" : c.background, pointerEvents: "none" }]}>
+      <Graticule color={darkGround ? "#5A5A5A" : c.border} spacing={following ? 48 : 72} />
 
       {debugOcclusion ? (
         <View
@@ -101,7 +102,7 @@ export function NativeMap({ scene, insets, env, previous, debugOcclusion, showMo
             width: leg.width,
             height: 4,
             borderRadius: radius.pill,
-            backgroundColor: c.foreground,
+            backgroundColor: darkGround ? "#FFFFFF" : c.foreground,
             transform: [{ rotateZ: leg.angle }],
             transformOrigin: "left center",
           }}
@@ -109,27 +110,29 @@ export function NativeMap({ scene, insets, env, previous, debugOcclusion, showMo
       ) : null}
 
       {placed.map(({ point, at }) => (
-        <Marker key={point.id} point={point} x={at.x} y={at.y} />
+        scene.mode === "select_location" && point.role !== "origin" ? null : (
+          <Marker key={point.id} point={point} x={at.x} y={at.y} mode={scene.mode} />
+        )
       ))}
 
       {showMode ? (
-      <View
-        style={{
-          position: "absolute",
-          top: insets.top,
-          left: spacing.xl,
-          paddingHorizontal: spacing.md,
-          paddingVertical: 6,
-          borderRadius: radius.pill,
-          backgroundColor: c.surface,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: c.border,
-        }}
-      >
-        <Text style={{ ...typeStyle(typography.eyebrow), textTransform: "uppercase", color: c.mutedForeground }}>
-          {MODE_LABEL[scene.mode]}
-        </Text>
-      </View>
+        <View
+          style={{
+            position: "absolute",
+            top: insets.top,
+            left: spacing.xl,
+            paddingHorizontal: spacing.md,
+            paddingVertical: 6,
+            borderRadius: radius.pill,
+            backgroundColor: c.surface,
+            borderWidth: StyleSheet.hairlineWidth,
+            borderColor: c.border,
+          }}
+        >
+          <Text style={{ ...typeStyle(typography.eyebrow), textTransform: "uppercase", color: c.mutedForeground }}>
+            {MODE_LABEL[scene.mode]}
+          </Text>
+        </View>
       ) : null}
     </View>
   );
@@ -139,8 +142,58 @@ export function NativeMap({ scene, insets, env, previous, debugOcclusion, showMo
  * The subject — you, or the vehicle — is the one live thing in the world, so it carries the
  * accent. Everything else is a place, and places are neutral.
  */
-function Marker({ point, x, y }: { point: MapPoint; x: number; y: number }) {
+function Marker({ point, x, y, mode }: { point: MapPoint; x: number; y: number; mode: MapMode }) {
   const c = useLimeColors();
+  if (mode === "select_location" && point.role === "origin") {
+    return (
+      <View style={{ position: "absolute", left: x - 72, top: y - 62, width: 144, alignItems: "center" }}>
+        <View style={{ paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill, backgroundColor: "#FFFFFF" }}>
+          <Text style={{ fontSize: 11, fontWeight: "600", color: "#1A1815" }}>Current location</Text>
+        </View>
+        <View
+          style={{
+            marginTop: 3,
+            minHeight: 36,
+            justifyContent: "center",
+            paddingHorizontal: spacing.md,
+            borderRadius: radius.pill,
+            backgroundColor: c.accent,
+          }}
+        >
+          <Text style={{ ...typeStyle(typography.metadata), fontWeight: "600", color: c.accentForeground }}>
+            {point.label ?? "Pickup"}
+          </Text>
+        </View>
+        <View style={{ width: 4, height: 13, backgroundColor: c.accent }} />
+      </View>
+    );
+  }
+
+  if (mode === "route_preview" && point.role === "destination") {
+    return (
+      <View style={{ position: "absolute", left: x - 64, top: y - 44, width: 128, alignItems: "center" }}>
+        <View style={{ paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill, backgroundColor: "#FFFFFF" }}>
+          <Text style={{ fontSize: 11, fontWeight: "600", color: "#1A1815" }}>
+            {point.label ?? "Destination"}
+          </Text>
+        </View>
+        <View
+          style={{
+            marginTop: 3,
+            width: 20,
+            height: 20,
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 4,
+            backgroundColor: "#FFFFFF",
+          }}
+        >
+          <View style={{ width: 9, height: 9, borderRadius: 2, backgroundColor: "#1A1815" }} />
+        </View>
+      </View>
+    );
+  }
+
   const live = point.role === "subject" || point.role === "provider";
   const size = live ? 18 : 14;
   return (
@@ -180,10 +233,10 @@ function Graticule({ color, spacing: gap }: { color: string; spacing: number }) 
   return (
     <View style={StyleSheet.absoluteFill}>
       {lines.map((offset) => (
-        <View key={`h${offset}`} style={{ position: "absolute", left: 0, right: 0, top: offset, height: StyleSheet.hairlineWidth, backgroundColor: color, opacity: 0.6 }} />
+        <View key={`h${offset}`} style={{ position: "absolute", left: 0, right: 0, top: offset, height: StyleSheet.hairlineWidth, backgroundColor: color, opacity: 0.16 }} />
       ))}
       {lines.map((offset) => (
-        <View key={`v${offset}`} style={{ position: "absolute", top: 0, bottom: 0, left: offset, width: StyleSheet.hairlineWidth, backgroundColor: color, opacity: 0.6 }} />
+        <View key={`v${offset}`} style={{ position: "absolute", top: 0, bottom: 0, left: offset, width: StyleSheet.hairlineWidth, backgroundColor: color, opacity: 0.16 }} />
       ))}
     </View>
   );

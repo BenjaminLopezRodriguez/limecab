@@ -6,6 +6,7 @@
     "@lime/interaction-system": "file:../../packages/lime-interaction-system",
     "@lime/ui": "file:../../packages/lime-ui",
     "expo": "~57.0.18",
+    "expo-blur": "~57.0.2",
     "expo-constants": "~57.0.16",
     "expo-linking": "~57.0.8",
     "expo-router": "~57.0.17",

@@ -85,8 +85,14 @@ export function useSurfaceRuntime<S extends string, A extends string>(
       ...scenarioFrame,
       // The scenario keeps the world (`scene.map`); the manager owns the surfaces.
       scene: { ...scenarioFrame.scene, surfaces: manager.layout as unknown as SurfaceLayout },
+      // The same named recipe that produced the physical layout also owns how that layout
+      // arrived. In particular, closing an interrupt must remain a `return` even though the
+      // underlying workflow step never changed.
+      transition: scenarioFrame.transition
+        ? { ...scenarioFrame.transition, intent: manager.lastIntent ?? scenarioFrame.transition.intent }
+        : undefined,
     }),
-    [scenarioFrame, manager.layout],
+    [scenarioFrame, manager.lastIntent, manager.layout],
   );
 
   const act = useCallback(
