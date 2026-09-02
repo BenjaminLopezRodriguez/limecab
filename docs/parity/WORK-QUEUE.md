@@ -13,7 +13,7 @@ Provenance tags used in packets: `[OBSERVED]` · `[SOURCE-DERIVED]` · `[FIXTURE
 
 | cluster | states | status | packets |
 |---|---|---|---|
-| A | home · search · destination | **CODEX — REVIEW PENDING** | `rider/home.md` `rider/search.md` `rider/destination.md` |
+| A | home · search · destination | **REVIEWED + MERGED** (`967e650`) | `rider/home.md` `rider/search.md` `rider/destination.md` |
 | B | ride options · upsell · confirm pickup | **READY** | `rider/ride-options.md` `rider/upsell.md` `rider/confirm-pickup.md` |
 | C | request · matching · assigned | CAPTURING — `matching` observed, `assigned` not | `reference/web/rider/matching.png` |
 | D | arrival · PIN · in-ride | BLOCKED — needs a dispatched driver | — |
@@ -37,9 +37,9 @@ Dispatch file: `tasks/driver-cluster-b.md`
 
 ## SHARED INFRASTRUCTURE
 
-- worktree baseline: **WAITING FOR RIDER A REVIEW**
-- Rider worktree (`../limecab-codex-rider`): NOT CREATED
-- Driver worktree (`../limecab-codex-driver`): NOT CREATED
+- worktree baseline: **`967e650` on `native/parity`** — reviewed, tests + contract green
+- Rider worktree (`../limecab-codex-rider`, branch `codex/rider`): **LIVE**, warming
+- Driver worktree (`../limecab-codex-driver`, branch `codex/driver`): **LIVE**, warming
 - Watchman: VERIFIED
 - parity gallery: VERIFIED
 - docs checkpoint commit: `5b35b1e` on `native/parity`
